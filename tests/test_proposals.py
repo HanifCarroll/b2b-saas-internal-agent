@@ -41,8 +41,12 @@ def test_save_is_durable_and_retries_return_existing_proposal(connection, tmp_pa
     assert proposal.requester_contact_id == "contact-jordan"
     assert proposal.expected_configuration_version == 7
     assert proposal.proposed_by_employee_id == "emp-alex"
-    saved = save_proposal(proposal, session, path)
-    retry = save_proposal(validate_proposal(candidate(), session), session, path)
+    saved, created = save_proposal(proposal, session, path)
+    retry, retry_created = save_proposal(
+        validate_proposal(candidate(), session), session, path
+    )
+    assert created is True
+    assert retry_created is False
     assert saved == retry
     with closing(sqlite3.connect(path)) as storage:
         assert storage.execute("SELECT count(*) FROM proposals").fetchone()[0] == 1

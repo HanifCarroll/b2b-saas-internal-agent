@@ -16,8 +16,10 @@ def save_proposal(
     proposal: Proposal,
     session: EmployeeSession,
     database_path: Path = PROPOSALS_DATABASE,
-) -> Proposal:
+) -> tuple[Proposal, bool]:
     """Recheck authorization and records, then save or return an identical proposal.
+
+    Returns (proposal, created): created is False for an existing proposal.
 
     Identity and the full configuration snapshot must still match. SQLite serializes
     duplicate detection and insertion so concurrent retries cannot create duplicates.
@@ -49,7 +51,7 @@ def save_proposal(
             f"SELECT * FROM proposals WHERE {conditions}", snapshot
         ).fetchone()
         if existing is not None:
-            return Proposal.model_validate_json(json.dumps(dict(existing)))
+            return Proposal.model_validate_json(json.dumps(dict(existing))), False
         connection.execute(
             """
             INSERT INTO proposals (
@@ -64,4 +66,4 @@ def save_proposal(
             """,
             proposal.model_dump(mode="json"),
         )
-    return proposal
+    return proposal, True

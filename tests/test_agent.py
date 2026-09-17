@@ -216,6 +216,27 @@ def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
     cli.main()
     output = capsys.readouterr().out
-    assert "Proposal saved:" in output
+    assert "Proposal created:" in output
     assert '"outcome": "proposal_candidate"' in output
     assert "Verified: business records unchanged." in output
+
+
+def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
+    from switchboard import __main__ as cli
+
+    monkeypatch.setattr(
+        cli,
+        "create_model",
+        lambda: ScriptedModel(messages=iter([structured_result()])),
+    )
+    monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setattr("sys.argv", ["switchboard"])
+    monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    cli.main()
+    capsys.readouterr()
+    cli.main()
+    output = capsys.readouterr().out
+    assert "Proposal already exists:" in output
+    assert "No duplicate created." in output
+    assert "Proposal created:" not in output

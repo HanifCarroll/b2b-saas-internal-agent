@@ -90,10 +90,18 @@ def main():
             try:
                 with employee_session(context) as session:
                     proposal = validate_proposal(investigation, session)
-                    proposal = save_proposal(proposal, session, PROPOSALS_DATABASE)
+                    proposal, was_created = save_proposal(
+                        proposal, session, PROPOSALS_DATABASE
+                    )
             except (ValueError, PermissionError) as error:
                 raise SystemExit(f"Proposal rejected; nothing saved: {error}") from None
-            print(f"\nProposal saved: {proposal.id} ({proposal.status})")
+            else:
+                if was_created:
+                    print(f"\nProposal created: {proposal.id}. Pending approval.")
+                else:
+                    print(
+                        f"\nProposal already exists: {proposal.id}. No duplicate created."
+                    )
 
         # 7. Display tool calls and the validated investigation.
         for message in result["messages"]:
