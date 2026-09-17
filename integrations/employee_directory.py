@@ -17,12 +17,13 @@ class EmployeeSession:
     as tools. Never expose the constructor, connection, or arbitrary SQL. Checks reread directory state.
     """
 
-    def __init__(self, connection: sqlite3.Connection, employee_id: str):
-        self._connection = connection
+    def __init__(self, db_connection: sqlite3.Connection, employee_id: str):
+        self._db_connection = db_connection
         self._employee_id = employee_id
 
-    def _role(self) -> str:
-        row = self._connection.execute(
+    def get_active_employee_role(self) -> Role:
+        """Return the current employee's role; deny access if inactive or unknown."""
+        row = self._db_connection.execute(
             "SELECT role FROM employees WHERE id = ? AND active = 1",
             (self._employee_id,),
         ).fetchone()
@@ -30,17 +31,33 @@ class EmployeeSession:
             raise PermissionError("Access denied")
         return row[0]
 
-    def _read(self, table: str, record_id: str, allowed_roles: set[str]) -> dict:
-        # table is an internal constant, never a tool argument.
-        if self._role() not in allowed_roles:
+    def read_authorized_record(
+        self, table: str, record_id: str, allowed_roles: set[str]
+    ) -> dict:
+        """Return a record only when both role and customer assignment permit it."""
+        # 1. Require an active employee with a role permitted by this operation.
+        role = self.get_active_employee_role()
+        if role not in allowed_roles:
             raise PermissionError("Access denied")
-        customer_column = "r.id" if table == "customers" else "r.customer_id"
-        row = self._connection.execute(
-            f"SELECT r.body FROM {table} r JOIN assignments a ON a.customer_id = {customer_column} "
-            "JOIN employees e ON e.id = a.employee_id "
-            "WHERE r.id = ? AND e.id = ? AND e.active = 1 AND e.role IN ("
-            + ",".join("?" for _ in allowed_roles)
-            + ")",
+
+        # 2. Enforce customer assignment in the query, before retrieving the body.
+        # Recheck active status and role in that same query.
+        # table is an internal constant, never a tool argument.
+        customer_column = "record.id" if table == "customers" else "record.customer_id"
+        role_placeholders = ",".join("?" for _ in allowed_roles)
+        row = self._db_connection.execute(
+            f"""
+            SELECT record.body
+            FROM {table} AS record
+            JOIN assignments AS assignment
+              ON assignment.customer_id = {customer_column}
+            JOIN employees AS employee
+              ON employee.id = assignment.employee_id
+            WHERE record.id = ?
+              AND employee.id = ?
+              AND employee.active = 1
+              AND employee.role IN ({role_placeholders})
+            """,
             (record_id, self._employee_id, *sorted(allowed_roles)),
         ).fetchone()
         # Missing and forbidden records have the same response to avoid disclosure.

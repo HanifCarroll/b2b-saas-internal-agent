@@ -8,7 +8,7 @@ from .employee_directory import CONFIG_ROLES, EmployeeSession
 
 
 def get_customer(session: EmployeeSession, customer_id: str) -> Customer:
-    record = session._read("customers", customer_id, CONFIG_ROLES)
+    record = session.read_authorized_record("customers", customer_id, CONFIG_ROLES)
     record = {
         key: record[key]
         for key in (

@@ -8,7 +8,7 @@ from .employee_directory import ROLES, EmployeeSession
 
 
 def get_ticket(session: EmployeeSession, ticket_id: str) -> Ticket:
-    record = session._read("tickets", ticket_id, ROLES)
+    record = session.read_authorized_record("tickets", ticket_id, ROLES)
     record = {
         key: record[key]
         for key in (
