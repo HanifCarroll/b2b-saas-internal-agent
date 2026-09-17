@@ -2,7 +2,7 @@
 
 import json
 
-from models import Integration
+from switchboard.models import Integration
 
 from .employee_directory import CONFIG_ROLES, EmployeeSession
 

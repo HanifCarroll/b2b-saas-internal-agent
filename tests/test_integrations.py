@@ -12,13 +12,13 @@ from contextlib import closing
 import pytest
 from pydantic import ValidationError
 
-from integrations.configuration_service import get_integration
-from integrations.customer_registry import get_customer
-from integrations.database import DATA, seed_database
-from integrations.employee_directory import EmployeeSession
-from integrations.policy_library import list_policies
-from integrations.support_desk import get_ticket
-from models import Customer, Integration, Ticket
+from switchboard.integrations.configuration_service import get_integration
+from switchboard.integrations.customer_registry import get_customer
+from switchboard.integrations.database import FIXTURES, seed_database
+from switchboard.integrations.employee_directory import EmployeeSession
+from switchboard.integrations.policy_library import list_policies
+from switchboard.integrations.support_desk import get_ticket
+from switchboard.models import Customer, Integration, Ticket
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def database():
 def sample_records():
     """Editable copies of the JSON records, without changing project files."""
     return {
-        table: json.loads((DATA / f"{table}.json").read_text())
+        table: json.loads((FIXTURES / f"{table}.json").read_text())
         for table in ("employees", "customers", "integrations", "tickets")
     }
 
@@ -41,7 +41,7 @@ def sample_records():
 def assert_seed_rejected(tmp_path, records, *, invalid_field):
     """Load modified records and check both the validation error and empty DB."""
     data_dir = tmp_path / "data"
-    shutil.copytree(DATA, data_dir)
+    shutil.copytree(FIXTURES, data_dir)
     for table, rows in records.items():
         (data_dir / f"{table}.json").write_text(json.dumps(rows))
 

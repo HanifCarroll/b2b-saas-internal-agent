@@ -6,15 +6,15 @@ from contextlib import closing
 
 import pytest
 
-from integrations.database import DATA, seed_database
-from scenarios import apply_scenario, load_scenarios
+from switchboard.integrations.database import FIXTURES, seed_database
+from switchboard.scenarios import apply_scenario, load_scenarios
 
 
 @pytest.mark.parametrize("name", list(load_scenarios()))
 def test_scenario_changes_only_its_intended_inputs(name):
     scenario = load_scenarios()[name]
     source_before = {
-        path: path.read_bytes() for path in DATA.rglob("*") if path.is_file()
+        path: path.read_bytes() for path in FIXTURES.rglob("*") if path.is_file()
     }
     with closing(sqlite3.connect(":memory:")) as db_connection:
         seed_database(db_connection)
@@ -45,7 +45,7 @@ def test_scenario_changes_only_its_intended_inputs(name):
 
 
 def test_unregistered_destination_really_is_not_registered():
-    customers = json.loads((DATA / "customers.json").read_text())
+    customers = json.loads((FIXTURES / "customers.json").read_text())
     acme = next(customer for customer in customers if customer["id"] == "acme")
     scenario = load_scenarios()["unregistered-destination"]
     destination = "https://new.acme.example/deals"
@@ -54,7 +54,7 @@ def test_unregistered_destination_really_is_not_registered():
 
 
 def test_unauthorized_contact_really_is_not_authorized():
-    customers = json.loads((DATA / "customers.json").read_text())
+    customers = json.loads((FIXTURES / "customers.json").read_text())
     acme = next(customer for customer in customers if customer["id"] == "acme")
     contact = load_scenarios()[
         "unauthorized-contact"

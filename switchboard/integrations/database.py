@@ -6,12 +6,12 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from models import Customer, Employee, Integration, Ticket
+from switchboard.models import Customer, Employee, Integration, Ticket
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+FIXTURES = Path(__file__).resolve().parents[2] / "data" / "fixtures"
 
 
-def seed_database(connection: sqlite3.Connection, data_dir: Path = DATA) -> None:
+def seed_database(connection: sqlite3.Connection, data_dir: Path = FIXTURES) -> None:
     """Initialize an empty database from fixtures; never reset existing records."""
     if connection.in_transaction:
         raise ValueError("Seed requires a connection without an active transaction")

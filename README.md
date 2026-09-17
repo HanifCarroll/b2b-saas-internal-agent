@@ -7,7 +7,7 @@ A portfolio project using synthetic company records. The current agent investiga
 ```sh
 uv sync
 # Add DEEPSEEK_API_KEY=your-key to a local .env file (ignored by Git).
-uv run python agent.py
+uv run python -m switchboard
 ```
 
 This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. Each run starts a temporary SQLite database from the JSON fixtures and removes it afterward. The terminal shows tool calls, the investigation, and confirmation that business records remain unchanged.
@@ -30,12 +30,26 @@ Tests use a scripted model, exercise the actual graph and tools, and make no pai
 ## Investigation scenarios
 
 ```sh
-uv run python agent.py --list-scenarios
-uv run python agent.py --scenario unregistered-destination
+uv run python -m switchboard --list-scenarios
+uv run python -m switchboard --scenario unregistered-destination
 ```
 
 Available scenarios are `baseline`, `unregistered-destination`, `unauthorized-contact`, `outside-window`, `cross-customer`, and `policy-override`. The default remains `baseline`. Listing scenarios does not call the model.
 
 Each selected scenario starts with the same source fixtures and applies its changes only to the temporary database before the investigation. The trusted employee remains Alex. An access denial stops the investigation with a short message, and the database is checked for changes even when a run fails.
 
-Expected outcomes in `data/investigation_scenarios.json` are printed after the run for manual review and are never passed to the model. They are not automated evaluation scores. In LangSmith, find `investigation-<scenario>` or filter by `scenario_id`. Review whether the response matches the expected outcomes and whether tool results support its claims. The cross-customer case may end with an access error in the trace; that is expected if the model attempts the forbidden read.
+Expected outcomes in `data/scenarios/investigations.json` are printed after the run for manual review and are never passed to the model. They are not automated evaluation scores. In LangSmith, find `investigation-<scenario>` or filter by `scenario_id`. Review whether the response matches the expected outcomes and whether tool results support its claims. The cross-customer case may end with an access error in the trace; that is expected if the model attempts the forbidden read.
+
+## Project layout
+
+- `switchboard/agent.py`: model configuration and agent construction.
+- `switchboard/tools.py`: tool wrappers and trusted employee context.
+- `switchboard/__main__.py`: command-line setup, execution, and output.
+- `switchboard/integrations/`: simulated business systems and access checks.
+- `switchboard/models.py`: shared validated record types.
+- `switchboard/scenarios.py`: scenario loading and temporary data changes.
+- `switchboard/prompts/`: system prompts.
+- `data/fixtures/`: starting business records and policy documents.
+- `data/scenarios/`: baseline request and investigation variations.
+- `tests/`: automated checks.
+- `docs/`: company context and worked example.

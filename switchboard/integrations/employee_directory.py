@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import get_args
 
-from models import Role
+from switchboard.models import Role
 
 ROLES = set(get_args(Role))
 CONFIG_ROLES = {"implementation_engineer", "technical_lead"}

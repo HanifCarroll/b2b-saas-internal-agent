@@ -9,8 +9,9 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from pydantic import BaseModel
 
-from agent import TOOLS, InvestigationContext, build_agent, employee_session
-from integrations.database import seed_database
+from switchboard.agent import build_agent
+from switchboard.integrations.database import seed_database
+from switchboard.tools import TOOLS, InvestigationContext, employee_session
 
 
 class ScriptedModel(GenericFakeChatModel):

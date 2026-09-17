@@ -2,7 +2,7 @@
 
 import json
 
-from models import Ticket
+from switchboard.models import Ticket
 
 from .employee_directory import ROLES, EmployeeSession
 
