@@ -1,0 +1,29 @@
+[
+  {
+    "id": "emp-alex",
+    "name": "Alex Rivera",
+    "active": true,
+    "role": "implementation_engineer",
+    "customer_ids": [
+      "acme"
+    ]
+  },
+  {
+    "id": "emp-priya",
+    "name": "Priya Shah",
+    "active": true,
+    "role": "technical_lead",
+    "customer_ids": [
+      "acme"
+    ]
+  },
+  {
+    "id": "emp-ben",
+    "name": "Ben Okafor",
+    "active": true,
+    "role": "implementation_engineer",
+    "customer_ids": [
+      "globex"
+    ]
+  }
+]

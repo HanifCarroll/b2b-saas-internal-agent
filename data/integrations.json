@@ -1,0 +1,26 @@
+[
+  {
+    "id": "int-acme-prod",
+    "customer_id": "acme",
+    "name": "CRM sync",
+    "environment": "production",
+    "endpoint": "https://old.acme.example/deals",
+    "version": 7
+  },
+  {
+    "id": "int-acme-sandbox",
+    "customer_id": "acme",
+    "name": "CRM sync",
+    "environment": "sandbox",
+    "endpoint": "https://sandbox.acme.example/deals",
+    "version": 2
+  },
+  {
+    "id": "int-globex-prod",
+    "customer_id": "globex",
+    "name": "CRM sync",
+    "environment": "production",
+    "endpoint": "https://events.globex.example/deals",
+    "version": 4
+  }
+]

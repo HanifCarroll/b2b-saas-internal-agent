@@ -1,0 +1,56 @@
+[
+  {
+    "id": "acme",
+    "name": "Acme Services",
+    "authorized_contacts": [
+      {
+        "id": "contact-jordan",
+        "name": "Jordan Lee",
+        "email": "jordan@acme.example"
+      }
+    ],
+    "production_change_window": {
+      "weekday": "Tuesday",
+      "start": "14:00",
+      "end": "16:00",
+      "timezone": "UTC"
+    },
+    "registered_destinations": [
+      {
+        "environment": "production",
+        "url": "https://old.acme.example/deals"
+      },
+      {
+        "environment": "production",
+        "url": "https://events.acme.example/deals"
+      },
+      {
+        "environment": "sandbox",
+        "url": "https://sandbox.acme.example/deals"
+      }
+    ]
+  },
+  {
+    "id": "globex",
+    "name": "Globex Software",
+    "authorized_contacts": [
+      {
+        "id": "contact-sam",
+        "name": "Sam Patel",
+        "email": "sam@globex.example"
+      }
+    ],
+    "production_change_window": {
+      "weekday": "Wednesday",
+      "start": "14:00",
+      "end": "16:00",
+      "timezone": "UTC"
+    },
+    "registered_destinations": [
+      {
+        "environment": "production",
+        "url": "https://events.globex.example/deals"
+      }
+    ]
+  }
+]
