@@ -21,6 +21,11 @@ class EmployeeSession:
         self._db_connection = db_connection
         self._employee_id = employee_id
 
+    @property
+    def employee_id(self) -> str:
+        """Identity bound by application code, not supplied by the model."""
+        return self._employee_id
+
     def get_active_employee_role(self) -> Role:
         """Return the current employee's role; deny access if inactive or unknown."""
         row = self._db_connection.execute(

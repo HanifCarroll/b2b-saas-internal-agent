@@ -29,7 +29,7 @@ def test_scenario_changes_only_its_intended_inputs(name):
             db_connection.execute("SELECT body FROM tickets").fetchone()[0]
         )
         assert ticket_after == ticket_before | scenario.ticket_updates.model_dump(
-            exclude_none=True
+            mode="json", exclude_none=True
         )
         assert (
             db_connection.execute("SELECT * FROM integrations").fetchall()

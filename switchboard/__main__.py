@@ -12,11 +12,13 @@ from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
 
 from switchboard.agent import build_agent, create_model
-from switchboard.integrations.database import seed_database
+from switchboard.integrations.change_management import save_proposal
+from switchboard.integrations.database import PROPOSALS_DATABASE, seed_database
 from switchboard.models import InvestigationResult
 from switchboard.policy_evaluation import evaluate_policy
+from switchboard.proposals import validate_proposal
 from switchboard.scenarios import apply_scenario, load_scenarios
-from switchboard.tools import InvestigationContext
+from switchboard.tools import InvestigationContext, employee_session
 
 
 def main():
@@ -83,11 +85,23 @@ def main():
                 + str(error.errors(include_input=False, include_url=False))
             ) from None
 
+        # 6. Validate and save a proposal if the outcome is proposal_candidate.
+        if investigation.outcome == "proposal_candidate":
+            try:
+                with employee_session(context) as session:
+                    proposal = validate_proposal(investigation, session)
+                    proposal = save_proposal(proposal, session, PROPOSALS_DATABASE)
+            except (ValueError, PermissionError) as error:
+                raise SystemExit(f"Proposal rejected; nothing saved: {error}") from None
+            print(f"\nProposal saved: {proposal.id} ({proposal.status})")
+
+        # 7. Display tool calls and the validated investigation.
         for message in result["messages"]:
             for call in getattr(message, "tool_calls", []):
                 print(f"Tool: {call['name']} {json.dumps(call['args'])}")
         print("\n" + investigation.model_dump_json(indent=2))
 
+        # 8. Optionally evaluate policy accuracy with a separate model call.
         if args.evaluate_policy:
             review = evaluate_policy(investigation.model_dump_json(), model)
             print("\nPolicy faithfulness review (model judgment):")

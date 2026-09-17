@@ -17,6 +17,7 @@ def get_ticket(session: EmployeeSession, ticket_id: str) -> Ticket:
             "integration_id",
             "requester_contact_id",
             "assigned_employee_id",
+            "requested_endpoint",
             "created_at",
             "status",
             "subject",

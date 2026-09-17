@@ -72,6 +72,7 @@ class Ticket(Record):
     integration_id: Text
     requester_contact_id: Text
     assigned_employee_id: Text
+    requested_endpoint: HttpUrl
     created_at: AwareDatetime
     status: Text
     subject: Text

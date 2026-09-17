@@ -14,7 +14,7 @@ This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier cur
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
-No HTTP service, real sign-in, approvals, writes, or Foundry resources are implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
+No HTTP service, real sign-in, approvals, configuration writes, or Foundry resources are implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
 ## Checks
 
@@ -58,7 +58,7 @@ Expected outcomes in `data/scenarios/investigations.json` are printed after the 
 
 The investigator uses DeepSeek with thinking enabled and the four read-only tools, then returns JSON matching the `InvestigationResult` schema. The application validates that JSON with Pydantic before accepting or displaying it. Invalid JSON or inconsistent fields stop the run with a clear error; there is no formatting stage or automatic correction retry.
 
-Valid structure does not establish factual correctness or authorize a change; no proposal is saved yet. A closed execution window or unverified independent approval does not by itself block preparing a proposal candidate; these remain execution requirements.
+Valid structure does not establish factual correctness or authorize a change. Application code independently validates candidates before saving proposals. A closed execution window or unverified independent approval does not by itself block preparing a proposal candidate; these remain execution requirements.
 
 ## Policy faithfulness
 
@@ -71,10 +71,14 @@ The first command adds a separate DeepSeek review of the investigation's policy 
 
 The reviewer reports specific claims, source excerpts, and explanations. Invalid JSON or invented source excerpts fail the evaluation rather than counting as a pass. An empty issues list means the model found no distortion, not that correctness is proven. The same model family produces and reviews the output, so manual review remains important. This checks policy meaning only; it does not authorize actions or establish customer facts. Calibration expectations are withheld from the judge.
 
-## Proposal storage (foundation)
+## Proposal validation and storage
 
-`Proposal` describes the exact endpoint change to submit for approval, including the employee and customer contact IDs, ticket, customer, integration, environment, observed endpoint and configuration version, proposed endpoint, and creation time. Its initial status is `pending_approval`. IDs and timestamps will be supplied by application code; model validation checks shape, not business authorization.
+`Proposal` describes the exact endpoint change to submit for approval, including the employee and customer contact IDs, ticket, customer, integration, environment, observed endpoint and configuration version, proposed endpoint, and creation time. Its initial status is `pending_approval`. IDs and timestamps are supplied by application code; model validation checks shape, not business authorization.
 
-`initialize_proposal_database()` in `switchboard/integrations/database.py` creates `data/local/proposals.db` without clearing existing proposals. This local directory is ignored by Git. Proposal storage is separate from the temporary scenario databases, so fixture resets cannot delete saved proposals. References to business records will be checked by application code before saving; they are not cross-database foreign keys.
+`initialize_proposal_database()` in `switchboard/integrations/database.py` creates `data/local/proposals.db` without clearing existing proposals. This local directory is ignored by Git. Proposal storage is separate from the temporary scenario databases, so fixture resets cannot delete saved proposals. References to business records are checked by application code before saving; they are not cross-database foreign keys.
 
-The investigation CLI does not save proposals yet. Business validation, access-controlled saving and retrieval, and retry deduplication are the next steps. No configuration is changed by this foundation.
+`validate_proposal()` in `switchboard/proposals.py` reads access-controlled records, checks the customer relationship and authorized contact, and compares the proposed endpoint with the structured ticket request and registered destinations for that environment. It builds the proposal from those records and the employee session. A request for the already-configured endpoint is rejected.
+
+The CLI calls `save_proposal()` in `switchboard/integrations/change_management.py` for validated candidates and prints the saved ID. Saving rechecks the employee and configuration snapshot and returns the existing proposal for an identical retry. Blocked or rejected candidates save nothing. The agent still has only read-only tools. Configuration, approval, and execution are unchanged.
+
+These are synthetic scenario proposals: identical snapshots across scenarios share a proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Proposal retrieval and the approval workflow are not implemented yet. The optional policy review runs after saving and is diagnostic, not a gate for saving.

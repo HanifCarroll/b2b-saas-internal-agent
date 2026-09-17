@@ -4,7 +4,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from pydantic import AwareDatetime, Field, TypeAdapter
+from pydantic import AwareDatetime, Field, HttpUrl, TypeAdapter
 
 from switchboard.models import Record, Text, Ticket
 
@@ -12,6 +12,7 @@ SCENARIOS = Path(__file__).resolve().parent.parent / "data" / "scenarios"
 
 
 class TicketUpdates(Record):
+    requested_endpoint: HttpUrl | None = None
     body: Text | None = None
     requester_contact_id: Text | None = None
 
@@ -36,7 +37,7 @@ def apply_scenario(db_connection: sqlite3.Connection, scenario: Scenario) -> dic
     if scenario.request is not None:
         inputs["request"] = scenario.request
 
-    updates = scenario.ticket_updates.model_dump(exclude_none=True)
+    updates = scenario.ticket_updates.model_dump(mode="json", exclude_none=True)
     if updates:
         row = db_connection.execute(
             "SELECT body FROM tickets WHERE id = ?", (inputs["ticket_id"],)

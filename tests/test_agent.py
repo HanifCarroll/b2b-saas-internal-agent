@@ -204,7 +204,7 @@ def test_cli_rejects_invalid_result_without_retry(monkeypatch, response):
     assert options.get("tool_choice") not in ("required", "any")
 
 
-def test_cli_accepts_valid_result(monkeypatch, capsys):
+def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
     from switchboard import __main__ as cli
 
     model = ScriptedModel(messages=iter([structured_result()]))
@@ -213,7 +213,9 @@ def test_cli_accepts_valid_result(monkeypatch, capsys):
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr("sys.argv", ["switchboard"])
 
+    monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
     cli.main()
     output = capsys.readouterr().out
+    assert "Proposal saved:" in output
     assert '"outcome": "proposal_candidate"' in output
     assert "Verified: business records unchanged." in output
