@@ -55,9 +55,6 @@ def main():
                     "metadata": {"scenario_id": args.scenario},
                 },
             )
-        except PermissionError:
-            print("Investigation stopped: access denied or record unavailable.")
-            result = None
         finally:
             # 4. Verify even if the model or a tool fails.
             with closing(sqlite3.connect(database_path)) as db_connection:
