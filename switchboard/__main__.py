@@ -8,9 +8,12 @@ from contextlib import closing
 from pathlib import Path
 
 from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage
+from pydantic import ValidationError
 
 from switchboard.agent import build_agent, create_model
 from switchboard.integrations.database import seed_database
+from switchboard.models import InvestigationResult
 from switchboard.scenarios import apply_scenario, load_scenarios
 from switchboard.tools import InvestigationContext
 
@@ -47,7 +50,7 @@ def main():
         )
         try:
             result = agent.invoke(
-                {"messages": [{"role": "user", "content": scenario["request"]}]},
+                {"messages": [HumanMessage(content=scenario["request"])]},
                 context=context,
                 config={
                     "recursion_limit": 12,
@@ -62,12 +65,22 @@ def main():
             if database_after != database_before:
                 raise RuntimeError("Investigation changed business records")
 
-        # 5. Display: show tool calls, the final report, and the verification result.
-        if result is not None:
-            for message in result["messages"]:
-                for call in getattr(message, "tool_calls", []):
-                    print(f"Tool: {call['name']} {json.dumps(call['args'])}")
-            print("\n" + result["messages"][-1].text)
+        # 5. Validate the final JSON before accepting or displaying the result.
+        try:
+            investigation = InvestigationResult.model_validate_json(
+                result["messages"][-1].text
+            )
+        except ValidationError as error:
+            raise SystemExit(
+                "Investigation returned invalid JSON or inconsistent fields; "
+                "no result accepted. Business records are unchanged.\n"
+                + str(error.errors(include_input=False, include_url=False))
+            ) from None
+
+        for message in result["messages"]:
+            for call in getattr(message, "tool_calls", []):
+                print(f"Tool: {call['name']} {json.dumps(call['args'])}")
+        print("\n" + investigation.model_dump_json(indent=2))
 
         print("\nVerified: business records unchanged.")
         print("\nExpected outcomes for manual review (not an automated grade):")

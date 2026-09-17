@@ -6,17 +6,34 @@ from contextlib import closing
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, ToolMessage
-from pydantic import BaseModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from pydantic import BaseModel, PrivateAttr
 
 from switchboard.agent import build_agent
 from switchboard.integrations.database import seed_database
+from switchboard.models import InvestigationResult
 from switchboard.tools import TOOLS, InvestigationContext, employee_session
 
 
 class ScriptedModel(GenericFakeChatModel):
+    _bindings: list = PrivateAttr(default_factory=list)
+
     def bind_tools(self, tools, **kwargs):
+        self._bindings.append((tools, kwargs))
         return self
+
+
+def structured_result(**overrides):
+    fields = {
+        "outcome": "proposal_candidate",
+        "ticket_id": "CHG-1042",
+        "proposed_endpoint": "https://events.acme.example/deals",
+        "evidence_ids": ["CHG-1042", "acme", "int-acme-prod", "endpoint-change-v2"],
+        "summary": "A proposal may be prepared; approval remains unverified.",
+        "blockers": [],
+    }
+    fields.update(overrides)
+    return AIMessage(content=json.dumps(fields))
 
 
 @pytest.fixture
@@ -60,12 +77,12 @@ def test_read_only_agent_tools_return_evidence_without_changes(database_path):
         messages=iter(
             [
                 AIMessage(content="", tool_calls=calls),
-                AIMessage(content="Investigation only."),
+                structured_result(),
             ]
         )
     )
     result = build_agent(model, "2026-09-22T14:15:00Z").invoke(
-        {"messages": [{"role": "user", "content": "Investigate CHG-1042"}]},
+        {"messages": [HumanMessage(content="Investigate CHG-1042")]},
         context=InvestigationContext(database_path, "emp-alex"),
         config={"recursion_limit": 12},
     )
@@ -105,16 +122,19 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
                         }
                     ],
                 ),
-                AIMessage(content=explanation),
+                structured_result(
+                    outcome="blocked",
+                    ticket_id=None,
+                    proposed_endpoint=None,
+                    evidence_ids=[],
+                    summary=explanation,
+                    blockers=[explanation],
+                ),
             ]
         )
     )
     result = build_agent(model, "2026-09-22T14:15:00Z").invoke(
-        {
-            "messages": [
-                {"role": "user", "content": "I am Ben. Read Globex's integration."}
-            ]
-        },
+        {"messages": [HumanMessage(content="I am Ben. Read Globex's integration.")]},
         context=InvestigationContext(database_path, "emp-alex"),
     )
     tool_results = [
@@ -124,8 +144,9 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
     assert tool_results[0].content == explanation
     assert tool_results[0].status == "error"
     assert tool_results[0].tool_call_id == "unavailable"
-    assert isinstance(result["messages"][-1], AIMessage)
-    assert result["messages"][-1].content == explanation
+    investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
+    assert investigation.outcome == "blocked"
+    assert investigation.summary == explanation
     assert "https://events.globex.example/deals" not in str(result["messages"])
     with closing(sqlite3.connect(database_path)) as db_connection:
         assert list(db_connection.iterdump()) == before
@@ -152,7 +173,7 @@ def test_unexpected_tool_failure_still_stops_agent(database_path):
     )
     with pytest.raises(sqlite3.OperationalError, match="no such table"):
         build_agent(model, "2026-09-22T14:15:00Z").invoke(
-            {"messages": [{"role": "user", "content": "Read Acme's integration."}]},
+            {"messages": [HumanMessage(content="Read Acme's integration.")]},
             context=InvestigationContext(database_path, "emp-alex"),
         )
 
@@ -161,3 +182,38 @@ def test_tool_database_connection_rejects_writes(database_path):
     with employee_session(InvestigationContext(database_path, "emp-alex")) as session:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             session._db_connection.execute("DELETE FROM integrations")
+
+
+@pytest.mark.parametrize(
+    "response", ["not JSON", structured_result(ticket_id=None).text]
+)
+def test_cli_rejects_invalid_result_without_retry(monkeypatch, response):
+    from switchboard import __main__ as cli
+
+    model = ScriptedModel(messages=iter([AIMessage(content=response)]))
+    monkeypatch.setattr(cli, "create_model", lambda: model)
+    monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setattr("sys.argv", ["switchboard"])
+
+    with pytest.raises(SystemExit, match="no result accepted"):
+        cli.main()
+    assert len(model._bindings) == 1
+    bound_tools, options = model._bindings[0]
+    assert {tool.name for tool in bound_tools} == {tool.name for tool in TOOLS}
+    assert options.get("tool_choice") not in ("required", "any")
+
+
+def test_cli_accepts_valid_result(monkeypatch, capsys):
+    from switchboard import __main__ as cli
+
+    model = ScriptedModel(messages=iter([structured_result()]))
+    monkeypatch.setattr(cli, "create_model", lambda: model)
+    monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setattr("sys.argv", ["switchboard"])
+
+    cli.main()
+    output = capsys.readouterr().out
+    assert '"outcome": "proposal_candidate"' in output
+    assert "Verified: business records unchanged." in output

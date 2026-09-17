@@ -12,7 +12,7 @@ uv run python -m switchboard
 
 This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. Each run starts a temporary SQLite database from the JSON fixtures and removes it afterward. The terminal shows tool calls, the investigation, and confirmation that business records remain unchanged.
 
-LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Runs are limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
+LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
 No HTTP service, real sign-in, approvals, writes, or Foundry resources are implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
@@ -53,3 +53,9 @@ Expected outcomes in `data/scenarios/investigations.json` are printed after the 
 - `data/scenarios/`: baseline request and investigation variations.
 - `tests/`: automated checks.
 - `docs/`: company context and worked example.
+
+## Structured investigation result
+
+The investigator uses DeepSeek with thinking enabled and the four read-only tools, then returns JSON matching the `InvestigationResult` schema. The application validates that JSON with Pydantic before accepting or displaying it. Invalid JSON or inconsistent fields stop the run with a clear error; there is no formatting stage or automatic correction retry.
+
+Valid structure does not establish factual correctness or authorize a change; no proposal is saved yet. A closed execution window or unverified independent approval does not by itself block preparing a proposal candidate; these remain execution requirements.
