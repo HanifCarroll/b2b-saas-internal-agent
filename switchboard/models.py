@@ -1,8 +1,15 @@
-"""Fixture schemas. Authorization and cross-record relationships live elsewhere."""
+"""Validated records and investigation results. Authorization lives elsewhere."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    model_validator,
+)
 
 Text = Annotated[str, Field(min_length=1, pattern=r"\S")]
 Role = Literal["support_specialist", "implementation_engineer", "technical_lead"]
@@ -69,3 +76,29 @@ class Ticket(Record):
     status: Text
     subject: Text
     body: Text
+
+
+class InvestigationResult(Record):
+    """Investigator findings, not authorization to save or execute a change."""
+
+    outcome: Literal["proposal_candidate", "blocked"]
+    ticket_id: Text | None
+    proposed_endpoint: HttpUrl | None
+    evidence_ids: list[Text]
+    summary: Text
+    blockers: list[Text]
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> Self:
+        if self.outcome == "proposal_candidate":
+            if self.ticket_id is None:
+                raise ValueError("A proposal candidate requires a ticket ID")
+            if self.proposed_endpoint is None:
+                raise ValueError("A proposal candidate requires a proposed endpoint")
+            if not self.evidence_ids:
+                raise ValueError("A proposal candidate requires supporting evidence")
+            if self.blockers:
+                raise ValueError("A proposal candidate cannot have blockers")
+        elif not self.blockers:
+            raise ValueError("A blocked investigation requires at least one blocker")
+        return self
