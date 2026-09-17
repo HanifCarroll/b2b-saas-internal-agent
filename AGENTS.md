@@ -1,6 +1,6 @@
 # Project instructions
 
 - Use uv to manage dependencies and run Python tools.
-- After changing Python code, run `uv run ruff check --fix .` and `uv run ruff format .`, then review the changes.
-- Before finishing, run `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest -v`.
+- Before finishing a turn where you edited Python code, run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, and `uv run pytest -v`.
 - Format long SQL strings manually when needed for readability; Ruff does not format SQL contents.
+- All generated code should focus on readability as its highest value. Do not be clever or terse.
