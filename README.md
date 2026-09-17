@@ -59,3 +59,14 @@ Expected outcomes in `data/scenarios/investigations.json` are printed after the 
 The investigator uses DeepSeek with thinking enabled and the four read-only tools, then returns JSON matching the `InvestigationResult` schema. The application validates that JSON with Pydantic before accepting or displaying it. Invalid JSON or inconsistent fields stop the run with a clear error; there is no formatting stage or automatic correction retry.
 
 Valid structure does not establish factual correctness or authorize a change; no proposal is saved yet. A closed execution window or unverified independent approval does not by itself block preparing a proposal candidate; these remain execution requirements.
+
+## Policy faithfulness
+
+```sh
+uv run python -m switchboard --scenario baseline --evaluate-policy
+uv run python -m switchboard.policy_evaluation
+```
+
+The first command adds a separate DeepSeek review of the investigation's policy claims against the source policies. The second calibrates that reviewer against four known examples, including the observed blanket rollback prohibition. Both make paid model calls; ordinary investigations skip the review. With tracing enabled, review calls appear as `policy-faithfulness-review`.
+
+The reviewer reports specific claims, source excerpts, and explanations. Invalid JSON or invented source excerpts fail the evaluation rather than counting as a pass. An empty issues list means the model found no distortion, not that correctness is proven. The same model family produces and reviews the output, so manual review remains important. This checks policy meaning only; it does not authorize actions or establish customer facts. Calibration expectations are withheld from the judge.

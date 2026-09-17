@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from switchboard.agent import build_agent, create_model
 from switchboard.integrations.database import seed_database
 from switchboard.models import InvestigationResult
+from switchboard.policy_evaluation import evaluate_policy
 from switchboard.scenarios import apply_scenario, load_scenarios
 from switchboard.tools import InvestigationContext
 
@@ -23,6 +24,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", choices=scenarios, default="baseline")
     parser.add_argument("--list-scenarios", action="store_true")
+    parser.add_argument(
+        "--evaluate-policy",
+        action="store_true",
+        help="Make an additional model call to review policy claims",
+    )
     args = parser.parse_args()
     if args.list_scenarios:
         for name, scenario in scenarios.items():
@@ -81,6 +87,11 @@ def main():
             for call in getattr(message, "tool_calls", []):
                 print(f"Tool: {call['name']} {json.dumps(call['args'])}")
         print("\n" + investigation.model_dump_json(indent=2))
+
+        if args.evaluate_policy:
+            review = evaluate_policy(investigation.model_dump_json(), model)
+            print("\nPolicy faithfulness review (model judgment):")
+            print(review.model_dump_json(indent=2))
 
         print("\nVerified: business records unchanged.")
         print("\nExpected outcomes for manual review (not an automated grade):")
