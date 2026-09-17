@@ -17,7 +17,7 @@ def create_model():
     return ChatDeepSeek(
         model=MODEL,
         extra_body={"thinking": {"type": "enabled"}},
-        max_tokens=4096,
+        max_tokens=8192,
         timeout=60,
         max_retries=1,
     )
