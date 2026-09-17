@@ -70,3 +70,11 @@ uv run python -m switchboard.policy_evaluation
 The first command adds a separate DeepSeek review of the investigation's policy claims against the source policies. The second calibrates that reviewer against four known examples, including the observed blanket rollback prohibition. Both make paid model calls; ordinary investigations skip the review. With tracing enabled, review calls appear as `policy-faithfulness-review`.
 
 The reviewer reports specific claims, source excerpts, and explanations. Invalid JSON or invented source excerpts fail the evaluation rather than counting as a pass. An empty issues list means the model found no distortion, not that correctness is proven. The same model family produces and reviews the output, so manual review remains important. This checks policy meaning only; it does not authorize actions or establish customer facts. Calibration expectations are withheld from the judge.
+
+## Proposal storage (foundation)
+
+`Proposal` describes the exact endpoint change to submit for approval, including the employee and customer contact IDs, ticket, customer, integration, environment, observed endpoint and configuration version, proposed endpoint, and creation time. Its initial status is `pending_approval`. IDs and timestamps will be supplied by application code; model validation checks shape, not business authorization.
+
+`initialize_proposal_database()` in `switchboard/integrations/database.py` creates `data/local/proposals.db` without clearing existing proposals. This local directory is ignored by Git. Proposal storage is separate from the temporary scenario databases, so fixture resets cannot delete saved proposals. References to business records will be checked by application code before saving; they are not cross-database foreign keys.
+
+The investigation CLI does not save proposals yet. Business validation, access-controlled saving and retrieval, and retry deduplication are the next steps. No configuration is changed by this foundation.

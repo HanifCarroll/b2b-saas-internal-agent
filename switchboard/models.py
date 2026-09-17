@@ -78,6 +78,23 @@ class Ticket(Record):
     body: Text
 
 
+class Proposal(Record):
+    """A proposed endpoint change; its existence does not authorize execution."""
+
+    id: Text
+    proposed_by_employee_id: Text
+    ticket_id: Text
+    requester_contact_id: Text
+    customer_id: Text
+    integration_id: Text
+    environment: Environment
+    current_endpoint: HttpUrl
+    proposed_endpoint: HttpUrl
+    expected_configuration_version: Annotated[int, Field(ge=1)]
+    created_at: AwareDatetime
+    status: Literal["pending_approval"] = "pending_approval"
+
+
 class InvestigationResult(Record):
     """Investigator findings, not authorization to save or execute a change."""
 
