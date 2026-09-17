@@ -1,11 +1,13 @@
-"""Run with: uv run pytest -v"""
+"""Run with: uv run pytest -v
+
+Pytest supplies arguments marked with @pytest.fixture. Each test gets fresh
+records and a fresh database; changes in one test cannot affect another.
+"""
 
 import json
 import shutil
 import sqlite3
-import tempfile
-from functools import partial
-from pathlib import Path
+from contextlib import closing
 
 import pytest
 from pydantic import ValidationError
@@ -19,170 +21,340 @@ from integrations.support_desk import get_ticket
 from models import Customer, Integration, Ticket
 
 
-def test_failed_seed_leaves_database_empty():
-    connection = sqlite3.connect(":memory:")
-    try:
-        with tempfile.TemporaryDirectory() as directory:
-            with pytest.raises(FileNotFoundError):
-                seed_database(connection, Path(directory))
-        assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
-    finally:
-        connection.close()
-
-
-@pytest.mark.parametrize(
-    "table,field,value",
-    (
-        ("employees", "active", "true"),
-        ("employees", "role", "admin"),
-        ("employees", "id", " "),
-        (
-            "customers",
-            "registered_destinations",
-            [{"environment": "production", "url": "bad-url"}],
-        ),
-        (
-            "customers",
-            "production_change_window",
-            {"weekday": "Tuesday", "start": "25:00", "end": "16:00", "timezone": "UTC"},
-        ),
-        ("integrations", "environment", "unknown"),
-        ("integrations", "version", "7"),
-        ("integrations", "version", 0),
-        ("tickets", "created_at", "not-a-date"),
-        ("tickets", "created_at", "2026-09-22T13:30:00"),
-        ("tickets", "subject", None),
-        ("tickets", "unexpected_field", "value"),
-    ),
-)
-def test_invalid_fixtures_leave_database_empty(table, field, value):
-    with tempfile.TemporaryDirectory() as directory:
-        data_dir = Path(directory) / "data"
-        shutil.copytree(DATA, data_dir)
-        path = data_dir / f"{table}.json"
-        records = json.loads(path.read_text())
-        if value is None:
-            del records[0][field]
-        else:
-            records[0][field] = value
-        path.write_text(json.dumps(records))
-        connection = sqlite3.connect(":memory:")
-        try:
-            with pytest.raises(ValidationError) as error:
-                seed_database(connection, data_dir)
-            assert error.value.errors()[0]["loc"][:2] == (0, field)
-            assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
-        finally:
-            connection.close()
-
-
-def test_reads_return_models_and_reject_invalid_stored_values():
-    connection = sqlite3.connect(":memory:")
-    try:
+@pytest.fixture
+def database():
+    """A fresh database containing the normal Switchboard records."""
+    with closing(sqlite3.connect(":memory:")) as connection:
         seed_database(connection)
+        yield connection
+
+
+@pytest.fixture
+def sample_records():
+    """Editable copies of the JSON records, without changing project files."""
+    return {
+        table: json.loads((DATA / f"{table}.json").read_text())
+        for table in ("employees", "customers", "integrations", "tickets")
+    }
+
+
+def assert_seed_rejected(tmp_path, records, *, invalid_field):
+    """Load modified records and check both the validation error and empty DB."""
+    data_dir = tmp_path / "data"
+    shutil.copytree(DATA, data_dir)
+    for table, rows in records.items():
+        (data_dir / f"{table}.json").write_text(json.dumps(rows))
+
+    with closing(sqlite3.connect(":memory:")) as connection:
+        with pytest.raises(ValidationError) as error:
+            seed_database(connection, data_dir)
+
+        # Pydantic identifies the first record (index 0) and the invalid field.
+        assert error.value.errors()[0]["loc"][:2] == (0, invalid_field)
+        assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
+def test_missing_fixture_files_leave_database_empty(tmp_path):
+    with closing(sqlite3.connect(":memory:")) as connection:
+        with pytest.raises(FileNotFoundError):
+            seed_database(connection, tmp_path)
+
+        assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
+def test_employee_active_must_be_a_boolean(sample_records, tmp_path):
+    sample_records["employees"][0]["active"] = "true"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="active")
+
+
+def test_employee_role_must_be_recognized(sample_records, tmp_path):
+    sample_records["employees"][0]["role"] = "admin"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="role")
+
+
+def test_employee_id_cannot_be_whitespace(sample_records, tmp_path):
+    sample_records["employees"][0]["id"] = " "
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="id")
+
+
+def test_registered_destination_requires_a_valid_url(sample_records, tmp_path):
+    sample_records["customers"][0]["registered_destinations"][0]["url"] = "bad-url"
+
+    assert_seed_rejected(
+        tmp_path, sample_records, invalid_field="registered_destinations"
+    )
+
+
+def test_change_window_requires_a_valid_time(sample_records, tmp_path):
+    sample_records["customers"][0]["production_change_window"]["start"] = "25:00"
+
+    assert_seed_rejected(
+        tmp_path, sample_records, invalid_field="production_change_window"
+    )
+
+
+def test_integration_environment_must_be_recognized(sample_records, tmp_path):
+    sample_records["integrations"][0]["environment"] = "unknown"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="environment")
+
+
+def test_integration_version_must_be_an_integer(sample_records, tmp_path):
+    sample_records["integrations"][0]["version"] = "7"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="version")
+
+
+def test_integration_version_must_be_positive(sample_records, tmp_path):
+    sample_records["integrations"][0]["version"] = 0
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="version")
+
+
+def test_ticket_creation_time_must_be_a_datetime(sample_records, tmp_path):
+    sample_records["tickets"][0]["created_at"] = "not-a-date"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="created_at")
+
+
+def test_ticket_creation_time_requires_a_timezone(sample_records, tmp_path):
+    sample_records["tickets"][0]["created_at"] = "2026-09-22T13:30:00"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="created_at")
+
+
+def test_ticket_requires_a_subject(sample_records, tmp_path):
+    del sample_records["tickets"][0]["subject"]
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="subject")
+
+
+def test_ticket_rejects_unrecognized_fields(sample_records, tmp_path):
+    sample_records["tickets"][0]["unexpected_field"] = "value"
+
+    assert_seed_rejected(tmp_path, sample_records, invalid_field="unexpected_field")
+
+
+def test_alex_can_read_acme_ticket(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    ticket = get_ticket(alex, "CHG-1042")
+
+    assert isinstance(ticket, Ticket)
+    assert ticket.integration_id == "int-acme-prod"
+
+
+def test_alex_can_read_acme_customer(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    customer = get_customer(alex, "acme")
+
+    assert isinstance(customer, Customer)
+    assert customer.name == "Acme Services"
+
+
+def test_alex_can_read_acme_production_configuration(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    integration = get_integration(alex, "int-acme-prod")
+
+    assert isinstance(integration, Integration)
+    assert integration.version == 7
+
+
+def test_alex_can_read_acme_sandbox_configuration(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    integration = get_integration(alex, "int-acme-sandbox")
+
+    assert integration.environment == "sandbox"
+
+
+def test_policy_library_includes_current_and_superseded_versions(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    policies = {policy["id"]: policy["content"] for policy in list_policies(alex)}
+
+    assert len(policies) == 2
+    assert "status: superseded" in policies["endpoint-change-v1"]
+    assert "status: approved" in policies["endpoint-change-v2"]
+
+
+def test_alex_cannot_read_globex_customer(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    with pytest.raises(PermissionError):
+        get_customer(alex, "globex")
+
+
+def test_alex_cannot_read_globex_configuration(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    with pytest.raises(PermissionError):
+        get_integration(alex, "int-globex-prod")
+
+
+def test_missing_integration_is_unavailable(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    with pytest.raises(PermissionError):
+        get_integration(alex, "missing")
+
+
+def test_sql_in_record_id_cannot_bypass_access_checks(database):
+    alex = EmployeeSession(database, "emp-alex")
+
+    with pytest.raises(PermissionError):
+        get_integration(alex, "int-acme-prod' OR 1=1 --")
+
+
+def test_ben_can_read_globex_configuration(database):
+    ben = EmployeeSession(database, "emp-ben")
+
+    integration = get_integration(ben, "int-globex-prod")
+
+    assert integration.customer_id == "globex"
+
+
+def test_ben_cannot_read_acme_ticket(database):
+    ben = EmployeeSession(database, "emp-ben")
+
+    with pytest.raises(PermissionError):
+        get_ticket(ben, "CHG-1042")
+
+
+def test_unknown_employee_cannot_read_policies(database):
+    unknown_employee = EmployeeSession(database, "unknown")
+
+    with pytest.raises(PermissionError):
+        list_policies(unknown_employee)
+
+
+def test_successful_and_denied_reads_leave_database_unchanged(database):
+    alex = EmployeeSession(database, "emp-alex")
+    before = list(database.iterdump())
+
+    get_ticket(alex, "CHG-1042")
+    get_customer(alex, "acme")
+    get_integration(alex, "int-acme-prod")
+    list_policies(alex)
+    with pytest.raises(PermissionError):
+        get_integration(alex, "int-globex-prod")
+
+    assert list(database.iterdump()) == before
+
+
+def test_seeding_existing_database_is_rejected_without_changes(database):
+    before = list(database.iterdump())
+
+    with pytest.raises(sqlite3.OperationalError):
+        seed_database(database)
+
+    assert list(database.iterdump()) == before
+
+
+def test_ticket_read_rejects_invalid_stored_datetime(database):
+    alex = EmployeeSession(database, "emp-alex")
+    record = get_ticket(alex, "CHG-1042").model_dump(mode="json")
+    record["created_at"] = "invalid"
+    database.execute(
+        "UPDATE tickets SET body = ? WHERE id = ?",
+        (json.dumps(record), "CHG-1042"),
+    )
+
+    with pytest.raises(ValidationError):
+        get_ticket(alex, "CHG-1042")
+
+
+def test_customer_read_rejects_invalid_stored_name(database):
+    alex = EmployeeSession(database, "emp-alex")
+    record = get_customer(alex, "acme").model_dump(mode="json")
+    record["name"] = 123
+    database.execute(
+        "UPDATE customers SET body = ? WHERE id = ?",
+        (json.dumps(record), "acme"),
+    )
+
+    with pytest.raises(ValidationError):
+        get_customer(alex, "acme")
+
+
+def test_configuration_read_rejects_invalid_stored_version(database):
+    alex = EmployeeSession(database, "emp-alex")
+    record = get_integration(alex, "int-acme-prod").model_dump(mode="json")
+    record["version"] = 0
+    database.execute(
+        "UPDATE integrations SET body = ? WHERE id = ?",
+        (json.dumps(record), "int-acme-prod"),
+    )
+
+    with pytest.raises(ValidationError):
+        get_integration(alex, "int-acme-prod")
+
+
+def test_configuration_read_does_not_expose_extra_credential_field(database):
+    alex = EmployeeSession(database, "emp-alex")
+    record = get_integration(alex, "int-acme-prod").model_dump(mode="json")
+    record["credential"] = "test-secret"
+    database.execute(
+        "UPDATE integrations SET body = ? WHERE id = ?",
+        (json.dumps(record), "int-acme-prod"),
+    )
+
+    integration = get_integration(alex, "int-acme-prod")
+
+    assert "credential" not in integration.model_dump()
+
+
+def test_existing_session_uses_updated_support_role(database):
+    alex = EmployeeSession(database, "emp-alex")
+    database.execute(
+        "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
+    )
+
+    assert get_ticket(alex, "CHG-1042").status == "open"
+    with pytest.raises(PermissionError):
+        get_integration(alex, "int-acme-prod")
+
+
+def test_existing_session_rejects_unrecognized_role(database):
+    alex = EmployeeSession(database, "emp-alex")
+    database.execute("UPDATE employees SET role = 'unknown_role' WHERE id = 'emp-alex'")
+
+    with pytest.raises(PermissionError):
+        get_ticket(alex, "CHG-1042")
+
+
+def test_existing_session_loses_access_when_employee_is_deactivated(database):
+    alex = EmployeeSession(database, "emp-alex")
+    database.execute("UPDATE employees SET active = 0 WHERE id = 'emp-alex'")
+
+    with pytest.raises(PermissionError):
+        list_policies(alex)
+    with pytest.raises(PermissionError):
+        get_integration(alex, "int-acme-prod")
+
+
+def test_existing_session_loses_access_when_customer_assignment_is_removed(database):
+    alex = EmployeeSession(database, "emp-alex")
+    database.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
+
+    with pytest.raises(PermissionError):
+        get_ticket(alex, "CHG-1042")
+
+
+def test_records_persist_after_reopening_database_in_read_only_mode(tmp_path):
+    path = tmp_path / "switchboard.db"
+    with closing(sqlite3.connect(path)) as connection:
+        seed_database(connection)
+        original = list(connection.iterdump())
+
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
         alex = EmployeeSession(connection, "emp-alex")
-        cases = (
-            (
-                "tickets",
-                "CHG-1042",
-                partial(get_ticket, alex),
-                Ticket,
-                "created_at",
-                "invalid",
-            ),
-            ("customers", "acme", partial(get_customer, alex), Customer, "name", 123),
-            (
-                "integrations",
-                "int-acme-prod",
-                partial(get_integration, alex),
-                Integration,
-                "version",
-                0,
-            ),
-        )
-        for table, record_id, read, model, field, value in cases:
-            assert isinstance(read(record_id), model)
-            record = read(record_id).model_dump(mode="json")
-            record[field] = value
-            connection.execute(
-                f"UPDATE {table} SET body = ? WHERE id = ?",
-                (json.dumps(record), record_id),
-            )
-            with pytest.raises(ValidationError):
-                read(record_id)
-    finally:
-        connection.close()
+        integration = get_integration(alex, "int-acme-prod")
 
-
-def test_read_only_access_and_persistence():
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "switchboard.db"
-        connection = sqlite3.connect(path)
-        try:
-            seed_database(connection)
-            original = list(connection.iterdump())
-            alex = EmployeeSession(connection, "emp-alex")
-            assert get_ticket(alex, "CHG-1042").integration_id == "int-acme-prod"
-            assert get_customer(alex, "acme").name == "Acme Services"
-            assert get_integration(alex, "int-acme-prod").version == 7
-            assert get_integration(alex, "int-acme-sandbox").environment == "sandbox"
-            assert len(list_policies(alex)) == 2
-            assert "status: superseded" in list_policies(alex)[0]["content"]
-            assert "status: approved" in list_policies(alex)[1]["content"]
-            for read, record_id in (
-                (partial(get_customer, alex), "globex"),
-                (partial(get_integration, alex), "int-globex-prod"),
-                (partial(get_integration, alex), "missing"),
-                (partial(get_integration, alex), "int-acme-prod' OR 1=1 --"),
-            ):
-                with pytest.raises(PermissionError):
-                    read(record_id)
-            ben = EmployeeSession(connection, "emp-ben")
-            assert get_integration(ben, "int-globex-prod").customer_id == "globex"
-            with pytest.raises(PermissionError):
-                get_ticket(ben, "CHG-1042")
-            with pytest.raises(PermissionError):
-                list_policies(EmployeeSession(connection, "unknown"))
-            assert list(connection.iterdump()) == original
-            with pytest.raises(sqlite3.OperationalError):
-                seed_database(connection)
-            assert list(connection.iterdump()) == original
-            record = get_integration(alex, "int-acme-prod").model_dump(mode="json")
-            record["credential"] = "test-secret"
-            connection.execute(
-                "UPDATE integrations SET body = ? WHERE id = ?",
-                (json.dumps(record), record["id"]),
-            )
-            assert "credential" not in get_integration(alex, record["id"]).model_dump()
-            connection.execute(
-                "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
-            )
-            assert get_ticket(alex, "CHG-1042").status == "open"
-            with pytest.raises(PermissionError):
-                get_integration(alex, "int-acme-prod")
-            connection.execute(
-                "UPDATE employees SET role = 'unknown_role' WHERE id = 'emp-alex'"
-            )
-            with pytest.raises(PermissionError):
-                get_ticket(alex, "CHG-1042")
-            connection.execute(
-                "UPDATE employees SET role = 'implementation_engineer', active = 0 WHERE id = 'emp-alex'"
-            )
-            with pytest.raises(PermissionError):
-                list_policies(alex)
-            with pytest.raises(PermissionError):
-                get_integration(alex, "int-acme-prod")
-            connection.execute("UPDATE employees SET active = 1 WHERE id = 'emp-alex'")
-            connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
-            with pytest.raises(PermissionError):
-                get_ticket(alex, "CHG-1042")
-            connection.rollback()
-        finally:
-            connection.close()
-        connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
-        try:
-            alex = EmployeeSession(connection, "emp-alex")
-            assert get_integration(alex, "int-acme-prod").version == 7
-            assert list(connection.iterdump()) == original
-        finally:
-            connection.close()
+        assert integration.version == 7
+        assert list(connection.iterdump()) == original
