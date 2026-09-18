@@ -2,8 +2,9 @@
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
@@ -16,15 +17,31 @@ from switchboard.integrations.change_management import (
 )
 from switchboard.integrations.database import FIXTURES, PROPOSALS_DATABASE
 from switchboard.investigations import investigate_scenario
-from switchboard.models import Approval, EndpointChangeResult, Proposal
+from switchboard.models import Approval, Proposal, Role
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
+from switchboard.runs import (
+    InvestigationRun,
+    InvestigationSummary,
+    get_investigation_run,
+    list_investigation_runs,
+    load_run_manifest,
+    save_policy_review,
+)
 from switchboard.scenarios import load_scenarios
 from switchboard.tools import InvestigationContext, employee_session
 
 logger = logging.getLogger(__name__)
 
 RUNS_DIRECTORY = PROPOSALS_DATABASE.parent / "workflows"
-app = FastAPI(title="Switchboard local demo")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    yield
+
+
+app = FastAPI(title="Switchboard local demo", lifespan=lifespan)
 
 
 class ProposalReview(BaseModel):
@@ -32,19 +49,38 @@ class ProposalReview(BaseModel):
     approval: Approval | None
 
 
+class InvestigationRequest(BaseModel):
+    scenario_id: str
+
+
+class ScenarioOption(BaseModel):
+    id: str
+    expected: list[str]
+
+
+class EmployeeOption(BaseModel):
+    id: str
+    name: str
+    role: Role
+
+
+class DemoOptions(BaseModel):
+    scenarios: list[ScenarioOption]
+    employees: list[EmployeeOption]
+
+
 def review_context(
     *, run_id: UUID, employee_id: str
 ) -> tuple[InvestigationContext, Path]:
     """Resolve only application-created run manifests, never client filesystem paths."""
-    # 1. Locate the persisted scenario records.
-    directory = RUNS_DIRECTORY / str(run_id)
-    manifest_path = directory / "run.json"
-    database_path = directory / "business.db"
-    if not manifest_path.is_file() or not database_path.is_file():
-        raise HTTPException(status_code=404, detail="Scenario run unavailable")
+    try:
+        manifest = load_run_manifest(runs_directory=RUNS_DIRECTORY, run_id=run_id)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404, detail="Scenario run unavailable"
+        ) from None
 
-    # 2. Bind the simulated identity to the selected run.
-    manifest = json.loads(manifest_path.read_text())
+    database_path = RUNS_DIRECTORY / str(run_id) / "business.db"
     return InvestigationContext(
         database_path=database_path, employee_id=employee_id
     ), Path(manifest["proposals_database_path"])
@@ -53,7 +89,7 @@ def review_context(
 @app.get("/api/runs/{run_id}/proposals/{proposal_id}", response_model=ProposalReview)
 def read_proposal(
     run_id: UUID, proposal_id: str, x_employee_id: str = Header(min_length=1)
-):
+) -> ProposalReview:
     # 1. Resolve application storage and simulated employee context.
     context, storage = review_context(run_id=run_id, employee_id=x_employee_id)
 
@@ -74,7 +110,7 @@ def read_proposal(
 )
 def record_approval(
     run_id: UUID, proposal_id: str, x_employee_id: str = Header(min_length=1)
-):
+) -> Approval:
     # 1. Resolve application storage and simulated employee context.
     context, storage = review_context(run_id=run_id, employee_id=x_employee_id)
 
@@ -94,38 +130,27 @@ def record_approval(
         ) from None
 
 
-class InvestigationRequest(BaseModel):
-    scenario_id: str
-
-
-class InvestigationRun(BaseModel):
-    run_id: UUID
-    scenario_id: str
-    result: EndpointChangeResult
-    policy_review: PolicyReview | None = None
-
-
-@app.get("/api/demo-options")
-def demo_options():
+@app.get("/api/demo-options", response_model=DemoOptions)
+def demo_options() -> DemoOptions:
     """Expose synthetic demo choices, never secrets or provider configuration."""
     employees = json.loads((FIXTURES / "employees.json").read_text())
-    return {
-        "scenarios": [
-            {"id": key, "expected": scenario.expected}
+    return DemoOptions(
+        scenarios=[
+            ScenarioOption(id=key, expected=scenario.expected)
             for key, scenario in load_scenarios().items()
         ],
-        "employees": [
-            {"id": item["id"], "name": item["name"], "role": item["role"]}
+        employees=[
+            EmployeeOption(id=item["id"], name=item["name"], role=item["role"])
             for item in employees
             if item["active"]
         ],
-    }
+    )
 
 
 @app.post("/api/investigations", response_model=InvestigationRun)
 def start_investigation(
     request: InvestigationRequest, x_employee_id: str = Header(min_length=1)
-):
+) -> InvestigationRun:
     # 1. Validate demo choices before spending any model tokens.
     scenarios = load_scenarios()
     if request.scenario_id not in scenarios:
@@ -135,7 +160,6 @@ def start_investigation(
         raise HTTPException(status_code=403, detail="Employee unavailable")
 
     # 2. Run the existing workflow, including deterministic validation and saving.
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     try:
         run_id, result = investigate_scenario(
             scenario_id=request.scenario_id,
@@ -161,88 +185,35 @@ def start_investigation(
     )
 
 
-def accessible_run(*, run_id: UUID, employee_id: str) -> InvestigationRun:
-    """Restrict investigation history to its requester with current record access."""
-    # 1. Check the run owner before reading saved model output.
-    context, _ = review_context(run_id=run_id, employee_id=employee_id)
-    directory = RUNS_DIRECTORY / str(run_id)
-    manifest = json.loads((directory / "run.json").read_text())
-    if manifest.get("requester_employee_id") != employee_id:
-        raise HTTPException(status_code=404, detail="Investigation unavailable")
-    result_path = directory / "result.json"
-    if not result_path.is_file():
-        raise HTTPException(status_code=404, detail="Investigation unavailable")
+@app.get("/api/investigations", response_model=list[InvestigationSummary])
+def list_investigations(
+    x_employee_id: str = Header(min_length=1),
+) -> list[InvestigationSummary]:
+    return list_investigation_runs(
+        runs_directory=RUNS_DIRECTORY, employee_id=x_employee_id
+    )
 
-    # 2. Recheck current access before returning any saved evidence.
-    result = EndpointChangeResult.model_validate_json(result_path.read_text())
+
+@app.get("/api/investigations/{run_id}", response_model=InvestigationRun)
+def read_investigation(
+    run_id: UUID, x_employee_id: str = Header(min_length=1)
+) -> InvestigationRun:
     try:
-        with employee_session(context) as session:
-            session.require_active_employee()
-            # Legacy results predate the access snapshot and cannot be safely replayed.
-            if "requester_role" not in manifest or "customer_ids" not in manifest:
-                raise PermissionError("Investigation unavailable")
-            if session.get_active_employee_role() != manifest["requester_role"]:
-                raise PermissionError("Investigation unavailable")
-            for customer_id in manifest["customer_ids"]:
-                session.require_customer_access(
-                    customer_id=customer_id,
-                    allowed_roles={manifest["requester_role"]},
-                )
-    except PermissionError:
+        return get_investigation_run(
+            runs_directory=RUNS_DIRECTORY, run_id=run_id, employee_id=x_employee_id
+        )
+    except (FileNotFoundError, PermissionError):
         raise HTTPException(
             status_code=404, detail="Investigation unavailable"
         ) from None
 
-    policy_path = directory / "policy-review.json"
-    return InvestigationRun(
-        run_id=run_id,
-        scenario_id=manifest["scenario_id"],
-        result=result,
-        policy_review=PolicyReview.model_validate_json(policy_path.read_text())
-        if policy_path.exists()
-        else None,
-    )
-
-
-@app.get("/api/investigations")
-def list_investigations(x_employee_id: str = Header(min_length=1)):
-    # 1. Read only completed runs accessible to this employee.
-    runs = []
-    for path in sorted(
-        RUNS_DIRECTORY.glob("*/result.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    ):
-        try:
-            run = accessible_run(
-                run_id=UUID(path.parent.name), employee_id=x_employee_id
-            )
-        except HTTPException as error:
-            if error.status_code == 404:
-                continue
-            raise
-
-        # 2. Return a compact index; detailed evidence is loaded separately.
-        runs.append(
-            {
-                "run_id": str(run.run_id),
-                "scenario_id": run.scenario_id,
-                "outcome": run.result.investigation.outcome,
-            }
-        )
-    return runs
-
-
-@app.get("/api/investigations/{run_id}", response_model=InvestigationRun)
-def read_investigation(run_id: UUID, x_employee_id: str = Header(min_length=1)):
-    return accessible_run(run_id=run_id, employee_id=x_employee_id)
-
 
 @app.post("/api/investigations/{run_id}/policy-review", response_model=PolicyReview)
-def review_policy(run_id: UUID, x_employee_id: str = Header(min_length=1)):
+def review_policy(
+    run_id: UUID, x_employee_id: str = Header(min_length=1)
+) -> PolicyReview:
     # 1. Require access to the investigation before invoking the optional judge.
-    run = accessible_run(run_id=run_id, employee_id=x_employee_id)
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    run = read_investigation(run_id=run_id, x_employee_id=x_employee_id)
     try:
         review = evaluate_policy(
             claims=run.result.investigation.model_dump_json(), model=create_model()
@@ -255,8 +226,16 @@ def review_policy(run_id: UUID, x_employee_id: str = Header(min_length=1)):
         ) from None
 
     # 2. Retain the separate model judgment without changing proposal authority.
-    directory = RUNS_DIRECTORY / str(run_id)
-    temporary = directory / f"policy-{uuid4()}.tmp"
-    temporary.write_text(review.model_dump_json(indent=2))
-    temporary.replace(directory / "policy-review.json")
+    try:
+        save_policy_review(
+            runs_directory=RUNS_DIRECTORY,
+            run_id=run_id,
+            employee_id=x_employee_id,
+            review=review,
+        )
+    except (FileNotFoundError, PermissionError):
+        raise HTTPException(
+            status_code=404, detail="Investigation unavailable"
+        ) from None
+
     return review

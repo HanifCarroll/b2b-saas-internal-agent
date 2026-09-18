@@ -282,3 +282,52 @@ def test_blocked_inaccessible_ticket_remains_in_own_history(
     assert (
         len(investigation_api.get("/api/investigations", headers=headers).json()) == 1
     )
+
+
+def test_environment_loads_once_at_startup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(api, "load_dotenv", lambda path: calls.append(path))
+    with TestClient(api.app) as client:
+        assert len(calls) == 1
+        for _ in range(2):
+            response = client.get("/api/demo-options")
+            assert response.status_code == 200
+            assert response.json()["employees"]
+        assert len(calls) == 1
+
+
+def test_policy_review_rechecks_access_before_saving(investigation_api, monkeypatch):
+    from switchboard.policy_evaluation import PolicyReview
+
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    directory = api.RUNS_DIRECTORY / run["run_id"]
+
+    def revoke_during_evaluation(**kwargs):
+        with (
+            closing(sqlite3.connect(directory / "business.db")) as connection,
+            connection,
+        ):
+            connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
+        return PolicyReview(issues=[])
+
+    monkeypatch.setattr(api, "evaluate_policy", revoke_during_evaluation)
+    response = client.post(
+        f"/api/investigations/{run['run_id']}/policy-review", headers=headers
+    )
+    assert response.status_code == 404
+    assert not (directory / "policy-review.json").exists()
+
+
+def test_missing_runs_have_safe_http_errors(investigation_api):
+    client = investigation_api
+    run_id = uuid4()
+    headers = {"X-Employee-Id": "emp-alex"}
+    for path in (
+        f"/api/investigations/{run_id}",
+        f"/api/runs/{run_id}/proposals/missing",
+    ):
+        assert client.get(path, headers=headers).status_code == 404
