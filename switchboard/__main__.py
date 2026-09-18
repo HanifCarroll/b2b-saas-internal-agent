@@ -55,6 +55,35 @@ def review_saved_proposal(
     print("\nViewing does not approve or execute the proposal.")
 
 
+def display_investigation_result(
+    *, result: EndpointChangeResult, workflow_id: str
+) -> None:
+    """Display investigation evidence, storage outcome, and review instructions."""
+    # 1. Report the confirmed proposal storage outcome.
+    if result.proposal is not None:
+        if result.was_created:
+            print(f"\nProposal created: {result.proposal.id}. Pending approval.")
+        else:
+            print(
+                f"\nProposal already exists: {result.proposal.id}. No duplicate created."
+            )
+
+    # 2. Display tool calls and the validated investigation.
+    for message in result.messages:
+        for call in getattr(message, "tool_calls", []):
+            print(f"Tool: {call['name']} {json.dumps(call['args'])}")
+
+    print("\n" + result.investigation.model_dump_json(indent=2))
+
+    # 3. Show how to review a saved proposal separately.
+    if result.proposal is not None:
+        print("\nInvestigation complete. Review the saved proposal separately:")
+        print(
+            f"uv run python -m switchboard --review {result.proposal.id} "
+            f"--run {workflow_id} --employee emp-priya"
+        )
+
+
 def run_investigation(
     *, scenario_id: str, selected_scenario: Scenario, evaluate_policy_claims: bool
 ) -> None:
@@ -111,25 +140,7 @@ def run_investigation(
         raise SystemExit(f"Workflow rejected: {error}") from None
 
     # 3. Display the result and the separate proposal review command.
-    if result.proposal is not None:
-        if result.was_created:
-            print(f"\nProposal created: {result.proposal.id}. Pending approval.")
-        else:
-            print(
-                f"\nProposal already exists: {result.proposal.id}. No duplicate created."
-            )
-
-    for message in result.messages:
-        for call in getattr(message, "tool_calls", []):
-            print(f"Tool: {call['name']} {json.dumps(call['args'])}")
-
-    print("\n" + result.investigation.model_dump_json(indent=2))
-    if result.proposal is not None:
-        print("\nInvestigation complete. Review the saved proposal separately:")
-        print(
-            f"uv run python -m switchboard --review {result.proposal.id} "
-            f"--run {workflow_id} --employee emp-priya"
-        )
+    display_investigation_result(result=result, workflow_id=workflow_id)
 
     # 4. Optionally evaluate policy accuracy, without authorizing a change.
     if evaluate_policy_claims:
