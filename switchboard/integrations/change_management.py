@@ -199,3 +199,33 @@ def approve_proposal(
         )
 
     return approval
+
+
+def get_proposal_review(
+    *,
+    session: EmployeeSession,
+    proposal_id: str,
+    database_path: Path = PROPOSALS_DATABASE,
+) -> tuple[Proposal, Approval | None]:
+    """Return an accessible proposal together with its optional approval receipt."""
+    # 1. Require current access before querying approval storage.
+    proposal = get_proposal(
+        session=session, proposal_id=proposal_id, database_path=database_path
+    )
+
+    # 2. Read existing storage, including older databases with no approval table yet.
+    uri = database_path.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'approvals'"
+        ).fetchone()
+        if table is None:
+            return proposal, None
+
+        row = connection.execute(
+            "SELECT * FROM approvals WHERE proposal_id = ?", (proposal_id,)
+        ).fetchone()
+
+    approval = Approval.model_validate_json(json.dumps(dict(row))) if row else None
+    return proposal, approval
