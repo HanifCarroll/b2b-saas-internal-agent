@@ -242,6 +242,7 @@ def test_successful_and_denied_reads_leave_database_unchanged(database):
     get_customer(session=alex, customer_id="acme")
     get_integration(session=alex, integration_id="int-acme-prod")
     list_policies(alex)
+
     with pytest.raises(PermissionError):
         get_integration(session=alex, integration_id="int-globex-prod")
 
@@ -329,6 +330,7 @@ def test_existing_session_uses_updated_support_role(database):
 
     # 2. Verify the expected result and any safety guarantees.
     assert get_ticket(session=alex, ticket_id="CHG-1042").status == "open"
+
     with pytest.raises(PermissionError):
         get_integration(session=alex, integration_id="int-acme-prod")
 
@@ -347,6 +349,7 @@ def test_existing_session_loses_access_when_employee_is_deactivated(database):
 
     with pytest.raises(PermissionError):
         list_policies(alex)
+
     with pytest.raises(PermissionError):
         get_integration(session=alex, integration_id="int-acme-prod")
 

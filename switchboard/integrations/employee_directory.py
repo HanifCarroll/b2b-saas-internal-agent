@@ -33,9 +33,11 @@ class EmployeeSession:
             "SELECT role FROM employees WHERE id = ? AND active = 1",
             (self._employee_id,),
         ).fetchone()
+
         # 2. Reject unknown identities or roles before returning the role.
         if row is None or row[0] not in ROLES:
             raise PermissionError("Access denied")
+
         return row[0]
 
     def read_authorized_record(
@@ -67,7 +69,9 @@ class EmployeeSession:
             """,
             (record_id, self._employee_id, *sorted(allowed_roles)),
         ).fetchone()
+
         # Missing and forbidden records have the same response to avoid disclosure.
         if row is None:
             raise PermissionError("Record unavailable")
+
         return json.loads(row[0])

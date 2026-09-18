@@ -12,6 +12,7 @@ def get_integration(*, session: EmployeeSession, integration_id: str) -> Integra
     record = session.read_authorized_record(
         table="integrations", record_id=integration_id, allowed_roles=CONFIG_ROLES
     )
+
     # 2. Select the fields this integration exposes.
     record = {
         key: record[key]
@@ -24,5 +25,6 @@ def get_integration(*, session: EmployeeSession, integration_id: str) -> Integra
             "version",
         )
     }
+
     # 3. Validate the public record before returning it.
     return Integration.model_validate_json(json.dumps(record))

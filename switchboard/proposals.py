@@ -73,6 +73,7 @@ def validate_endpoint_change_request(
     integration = configuration_service.get_integration(
         session=session, integration_id=ticket.integration_id
     )
+
     # 2. Confirm customer ownership and requester authority.
     if integration.customer_id != customer.id:
         raise ValueError("Ticket and integration belong to different customers")
@@ -80,6 +81,7 @@ def validate_endpoint_change_request(
         contact.id for contact in customer.authorized_contacts
     }:
         raise ValueError("Ticket requester is not an authorized customer contact")
+
     # 3. Match the requested destination and its environment registration.
     if proposed_endpoint != ticket.requested_endpoint:
         raise ValueError("Proposed endpoint does not match the ticket request")
@@ -89,6 +91,7 @@ def validate_endpoint_change_request(
         for destination in customer.registered_destinations
     ):
         raise ValueError("Requested endpoint is not registered for this environment")
+
     # 4. Reject a no-op and return the checked records.
     if ticket.requested_endpoint == integration.endpoint:
         raise ValueError("Requested endpoint is already configured")

@@ -55,6 +55,7 @@ def test_review_scenario(scenario, tmp_path):
                 "UPDATE integrations SET body = ? WHERE id = 'int-acme-prod'",
                 (json.dumps(integration),),
             )
+
         reviewer = EmployeeSession(db_connection=connection, employee_id=reviewer_id)
         proposal_id = "missing" if scenario.get("missing_proposal") else proposal.id
         business_before = list(connection.iterdump())
@@ -63,14 +64,17 @@ def test_review_scenario(scenario, tmp_path):
             result = get_proposal(
                 session=reviewer, proposal_id=proposal_id, database_path=path
             )
+
             # 2. Verify the expected result and any safety guarantees.
             assert result == proposal
             assert result.status == "pending_approval"
         else:
             assert scenario["expected_access"] == "denied"
+
             with pytest.raises(PermissionError, match="^Record unavailable$"):
                 get_proposal(
                     session=reviewer, proposal_id=proposal_id, database_path=path
                 )
+
         assert list(connection.iterdump()) == business_before
         assert path.read_bytes() == storage_before

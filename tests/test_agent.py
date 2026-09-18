@@ -41,6 +41,7 @@ def database_path(tmp_path):
     path = tmp_path / "switchboard.db"
     with closing(sqlite3.connect(path)) as db_connection:
         seed_database(connection=db_connection)
+
     return path
 
 
@@ -55,6 +56,7 @@ def test_model_tools_expose_only_approved_arguments():
     actual_arguments = {}
     for tool in TOOLS:
         schema = tool.tool_call_schema
+
         # 2. Verify the expected result and any safety guarantees.
         assert isinstance(schema, type) and issubclass(schema, BaseModel)
         actual_arguments[tool.name] = set(schema.model_json_schema()["properties"])
@@ -76,6 +78,7 @@ def test_read_only_agent_tools_return_evidence_without_changes(database_path):
     ]
     with closing(sqlite3.connect(database_path)) as db_connection:
         before = list(db_connection.iterdump())
+
     model = ScriptedModel(
         messages=iter(
             [
@@ -95,6 +98,7 @@ def test_read_only_agent_tools_return_evidence_without_changes(database_path):
             # 2. Verify the expected result and any safety guarantees.
             assert isinstance(message.content, str)
             evidence[message.name] = json.loads(message.content)
+
     assert evidence["get_ticket"]["id"] == "CHG-1042"
     assert evidence["get_customer"]["id"] == "acme"
     assert evidence["get_integration"]["version"] == 7
@@ -110,6 +114,7 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
     # 1. Set up inputs and exercise the behavior under test.
     with closing(sqlite3.connect(database_path)) as db_connection:
         before = list(db_connection.iterdump())
+
     explanation = (
         "I couldn't retrieve that record. It may not exist, "
         "or you may not have permission to access it."
@@ -145,12 +150,14 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
     tool_results = [
         message for message in result["messages"] if isinstance(message, ToolMessage)
     ]
+
     # 2. Verify the expected result and any safety guarantees.
     assert len(tool_results) == 1
     assert tool_results[0].content == explanation
     assert tool_results[0].status == "error"
     assert tool_results[0].tool_call_id == "unavailable"
     investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
+
     assert investigation.outcome == "blocked"
     assert investigation.summary == explanation
     assert "https://events.globex.example/deals" not in str(result["messages"])
@@ -162,6 +169,7 @@ def test_unexpected_tool_failure_still_stops_agent(database_path):
     # 1. Set up inputs and exercise the behavior under test.
     with closing(sqlite3.connect(database_path)) as db_connection:
         db_connection.execute("DROP TABLE integrations")
+
     model = ScriptedModel(
         messages=iter(
             [
@@ -178,6 +186,7 @@ def test_unexpected_tool_failure_still_stops_agent(database_path):
             ]
         )
     )
+
     with pytest.raises(sqlite3.OperationalError, match="no such table"):
         build_agent(model=model, now="2026-09-22T14:15:00Z").invoke(
             {"messages": [HumanMessage(content="Read Acme's integration.")]},
@@ -207,9 +216,11 @@ def test_cli_rejects_invalid_result_without_retry(monkeypatch, response, tmp_pat
 
     with pytest.raises(SystemExit, match="no result accepted"):
         cli.main()
+
     # 2. Verify the expected result and any safety guarantees.
     assert len(model._bindings) == 1
     bound_tools, options = model._bindings[0]
+
     assert {tool.name for tool in bound_tools} == {tool.name for tool in TOOLS}
     assert options.get("tool_choice") not in ("required", "any")
 
@@ -228,6 +239,7 @@ def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     cli.main()
     output = capsys.readouterr().out
+
     # 2. Verify the expected result and any safety guarantees.
     assert "Proposal created:" in output
     assert '"outcome": "proposal_candidate"' in output
@@ -252,6 +264,7 @@ def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
     capsys.readouterr()
     cli.main()
     output = capsys.readouterr().out
+
     # 2. Verify the expected result and any safety guarantees.
     assert "Proposal already exists:" in output
     assert "No duplicate created." in output

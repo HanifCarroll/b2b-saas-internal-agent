@@ -31,6 +31,7 @@ def explain_unavailable_record(error: Exception, request) -> str | None:
             "I couldn't retrieve that record. It may not exist, "
             "or you may not have permission to access it."
         )
+
     # 2. Let unexpected errors fail the run.
     return None  # Unexpected failures must still fail the run.
 
@@ -39,6 +40,7 @@ def build_agent(*, model, now: str):
     """Investigate with thinking and request a final JSON result."""
     # 1. Load the investigation instructions.
     prompt = (Path(__file__).parent / "prompts" / "investigation.md").read_text()
+
     # 2. Connect the model, read-only tools, error handling, and trusted context.
     return create_agent(
         model=model,

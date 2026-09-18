@@ -46,14 +46,17 @@ def apply_scenario(*, db_connection: sqlite3.Connection, scenario: Scenario) -> 
         ).fetchone()
         if row is None:
             raise ValueError("Scenario ticket is missing")
+
         ticket = json.loads(row[0])
         ticket.update(updates)
         content = json.dumps(ticket)
         Ticket.model_validate_json(content)
+
         # 3. Persist only the scenario ticket changes in a transaction.
         with db_connection:
             db_connection.execute(
                 "UPDATE tickets SET body = ? WHERE id = ?",
                 (content, inputs["ticket_id"]),
             )
+
     return inputs

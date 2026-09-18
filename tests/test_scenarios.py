@@ -29,6 +29,7 @@ def test_scenario_changes_only_its_intended_inputs(name):
         ticket_after = json.loads(
             db_connection.execute("SELECT body FROM tickets").fetchone()[0]
         )
+
         # 2. Verify the expected result and any safety guarantees.
         assert ticket_after == ticket_before | scenario.ticket_updates.model_dump(
             mode="json", exclude_none=True
@@ -43,6 +44,7 @@ def test_scenario_changes_only_its_intended_inputs(name):
             assert inputs["request"] == scenario.request
         if scenario.now is not None:
             assert inputs["now"] == scenario.now.isoformat()
+
     assert all(path.read_bytes() == content for path, content in source_before.items())
 
 
@@ -51,6 +53,7 @@ def test_unregistered_destination_really_is_not_registered():
     acme = next(customer for customer in customers if customer["id"] == "acme")
     scenario = load_scenarios()["unregistered-destination"]
     destination = "https://new.acme.example/deals"
+
     assert destination in (scenario.ticket_updates.body or "")
     assert destination not in {item["url"] for item in acme["registered_destinations"]}
 
@@ -61,4 +64,5 @@ def test_unauthorized_contact_really_is_not_authorized():
     contact = load_scenarios()[
         "unauthorized-contact"
     ].ticket_updates.requester_contact_id
+
     assert contact not in {item["id"] for item in acme["authorized_contacts"]}

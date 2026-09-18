@@ -31,10 +31,12 @@ def review_saved_proposal(
         run_directory = RUNS_DIRECTORY / str(UUID(workflow_id))
     except ValueError:
         raise ValueError("Invalid workflow ID") from None
+
     manifest_path = run_directory / "run.json"
     database_path = run_directory / "business.db"
     if not manifest_path.is_file() or not database_path.is_file():
         raise ValueError("Scenario run unavailable")
+
     manifest = json.loads(manifest_path.read_text())
 
     # 2. Bind reviewer identity and check access through the business function.
@@ -68,6 +70,7 @@ def run_investigation(
         scenario = apply_scenario(
             db_connection=db_connection, scenario=selected_scenario
         )
+
     (run_directory / "run.json").write_text(
         json.dumps(
             {
@@ -115,9 +118,11 @@ def run_investigation(
             print(
                 f"\nProposal already exists: {result.proposal.id}. No duplicate created."
             )
+
     for message in result.messages:
         for call in getattr(message, "tool_calls", []):
             print(f"Tool: {call['name']} {json.dumps(call['args'])}")
+
     print("\n" + result.investigation.model_dump_json(indent=2))
     if result.proposal is not None:
         print("\nInvestigation complete. Review the saved proposal separately:")
@@ -133,6 +138,7 @@ def run_investigation(
         )
         print("\nPolicy faithfulness review (model judgment):")
         print(review.model_dump_json(indent=2))
+
     print("\nVerified: business records unchanged.")
     print("\nExpected outcomes for manual review (not an automated grade):")
     for expected in selected_scenario.expected:
@@ -166,12 +172,15 @@ def main():
         for name, scenario in scenarios.items():
             print(f"{name}: {scenario.expected[0]}")
         return
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
     if args.review:
         if not args.employee or not args.run:
             parser.error("Review requires --run and --employee (simulated identity)")
         if args.evaluate_policy:
             parser.error("--evaluate-policy applies only to new investigations")
+
         try:
             review_saved_proposal(
                 proposal_id=args.review,
@@ -180,9 +189,12 @@ def main():
             )
         except (ValueError, PermissionError) as error:
             raise SystemExit(f"Review rejected: {error}") from None
+
         return
+
     if args.employee or args.run:
         parser.error("--employee and --run are only used with --review")
+
     selected_scenario = scenarios[args.scenario]
 
     # 3. Run the selected investigation.

@@ -56,6 +56,7 @@ def save_proposal(
         ).fetchone()
         if existing is not None:
             return Proposal.model_validate_json(json.dumps(dict(existing))), False
+
         # 3. Insert only when there is no identical proposal.
         connection.execute(
             """
@@ -71,6 +72,7 @@ def save_proposal(
             """,
             parameters,
         )
+
     return proposal, True
 
 
@@ -84,6 +86,7 @@ def ensure_proposal_matches_current_records(
         proposed_endpoint=proposal.proposed_endpoint,
         session=session,
     )
+
     # 2. Reject changes to the proposing identity or configuration snapshot.
     if (
         proposal.proposed_by_employee_id != session.employee_id
@@ -115,12 +118,14 @@ def get_proposal(
         # 2. Fetch from existing storage without creating or changing it.
         if not database_path.exists():
             raise PermissionError("Record unavailable")
+
         uri = database_path.resolve().as_uri() + "?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as connection:
             connection.row_factory = sqlite3.Row
             row = connection.execute(
                 "SELECT * FROM proposals WHERE id = ?", (proposal_id,)
             ).fetchone()
+
         if row is None:
             raise PermissionError("Record unavailable")
 

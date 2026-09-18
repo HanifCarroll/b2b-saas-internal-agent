@@ -22,6 +22,7 @@ def candidate():
 
 def test_valid_candidate(candidate):
     result = InvestigationResult.model_validate_json(json.dumps(candidate))
+
     assert result.ticket_id == "CHG-1042"
     assert result.outcome == "proposal_candidate"
 
@@ -37,6 +38,7 @@ def test_valid_candidate(candidate):
 )
 def test_candidate_rejects_inconsistent_fields(candidate, field, value, message):
     candidate[field] = value
+
     with pytest.raises(ValidationError, match=message):
         InvestigationResult.model_validate_json(json.dumps(candidate))
 
@@ -51,12 +53,14 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
         summary="The requested record is unavailable.",
         blockers=["Required evidence could not be retrieved."],
     )
+
     # 2. Verify the expected result and any safety guarantees.
     assert result.ticket_id is None
 
 
 def test_blocked_result_requires_a_reason(candidate):
     candidate["outcome"] = "blocked"
+
     with pytest.raises(ValidationError, match="requires at least one blocker"):
         InvestigationResult.model_validate_json(json.dumps(candidate))
 
@@ -73,5 +77,6 @@ def test_blocked_result_requires_a_reason(candidate):
 )
 def test_invalid_field_values_are_rejected(candidate, field, value):
     candidate[field] = value
+
     with pytest.raises(ValidationError):
         InvestigationResult.model_validate_json(json.dumps(candidate))

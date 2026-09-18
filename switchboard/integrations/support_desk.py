@@ -12,6 +12,7 @@ def get_ticket(*, session: EmployeeSession, ticket_id: str) -> Ticket:
     record = session.read_authorized_record(
         table="tickets", record_id=ticket_id, allowed_roles=ROLES
     )
+
     # 2. Select the fields this integration exposes.
     record = {
         key: record[key]
@@ -28,5 +29,6 @@ def get_ticket(*, session: EmployeeSession, ticket_id: str) -> Ticket:
             "body",
         )
     }
+
     # 3. Validate the public record before returning it.
     return Ticket.model_validate_json(json.dumps(record))

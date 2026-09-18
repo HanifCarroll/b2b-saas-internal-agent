@@ -22,6 +22,7 @@ def completed_run(tmp_path, monkeypatch, capsys):
     )
     monkeypatch.setattr(sys, "argv", ["switchboard"])
     cli.main()
+
     assert "Investigation complete" in capsys.readouterr().out
     assert not (next(cli.RUNS_DIRECTORY.iterdir()) / "checkpoints.db").exists()
     run_directory = next(cli.RUNS_DIRECTORY.iterdir())
@@ -35,9 +36,11 @@ def test_review_in_fresh_process_preserves_records_without_model(
     business_path = completed_run / "business.db"
     with closing(sqlite3.connect(business_path)) as connection:
         before = list(connection.iterdump())
+
     with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
         proposals_before = list(connection.iterdump())
+
     code = """
 import sys
 from pathlib import Path
@@ -61,12 +64,14 @@ cli.main()
         capture_output=True,
         text=True,
     )
+
     # 2. Verify the expected result and any safety guarantees.
     assert process.returncode == 0, process.stderr
     assert proposal_id in process.stdout
     assert "Viewing does not approve" in process.stdout
     with closing(sqlite3.connect(business_path)) as connection:
         assert list(connection.iterdump()) == before
+
     with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
         assert connection.execute("SELECT status FROM proposals").fetchall() == [
             ("pending_approval",)
@@ -88,8 +93,10 @@ def test_denied_reviewer_cannot_read(completed_run, denial):
             connection.execute(
                 "DELETE FROM assignments WHERE employee_id = 'emp-priya'"
             )
+
     with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
+
     with pytest.raises(PermissionError, match="Record unavailable"):
         cli.review_saved_proposal(
             proposal_id=proposal_id,
@@ -102,9 +109,11 @@ def test_review_rechecks_access_each_time(completed_run, capsys):
     # 1. An assigned reviewer can retrieve the persisted proposal.
     with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
+
     cli.review_saved_proposal(
         proposal_id=proposal_id, workflow_id=completed_run.name, employee_id="emp-priya"
     )
+
     assert proposal_id in capsys.readouterr().out
 
     # 2. Revoking access prevents another read, even after a successful review.
@@ -113,10 +122,12 @@ def test_review_rechecks_access_each_time(completed_run, capsys):
         connection,
     ):
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-priya'")
+
     with pytest.raises(PermissionError, match="Record unavailable"):
         cli.review_saved_proposal(
             proposal_id=proposal_id,
             workflow_id=completed_run.name,
             employee_id="emp-priya",
         )
+
     assert capsys.readouterr().out == ""

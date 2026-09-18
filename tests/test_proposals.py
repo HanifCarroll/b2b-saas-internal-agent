@@ -39,6 +39,7 @@ def test_save_is_durable_and_retries_return_existing_proposal(connection, tmp_pa
     before = list(connection.iterdump())
     path = tmp_path / "proposals.db"
     proposal = validate_proposal(investigation=candidate(), session=session)
+
     # 2. Verify the expected result and any safety guarantees.
     assert proposal.requester_contact_id == "contact-jordan"
     assert proposal.expected_configuration_version == 7
@@ -51,11 +52,13 @@ def test_save_is_durable_and_retries_return_existing_proposal(connection, tmp_pa
         session=session,
         database_path=path,
     )
+
     assert created is True
     assert retry_created is False
     assert saved == retry
     with closing(sqlite3.connect(path)) as storage:
         assert storage.execute("SELECT count(*) FROM proposals").fetchone()[0] == 1
+
     assert list(connection.iterdump()) == before
 
 
@@ -72,6 +75,7 @@ def test_validator_rejects_unsupported_candidates(
 ):
     # 1. Set up inputs and exercise the behavior under test.
     apply_scenario(db_connection=connection, scenario=load_scenarios()[scenario])
+
     with pytest.raises(ValueError, match=message):
         validate_proposal(
             investigation=candidate(endpoint),
@@ -89,6 +93,7 @@ def test_blocked_result_is_rejected(connection):
         summary="Missing evidence",
         blockers=["Missing ticket"],
     )
+
     with pytest.raises(ValueError, match="not a proposal candidate"):
         validate_proposal(
             investigation=result,
@@ -128,9 +133,12 @@ def test_save_rechecks_records_and_identity(connection, tmp_path, change):
         )
     else:
         proposal = proposal.model_copy(update={"proposed_by_employee_id": "emp-ben"})
+
     path = tmp_path / "proposals.db"
+
     with pytest.raises((ValueError, PermissionError)):
         save_proposal(proposal=proposal, session=session, database_path=path)
+
     # 2. Verify the expected result and any safety guarantees.
     assert not path.exists()
 
@@ -144,6 +152,7 @@ def test_closed_window_does_not_block_proposal_preparation(connection):
         investigation=candidate(),
         session=EmployeeSession(db_connection=connection, employee_id="emp-alex"),
     )
+
     # 2. Verify the expected result and any safety guarantees.
     assert proposal.status == "pending_approval"
 
@@ -169,6 +178,7 @@ def test_assigned_roles_can_read_proposal_after_configuration_changes(
     before = list(connection.iterdump())
     path = tmp_path / "proposals.db"
     stored_before = path.read_bytes()
+
     # 2. Verify the expected result and any safety guarantees.
     assert (
         get_proposal(
@@ -219,6 +229,7 @@ def test_proposal_reads_hide_missing_and_inaccessible_records(
         )
     else:
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
+
     with pytest.raises(PermissionError, match="^Record unavailable$"):
         get_proposal(session=session, proposal_id=proposal_id, database_path=path)
 
@@ -226,11 +237,13 @@ def test_proposal_reads_hide_missing_and_inaccessible_records(
 def test_read_does_not_create_missing_proposal_database(connection, tmp_path):
     # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "missing.db"
+
     with pytest.raises(PermissionError, match="^Record unavailable$"):
         get_proposal(
             session=EmployeeSession(db_connection=connection, employee_id="emp-alex"),
             proposal_id="missing",
             database_path=path,
         )
+
     # 2. Verify the expected result and any safety guarantees.
     assert not path.exists()

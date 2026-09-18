@@ -58,6 +58,7 @@ def investigate_request(
         # Check even when the agent fails, before any proposal can be prepared.
         with closing(sqlite3.connect(employee_context.database_path)) as connection:
             database_after = list(connection.iterdump())
+
         if database_after != database_before:
             raise RuntimeError("Investigation changed business records")
 
