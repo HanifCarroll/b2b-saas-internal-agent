@@ -91,7 +91,7 @@ These are synthetic scenario proposals: identical snapshots across scenarios sha
 uv run pytest tests/test_review_scenarios.py -v
 ```
 
-The eight cases cover assigned roles, another customer's employee, inactive or unassigned reviewers, missing proposals, and configuration changes after saving. They verify that reading neither changes records nor approves a proposal. These are executable retrieval scenarios, not CLI investigation scenarios; they make no paid model calls. CLI review tests also check access after process exit. Approval decisions are not implemented yet.
+The eight cases cover assigned roles, another customer's employee, inactive or unassigned reviewers, missing proposals, and configuration changes after saving. They verify that reading neither changes records nor approves a proposal. These are executable retrieval scenarios, not CLI investigation scenarios; they make no paid model calls. CLI review tests also check access after process exit. Approval decisions are available through the local web UI and `approve_proposal`; the CLI review command only displays proposals.
 
 
 ## Review a saved proposal
@@ -104,7 +104,7 @@ uv run python -m switchboard --review PROPOSAL_ID --run WORKFLOW_ID --employee e
 
 The proposal ID identifies the business record. `--run` selects the isolated scenario database containing employee identities and customer assignments; it does not resume a graph. Review uses the existing `get_proposal` business function and checks current access on every read. It requires no model, API key, or graph checkpoint. Keep the run directory and proposals database to review after exiting Python.
 
-`--employee` simulates a trusted application session for this local demo; it is not authentication. A deployed application must bind identity through sign-in. Viewing does not approve or execute a proposal. Approval decisions are not implemented yet.
+`--employee` simulates a trusted application session for this local demo; it is not authentication. A deployed application must bind identity through sign-in. Viewing does not approve or execute a proposal. Approval decisions are available through the local web UI and `approve_proposal`; the CLI review command only displays proposals.
 
 The candidate route is now `investigate_request → prepare_proposal → END`. The graph context always requires an agent. There is no review node, interrupt, or `--resume` command. Existing saved proposals and scenario run directories remain usable with the new review command; old checkpoints are left untouched but are no longer used.
 
@@ -112,9 +112,9 @@ The candidate route is now `investigate_request → prepare_proposal → END`. T
 uv run pytest tests/test_proposal_review_cli.py tests/test_review_scenarios.py -v
 ```
 
-## Local proposal review UI
+## Local investigation and approval UI
 
-The Next.js/shadcn screen uses FastAPI to review and approve existing proposals. No model calls are made by this slice. Start both services from the repository root in separate terminals:
+The Next.js/shadcn UI uses FastAPI and the same investigation graph and business functions as the CLI. Start both services from the repository root in separate terminals:
 
 ```sh
 uv run uvicorn switchboard.api:app --host 127.0.0.1 --port 8000
@@ -126,7 +126,11 @@ npm ci
 npm run dev -- --hostname 127.0.0.1
 ```
 
-Open http://localhost:3000 and enter the run ID and proposal ID from an existing CLI investigation. Select a simulated employee, load the proposal, then explicitly approve it as an independent technical lead. The screen displays the stored approval receipt and refreshes after approval. Changing IDs or employee clears the previous result. Business functions enforce access on every request; the UI is not the authorization boundary.
+Open http://localhost:3000. Choose a scenario and simulated investigator, then start the investigation. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change the reviewer to test access restrictions, then approve explicitly as an independent assigned technical lead. The current stored approval appears separately from the investigation report.
+
+Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Runs created before result persistence and access snapshots were added remain reviewable by the existing proposal endpoints/CLI but are not listed in this history. Expected outcomes are for manual comparison and assume the baseline investigator, Alex; choosing another employee changes the access context.
+
+The optional **Evaluate policy claims** button makes a separate model call and stores its judgment. It does not authorize a proposal. Investigation and policy evaluation use the existing model credentials in the root `.env`; retrieval and approval do not call a model. The pending indicator does not claim token-by-token or node-by-node progress. Completed results survive browser refresh; there is no background job queue or resumable live progress in this local slice.
 
 This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and recovery planning remain unimplemented. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
 
