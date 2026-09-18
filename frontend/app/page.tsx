@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { ArrowRight, CheckCircle2, Layers, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { Layers, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,114 +9,156 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Field,
   FieldGroup,
   FieldLabel,
   FieldDescription,
 } from "@/components/ui/field";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
   NativeSelect,
   NativeSelectOption,
 } from "@/components/ui/native-select";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { ProposalReview } from "@/components/proposal-review";
+import { requestApi } from "@/lib/api";
 
-type Approval = {
-  id: string;
-  approved_by_employee_id: string;
-  created_at: string;
+type DemoOptions = {
+  scenarios: { id: string; expected: string[] }[];
+  employees: { id: string; name: string; role: string }[];
 };
-type Review = {
-  proposal: {
-    id: string;
-    ticket_id: string;
-    customer_id: string;
-    integration_id: string;
-    environment: string;
-    current_endpoint: string;
-    proposed_endpoint: string;
-    expected_configuration_version: number;
-    proposed_by_employee_id: string;
+type HistoryItem = { run_id: string; scenario_id: string; outcome: string };
+type PolicyReview = {
+  issues: {
+    claim: string;
+    policy_id: string;
+    policy_excerpt: string;
+    explanation: string;
+  }[];
+  limitation: string;
+};
+type Run = {
+  run_id: string;
+  scenario_id: string;
+  policy_review: PolicyReview | null;
+  result: {
+    investigation: {
+      outcome: string;
+      summary: string;
+      blockers: string[];
+      evidence_ids: string[];
+    };
+    proposal: { id: string } | null;
+    was_created: boolean | null;
+    messages: {
+      tool_calls?: {
+        id: string;
+        name: string;
+        args: Record<string, unknown>;
+      }[];
+    }[];
   };
-  approval: Approval | null;
 };
 
 export default function Home() {
-  const [runId, setRunId] = useState("");
-  const [proposalId, setProposalId] = useState("");
-  const [employee, setEmployee] = useState("emp-priya");
-  const [review, setReview] = useState<Review | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [options, setOptions] = useState<DemoOptions | null>(null);
+  const [scenario, setScenario] = useState("baseline");
+  const [employee, setEmployee] = useState("emp-alex");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [run, setRun] = useState<Run | null>(null);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const url = `/api/runs/${encodeURIComponent(runId.trim())}/proposals/${encodeURIComponent(proposalId.trim())}`;
+  const [refresh, setRefresh] = useState(0);
 
-  async function readReview(): Promise<Review> {
-    const response = await fetch(url, {
-      headers: { "X-Employee-Id": employee },
-      cache: "no-store",
-    });
-    if (!response.ok)
-      throw new Error(
-        response.status === 404
-          ? "Proposal unavailable. Check the IDs and this employee’s customer access."
-          : "Unable to load the proposal. Check the run ID and that the API is running.",
-      );
-    return response.json();
-  }
-
-  async function load(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    setReview(null);
-    try {
-      setReview(await readReview());
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Unable to load proposal.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function approve() {
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch(`${url}/approval`, {
-        method: "POST",
-        headers: { "X-Employee-Id": employee },
+  // 1. Load demo choices and this employee's accessible completed runs.
+  useEffect(() => {
+    const controller = new AbortController();
+    requestApi<DemoOptions>("/api/demo-options", "", {
+      signal: controller.signal,
+    })
+      .then(setOptions)
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(error.message);
       });
-      if (!response.ok)
-        throw new Error(
-          response.status === 403
-            ? "Approval denied. An active, assigned technical lead other than the proposer is required."
-            : "Approval could not be confirmed. Reload the proposal before retrying.",
-        );
-      const approval: Approval = await response.json();
-      // Keep the confirmed receipt even if the following refresh fails.
-      setReview((current) => (current ? { ...current, approval } : null));
-      setReview(await readReview());
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    requestApi<HistoryItem[]>("/api/investigations", employee, {
+      signal: controller.signal,
+    })
+      .then(setHistory)
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(error.message);
+      });
+    return () => controller.abort();
+  }, [employee, refresh]);
+
+  // 2. Run a scenario and display the workflow's confirmed storage outcome.
+  async function investigate(event: FormEvent) {
+    event.preventDefault();
+    setBusy("Investigating records and validating the result…");
+    setError("");
+    setRun(null);
+    try {
+      setRun(
+        await requestApi<Run>("/api/investigations", employee, {
+          method: "POST",
+          body: JSON.stringify({ scenario_id: scenario }),
+        }),
+      );
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : "Unable to confirm approval. Reload before retrying.",
+          : "Investigation could not complete.",
       );
     } finally {
-      setBusy(false);
+      setBusy("");
+      setRefresh((value) => value + 1);
     }
   }
 
-  function changeInput(setter: (value: string) => void, value: string) {
-    setter(value);
-    setReview(null);
+  async function openRun(id: string) {
+    if (!id) return;
+    setBusy("Loading saved investigation…");
     setError("");
+    setRun(null);
+    try {
+      setRun(await requestApi<Run>(`/api/investigations/${id}`, employee));
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Investigation unavailable.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // 3. Keep optional model judgment separate from deterministic approval.
+  async function evaluatePolicy() {
+    if (!run) return;
+    setBusy("Reviewing policy claims…");
+    setError("");
+    try {
+      const policy_review = await requestApi<PolicyReview>(
+        `/api/investigations/${run.run_id}/policy-review`,
+        employee,
+        { method: "POST" },
+      );
+      setRun({ ...run, policy_review });
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Policy review could not complete.",
+      );
+    } finally {
+      setBusy("");
+    }
   }
 
   return (
@@ -127,100 +169,135 @@ export default function Home() {
             <Layers className="size-5" />
             Switchboard
           </div>
-          <Badge variant="outline">Local demo</Badge>
+          <Badge variant="outline">Local demo · Simulated identities</Badge>
         </div>
       </header>
-      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
+      <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
         <div className="flex flex-col gap-3">
           <p className="text-sm font-medium text-muted-foreground">
-            CHANGE MANAGEMENT / REVIEW
+            INVESTIGATE → PROPOSE → REVIEW
           </p>
           <h1 className="text-4xl font-semibold tracking-tight">
-            A deliberate step before change.
+            From request to a reviewed change.
           </h1>
           <p className="max-w-2xl text-muted-foreground">
-            Review the saved endpoint change and record an independent approval.
-            Configuration stays unchanged.
+            Investigate a customer request, inspect the evidence, and review the
+            saved proposal as a different employee. Approval does not execute a
+            change.
           </p>
         </div>
-        <div className="grid items-start gap-6 lg:grid-cols-[340px_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Open a proposal</CardTitle>
-              <CardDescription>
-                Use the IDs printed by an investigation.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form id="review-form" onSubmit={load}>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="run">Run ID</FieldLabel>
-                    <Input
-                      id="run"
-                      required
-                      disabled={busy}
-                      value={runId}
-                      placeholder="Investigation run UUID"
-                      onChange={(e) => changeInput(setRunId, e.target.value)}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="proposal">Proposal ID</FieldLabel>
-                    <Input
-                      id="proposal"
-                      required
-                      disabled={busy}
-                      value={proposalId}
-                      placeholder="Saved proposal UUID"
-                      onChange={(e) =>
-                        changeInput(setProposalId, e.target.value)
-                      }
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="employee">
-                      Simulated employee
-                    </FieldLabel>
-                    <NativeSelect
-                      id="employee"
-                      disabled={busy}
-                      value={employee}
-                      onChange={(e) => changeInput(setEmployee, e.target.value)}
-                    >
-                      <NativeSelectOption value="emp-priya">
-                        Priya · Technical lead
+        <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
+          <aside className="flex flex-col gap-5">
+            <Card>
+              <CardHeader>
+                <CardTitle>Start an investigation</CardTitle>
+                <CardDescription>
+                  Each run uses isolated fictional business records.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={investigate} className="flex flex-col gap-5">
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="scenario">Scenario</FieldLabel>
+                      <NativeSelect
+                        id="scenario"
+                        value={scenario}
+                        disabled={!!busy || !options}
+                        onChange={(event) => setScenario(event.target.value)}
+                      >
+                        {options?.scenarios.map((item) => (
+                          <NativeSelectOption key={item.id} value={item.id}>
+                            {item.id.replaceAll("-", " ")}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="employee">Investigate as</FieldLabel>
+                      <NativeSelect
+                        id="employee"
+                        value={employee}
+                        disabled={!!busy || !options}
+                        onChange={(event) => {
+                          setEmployee(event.target.value);
+                          setRun(null);
+                          setHistory([]);
+                          setError("");
+                        }}
+                      >
+                        {options?.employees.map((item) => (
+                          <NativeSelectOption key={item.id} value={item.id}>
+                            {item.name}
+                          </NativeSelectOption>
+                        ))}
+                      </NativeSelect>
+                      <FieldDescription>
+                        Demo identity only, not sign-in. Customer access is
+                        enforced in Python.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                  <Button type="submit" disabled={!!busy || !options}>
+                    Start investigation
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Uses your configured model API. May take a minute; avoid
+                    starting duplicate runs.
+                  </p>
+                </form>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Saved investigations</CardTitle>
+                <CardDescription>
+                  Completed runs for the selected investigator.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Field>
+                  <FieldLabel htmlFor="history">Open a previous run</FieldLabel>
+                  <NativeSelect
+                    id="history"
+                    disabled={!!busy}
+                    value={run?.run_id ?? ""}
+                    onChange={(event) => openRun(event.target.value)}
+                  >
+                    <NativeSelectOption value="">
+                      Choose a run
+                    </NativeSelectOption>
+                    {history.map((item) => (
+                      <NativeSelectOption key={item.run_id} value={item.run_id}>
+                        {item.scenario_id.replaceAll("-", " ")} ·{" "}
+                        {item.outcome === "blocked" ? "Blocked" : "Proposal"} ·{" "}
+                        {item.run_id.slice(0, 8)}
                       </NativeSelectOption>
-                      <NativeSelectOption value="emp-alex">
-                        Alex · Proposing engineer
-                      </NativeSelectOption>
-                      <NativeSelectOption value="emp-ben">
-                        Ben · Different customer
-                      </NativeSelectOption>
-                    </NativeSelect>
-                    <FieldDescription>
-                      Demo identity only. This is not sign-in. Permissions use
-                      the run’s current employee records.
-                    </FieldDescription>
-                  </Field>
-                </FieldGroup>
-              </form>
-            </CardContent>
-            <CardFooter>
-              <Button
-                form="review-form"
-                type="submit"
-                disabled={busy}
-                className="w-full"
-              >
-                {busy ? "Working…" : "Load proposal"}
-              </Button>
-            </CardFooter>
-          </Card>
+                    ))}
+                  </NativeSelect>
+                </Field>
+                <Button
+                  variant="outline"
+                  disabled={!!busy}
+                  onClick={() => {
+                    setError("");
+                    setRefresh((value) => value + 1);
+                  }}
+                >
+                  Refresh history
+                </Button>
+                {!history.length && (
+                  <p className="text-sm text-muted-foreground">
+                    No accessible completed runs yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </aside>
           <section
-            className="flex flex-col gap-5"
+            className="flex min-w-0 flex-col gap-5"
             aria-live="polite"
-            aria-busy={busy}
+            aria-busy={!!busy}
           >
             {error && (
               <Alert variant="destructive" role="alert">
@@ -228,114 +305,150 @@ export default function Home() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            {!review && (
+            {busy && (
+              <Alert>
+                <LoaderCircle className="animate-spin" />
+                <AlertTitle>{busy}</AlertTitle>
+                <AlertDescription>
+                  Results appear when the operation completes. Configuration is
+                  not being changed.
+                </AlertDescription>
+              </Alert>
+            )}
+            {!run && !busy && (
               <Card>
                 <CardHeader>
-                  <ShieldCheck className="mb-3 size-8 text-muted-foreground" />
-                  <CardTitle>
-                    {busy ? "Checking access…" : "Ready for review"}
-                  </CardTitle>
+                  <CardTitle>Choose a scenario to begin</CardTitle>
                   <CardDescription>
-                    Open a proposal to inspect the exact change, configuration
-                    version, and approval record.
+                    Try baseline for a valid proposal, then unregistered
+                    destination to see a blocked request. No CLI or copied IDs
+                    needed.
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Only employees assigned to the customer can view its
-                    proposals. Approval requires an independent technical lead.
-                  </p>
-                </CardContent>
               </Card>
             )}
-            {review && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle>{review.proposal.ticket_id}</CardTitle>
-                    <Badge variant={review.approval ? "default" : "secondary"}>
-                      {review.approval
-                        ? "Approval recorded"
-                        : review.proposal.environment === "sandbox"
-                          ? "Independent approval not required"
-                          : "Awaiting approval"}
-                    </Badge>
-                  </div>
-                  <CardDescription>
-                    {review.proposal.customer_id} ·{" "}
-                    {review.proposal.integration_id} ·{" "}
-                    {review.proposal.environment}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-6">
-                  <div className="flex flex-col gap-3 rounded-lg border p-5">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Current endpoint
-                    </p>
-                    <p className="break-all font-mono text-sm">
-                      {review.proposal.current_endpoint}
-                    </p>
-                    <ArrowRight className="size-5 text-muted-foreground" />
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Proposed endpoint
-                    </p>
-                    <p className="break-all font-mono text-sm">
-                      {review.proposal.proposed_endpoint}
-                    </p>
-                  </div>
-                  <dl className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <dt className="text-muted-foreground">
-                        Expected configuration version
-                      </dt>
-                      <dd className="mt-1 font-medium">
-                        {review.proposal.expected_configuration_version}
-                      </dd>
+            {run && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle>Investigation findings</CardTitle>
+                      <Badge variant="secondary">
+                        {run.result.investigation.outcome === "blocked"
+                          ? "Blocked"
+                          : "Investigation complete"}
+                      </Badge>
                     </div>
-                    <div>
-                      <dt className="text-muted-foreground">Proposed by</dt>
-                      <dd className="mt-1 font-medium">
-                        {review.proposal.proposed_by_employee_id}
-                      </dd>
-                    </div>
-                  </dl>
-                  {review.approval && (
-                    <Alert>
-                      <CheckCircle2 />
-                      <AlertTitle>Stored approval</AlertTitle>
-                      <AlertDescription>
-                        <p>
-                          {review.approval.approved_by_employee_id} ·{" "}
-                          {new Date(
-                            review.approval.created_at,
-                          ).toLocaleString()}
-                        </p>
-                        <p className="break-all">
-                          Receipt: {review.approval.id}
-                        </p>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-                <CardFooter className="flex flex-col items-start gap-3">
-                  <Button
-                    onClick={approve}
-                    disabled={
-                      busy ||
-                      !!review.approval ||
-                      review.proposal.environment !== "production" ||
-                      employee === review.proposal.proposed_by_employee_id
-                    }
-                  >
-                    Approve this proposal
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Records approval of this saved proposal. Does not execute
-                    the change. Execution and recovery planning are not
-                    implemented.
-                  </p>
-                </CardFooter>
-              </Card>
+                    <CardDescription>
+                      {run.scenario_id.replaceAll("-", " ")} · Run{" "}
+                      {run.run_id.slice(0, 8)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-5">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {run.result.investigation.summary}
+                    </p>
+                    {run.result.investigation.blockers.length > 0 && (
+                      <Alert variant="destructive">
+                        <AlertTitle>Blockers — no proposal saved</AlertTitle>
+                        <AlertDescription>
+                          <ul className="list-disc pl-5">
+                            {run.result.investigation.blockers.map(
+                              (item, index) => (
+                                <li key={index}>{item}</li>
+                              ),
+                            )}
+                          </ul>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Evidence:{" "}
+                      {run.result.investigation.evidence_ids.join(", ") ||
+                        "No records retrieved"}
+                    </p>
+                    {run.result.proposal && (
+                      <Alert>
+                        <AlertTitle>
+                          {run.result.was_created
+                            ? "Proposal saved"
+                            : "Existing proposal reused"}
+                        </AlertTitle>
+                        <AlertDescription>
+                          {run.result.was_created
+                            ? "Review the saved change below."
+                            : "An identical proposal already exists. No duplicate was created; its current approval is shown below."}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <details>
+                      <summary className="cursor-pointer text-sm font-medium">
+                        Tool calls
+                      </summary>
+                      <ul className="mt-3 flex flex-col gap-2 text-sm">
+                        {run.result.messages
+                          .flatMap((message) => message.tool_calls ?? [])
+                          .map((call) => (
+                            <li className="break-all" key={call.id}>
+                              <code>
+                                {call.name} {JSON.stringify(call.args)}
+                              </code>
+                            </li>
+                          ))}
+                      </ul>
+                    </details>
+                    <details>
+                      <summary className="cursor-pointer text-sm font-medium">
+                        Expected outcomes for manual comparison
+                      </summary>
+                      <ul className="mt-3 list-disc pl-5 text-sm">
+                        {options?.scenarios
+                          .find((item) => item.id === run.scenario_id)
+                          ?.expected.map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                      </ul>
+                    </details>
+                    <Button
+                      variant="outline"
+                      disabled={!!busy}
+                      onClick={evaluatePolicy}
+                    >
+                      Evaluate policy claims · extra model call
+                    </Button>
+                    {run.policy_review && (
+                      <Alert>
+                        <AlertTitle>
+                          Policy review:{" "}
+                          {run.policy_review.issues.length
+                            ? `${run.policy_review.issues.length} issue(s)`
+                            : "No issues identified"}
+                        </AlertTitle>
+                        <AlertDescription>
+                          <p>{run.policy_review.limitation}</p>
+                          {run.policy_review.issues.map((issue, index) => (
+                            <div key={index} className="flex flex-col gap-1">
+                              <p>{issue.claim}</p>
+                              <p>{issue.explanation}</p>
+                              <p>
+                                Source {issue.policy_id}: {issue.policy_excerpt}
+                              </p>
+                            </div>
+                          ))}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+                {run.result.proposal && options && (
+                  <ProposalReview
+                    key={run.run_id}
+                    runId={run.run_id}
+                    proposalId={run.result.proposal.id}
+                    employees={options.employees}
+                  />
+                )}
+              </>
             )}
           </section>
         </div>
