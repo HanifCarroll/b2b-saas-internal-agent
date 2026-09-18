@@ -175,14 +175,15 @@ function InvestigationWorkspace({
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
         <div className="flex flex-col gap-3">
           <p className="text-sm font-medium text-muted-foreground">
-            INVESTIGATE → PROPOSE → REVIEW
+            INVESTIGATE → PROPOSE → REVIEW → EXECUTE
           </p>
           <h1 className="text-4xl font-semibold tracking-tight">
-            From request to a reviewed change.
+            From request to a controlled change.
           </h1>
           <p className="max-w-2xl text-muted-foreground">
             Investigate a customer request, inspect the evidence, and review the saved proposal as a
-            different employee. Approval does not execute a change.
+            different employee. Execute explicitly after review; delivery verification remains a
+            separate step.
           </p>
         </div>
         <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">

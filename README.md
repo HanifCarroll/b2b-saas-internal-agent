@@ -27,7 +27,7 @@ This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier cur
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
-The local FastAPI service supports investigation, retrieval, and approvals. Real sign-in, configuration writes, and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
+The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Real sign-in, delivery verification, and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
 ## Checks
 
@@ -98,7 +98,7 @@ Business records, proposals, approvals, and execution receipts share `backend/da
 
 The CLI calls `save_proposal()` in `backend/switchboard/integrations/change_management.py` for validated candidates and prints the saved ID. Saving rechecks the employee and configuration snapshot and returns the existing proposal for an identical retry. Blocked or rejected candidates save nothing. The agent still has only read-only tools. Configuration, approval, and execution are unchanged.
 
-Identical requests against unchanged shared records reuse the existing proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval and explicit approval are implemented; execution is not. The optional policy review runs after saving and is diagnostic, not a gate for saving.
+Identical requests against unchanged shared records reuse the existing proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval and explicit approval and execution are implemented. The optional policy review runs after saving and is diagnostic, not a gate for saving.
 
 ## Proposal review scenarios
 
@@ -150,6 +150,6 @@ Saved investigations can be reopened from the history selector after refreshing 
 
 The optional **Evaluate policy claims** button makes a separate model call and stores its judgment. It does not authorize a proposal. Investigation and policy evaluation use the existing model credentials in `backend/.env`; retrieval and approval do not call a model. The pending indicator does not claim token-by-token or node-by-node progress. Completed results survive browser refresh; there is no background job queue or resumable live progress in this local slice.
 
-This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and delivery verification remain unimplemented. Proposals include a required manual-intervention recovery plan. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
+This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI separates approval from a confirmed Execute change action. Execution uses actual server UTC time and rechecks the production change window; the scenario clock does not override it. Refresh reads the saved execution receipt and reports configuration updated with delivery not yet verified. Delivery verification remains unimplemented. Proposals include a required manual-intervention recovery plan. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
 
 Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:check && npm run build` in `frontend/`.

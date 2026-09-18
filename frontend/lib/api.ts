@@ -3,7 +3,18 @@ export type Approval = {
   approved_by_employee_id: string;
   created_at: string;
 };
+export type Execution = {
+  id: string;
+  proposal_id: string;
+  executed_by_employee_id: string;
+  executed_at: string;
+  approval_id: string | null;
+  previous_configuration_version: number;
+  resulting_configuration_version: number;
+};
+export type ExecuteProposalResult = { execution: Execution; was_created: boolean };
 export type ProposalReviewResult = {
+  execution: Execution | null;
   current_status: WorkflowStatus;
   proposal: {
     id: string;
@@ -22,6 +33,7 @@ export type ProposalReviewResult = {
 
 export type WorkflowStatus = {
   code:
+    | "configuration_updated"
     | "blocked"
     | "awaiting_approval"
     | "approval_recorded"

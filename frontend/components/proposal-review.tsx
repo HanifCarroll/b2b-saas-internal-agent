@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { requestApi, proposalReviewQuery, proposalReviewKeys, type Approval } from "@/lib/api";
+import {
+  requestApi,
+  proposalReviewQuery,
+  proposalReviewKeys,
+  type Approval,
+  type ExecuteProposalResult,
+} from "@/lib/api";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,14 +59,26 @@ export function ProposalReview({
         onStatusRefresh(),
       ]),
   });
-  const busy = approval.isPending || reviewQuery.isFetching;
-  const error = approval.error?.message || reviewQuery.error?.message || "";
+  const execution = useMutation({
+    mutationFn: () =>
+      requestApi<ExecuteProposalResult>(`${url}/execution`, employee, { method: "POST" }),
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["proposal-review"] }),
+        queryClient.invalidateQueries({ queryKey: ["investigation"] }),
+        onStatusRefresh(),
+      ]),
+  });
+  const busy = approval.isPending || execution.isPending || reviewQuery.isFetching;
+  const error =
+    approval.error?.message || execution.error?.message || reviewQuery.error?.message || "";
   const review = !error && !busy ? reviewQuery.data : undefined;
 
   return (
     <section className="flex flex-col gap-4" aria-label="Proposal review" aria-live="polite">
       <Field>
-        <FieldLabel htmlFor="reviewer">Review as</FieldLabel>
+        <FieldLabel htmlFor="reviewer">Review or execute as</FieldLabel>
         <Select
           items={employees.map((item) => ({
             value: item.id,
@@ -72,6 +90,7 @@ export function ProposalReview({
             if (!value) return;
             setEmployee(value);
             approval.reset();
+            execution.reset();
           }}
         >
           <SelectTrigger id="reviewer" className="w-full">
@@ -88,7 +107,7 @@ export function ProposalReview({
           </SelectContent>
         </Select>
         <FieldDescription>
-          Simulated identity. Current customer access and approval authority are checked by the
+          Simulated identity. Current customer access and action permissions are checked by the
           server.
         </FieldDescription>
       </Field>
@@ -103,6 +122,7 @@ export function ProposalReview({
         disabled={busy}
         onClick={() => {
           approval.reset();
+          execution.reset();
           void reviewQuery.refetch();
           void onStatusRefresh();
         }}
@@ -124,9 +144,33 @@ export function ProposalReview({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
+            {review.execution && (
+              <Alert>
+                <CheckCircle2 />
+                <AlertTitle>Configuration updated — delivery not yet verified</AlertTitle>
+                <AlertDescription>
+                  <p>
+                    {review.execution.executed_by_employee_id} ·{" "}
+                    {new Date(review.execution.executed_at).toLocaleString()}
+                  </p>
+                  <p>
+                    Version {review.execution.previous_configuration_version} →{" "}
+                    {review.execution.resulting_configuration_version}
+                  </p>
+                  <p className="break-all">Receipt: {review.execution.id}</p>
+                  {execution.data && (
+                    <p>
+                      {execution.data.was_created
+                        ? "This request updated the configuration."
+                        : "Already executed; no change repeated."}
+                    </p>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="flex flex-col gap-3 rounded-lg border p-5">
               <p className="text-xs font-medium uppercase text-muted-foreground">
-                Current endpoint
+                Endpoint when proposed
               </p>
               <p className="break-all font-mono text-sm">{review.proposal.current_endpoint}</p>
               <ArrowRight className="size-5 text-muted-foreground" />
@@ -181,8 +225,38 @@ export function ProposalReview({
             </Button>
             <p className="text-xs text-muted-foreground">
               Records approval of this saved proposal, including its recovery plan. Does not execute
-              the change. Execution and delivery verification are not implemented.
+              the change. Delivery verification is a separate step.
             </p>
+            {!review.execution && (
+              <>
+                <Button
+                  disabled={
+                    busy ||
+                    !["approval_recorded", "approval_not_required"].includes(
+                      review.current_status.code,
+                    ) ||
+                    !["implementation_engineer", "technical_lead"].includes(
+                      employees.find((item) => item.id === employee)?.role ?? "",
+                    )
+                  }
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Execute ${review.proposal.ticket_id}? Change ${review.proposal.integration_id} (${review.proposal.environment}) from ${review.proposal.current_endpoint} to ${review.proposal.proposed_endpoint}. Recovery requires manual intervention. This does not verify delivery.`,
+                      )
+                    ) {
+                      execution.mutate();
+                    }
+                  }}
+                >
+                  Execute change
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Execution uses the server’s actual UTC time. Production changes must be inside the
+                  registered change window.
+                </p>
+              </>
+            )}
           </CardFooter>
         </Card>
       )}
