@@ -93,11 +93,7 @@ export function ProposalReview({
   }
 
   return (
-    <section
-      className="flex flex-col gap-4"
-      aria-label="Proposal review"
-      aria-live="polite"
-    >
+    <section className="flex flex-col gap-4" aria-label="Proposal review" aria-live="polite">
       <Field>
         <FieldLabel htmlFor="reviewer">Review as</FieldLabel>
         <Select
@@ -128,8 +124,8 @@ export function ProposalReview({
           </SelectContent>
         </Select>
         <FieldDescription>
-          Simulated identity. Current customer access and approval authority are
-          checked by the server.
+          Simulated identity. Current customer access and approval authority are checked by the
+          server.
         </FieldDescription>
       </Field>
       {error && (
@@ -172,31 +168,23 @@ export function ProposalReview({
               <p className="text-xs font-medium uppercase text-muted-foreground">
                 Current endpoint
               </p>
-              <p className="break-all font-mono text-sm">
-                {review.proposal.current_endpoint}
-              </p>
+              <p className="break-all font-mono text-sm">{review.proposal.current_endpoint}</p>
               <ArrowRight className="size-5 text-muted-foreground" />
               <p className="text-xs font-medium uppercase text-muted-foreground">
                 Proposed endpoint
               </p>
-              <p className="break-all font-mono text-sm">
-                {review.proposal.proposed_endpoint}
-              </p>
+              <p className="break-all font-mono text-sm">{review.proposal.proposed_endpoint}</p>
             </div>
             <dl className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <dt className="text-muted-foreground">
-                  Expected configuration version
-                </dt>
+                <dt className="text-muted-foreground">Expected configuration version</dt>
                 <dd className="mt-1 font-medium">
                   {review.proposal.expected_configuration_version}
                 </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Proposed by</dt>
-                <dd className="mt-1 font-medium">
-                  {review.proposal.proposed_by_employee_id}
-                </dd>
+                <dd className="mt-1 font-medium">{review.proposal.proposed_by_employee_id}</dd>
               </div>
             </dl>
             {review.approval && (
@@ -226,8 +214,8 @@ export function ProposalReview({
               Approve this proposal
             </Button>
             <p className="text-xs text-muted-foreground">
-              Records approval of this saved proposal. Does not execute the
-              change. Execution and recovery planning are not implemented.
+              Records approval of this saved proposal. Does not execute the change. Execution and
+              recovery planning are not implemented.
             </p>
           </CardFooter>
         </Card>

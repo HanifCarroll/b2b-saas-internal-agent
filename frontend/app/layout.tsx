@@ -6,9 +6,7 @@ export const metadata: Metadata = {
   description: "Investigate customer requests and review internal endpoint-change proposals.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body className="antialiased">{children}</body>

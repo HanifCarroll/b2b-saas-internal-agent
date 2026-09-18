@@ -147,4 +147,4 @@ The optional **Evaluate policy claims** button makes a separate model call and s
 
 This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and recovery planning remain unimplemented. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
 
-Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run build` in `frontend/`.
+Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:check && npm run build` in `frontend/`.
