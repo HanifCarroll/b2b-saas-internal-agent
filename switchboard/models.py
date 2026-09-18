@@ -2,6 +2,7 @@
 
 from typing import Annotated, Literal, Self
 
+from langchain_core.messages import BaseMessage
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -120,3 +121,10 @@ class InvestigationResult(Record):
         elif not self.blockers:
             raise ValueError("A blocked investigation requires at least one blocker")
         return self
+
+
+class EndpointChangeResult(Record):
+    investigation: InvestigationResult
+    messages: list[BaseMessage]
+    proposal: Proposal | None = None
+    was_created: bool | None = None

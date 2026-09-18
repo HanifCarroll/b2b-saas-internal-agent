@@ -12,7 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
 from switchboard.integrations.change_management import save_proposal
-from switchboard.models import InvestigationResult, Proposal
+from switchboard.models import EndpointChangeResult, InvestigationResult, Proposal
 from switchboard.proposals import validate_proposal
 from switchboard.tools import InvestigationContext, employee_session
 
@@ -90,7 +90,11 @@ def route_after_investigation(state: EndpointChangeWorkflowState):
 
 
 # Create the graph
-workflow = StateGraph(EndpointChangeWorkflowState, context_schema=EndpointChangeContext)
+workflow = StateGraph(
+    EndpointChangeWorkflowState,
+    context_schema=EndpointChangeContext,
+    output_schema=EndpointChangeResult,
+)
 
 # Add nodes
 workflow.add_node("investigate_request", investigate_request)

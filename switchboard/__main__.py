@@ -8,17 +8,15 @@ from contextlib import closing
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage
 from pydantic import ValidationError
 
 from switchboard.agent import build_agent, create_model
-from switchboard.integrations.change_management import save_proposal
 from switchboard.integrations.database import PROPOSALS_DATABASE, seed_database
-from switchboard.models import InvestigationResult
+from switchboard.models import EndpointChangeResult
 from switchboard.policy_evaluation import evaluate_policy
-from switchboard.proposals import validate_proposal
 from switchboard.scenarios import apply_scenario, load_scenarios
-from switchboard.tools import InvestigationContext, employee_session
+from switchboard.tools import InvestigationContext
+from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
 
 def main():
@@ -43,73 +41,63 @@ def main():
     model = create_model()
 
     with tempfile.TemporaryDirectory() as directory:
-        # 2. Seed: create a temporary database and capture its initial state.
+        # 2. Seed the temporary business database and apply the scenario.
         database_path = Path(directory) / "switchboard.db"
         with closing(sqlite3.connect(database_path)) as db_connection:
             seed_database(db_connection)
             scenario = apply_scenario(db_connection, selected_scenario)
-            database_before = list(db_connection.iterdump())
 
-        # 3. Investigate: bind the employee context and run the read-only agent.
+        # 3. Build the agent and trusted workflow context.
         agent = build_agent(model, scenario["now"])
         context = InvestigationContext(
             database_path=database_path,
             employee_id=scenario["requester_employee_id"],
         )
+        workflow_context = EndpointChangeContext(
+            agent=agent,
+            investigation_context=context,
+            proposals_database_path=PROPOSALS_DATABASE,
+        )
+
+        # 4. Run the workflow, validate its output, and report proposal status.
         try:
-            result = agent.invoke(
-                {"messages": [HumanMessage(content=scenario["request"])]},
-                context=context,
+            raw_result = endpoint_change_graph.invoke(
+                {"request": scenario["request"]},
+                context=workflow_context,
                 config={
-                    "recursion_limit": 12,
                     "run_name": f"investigation-{args.scenario}",
                     "metadata": {"scenario_id": args.scenario},
                 },
             )
-        finally:
-            # 4. Verify even if the model or a tool fails.
-            with closing(sqlite3.connect(database_path)) as db_connection:
-                database_after = list(db_connection.iterdump())
-            if database_after != database_before:
-                raise RuntimeError("Investigation changed business records")
-
-        # 5. Validate the final JSON before accepting or displaying the result.
-        try:
-            investigation = InvestigationResult.model_validate_json(
-                result["messages"][-1].text
-            )
+            result = EndpointChangeResult.model_validate(raw_result)
         except ValidationError as error:
             raise SystemExit(
-                "Investigation returned invalid JSON or inconsistent fields; "
-                "no result accepted. Business records are unchanged.\n"
+                "Workflow returned invalid or inconsistent data; "
+                "no result accepted.\n"
                 + str(error.errors(include_input=False, include_url=False))
             ) from None
+        except (ValueError, PermissionError) as error:
+            raise SystemExit(f"Workflow rejected: {error}") from None
+        else:
+            investigation = result.investigation
+            proposal = result.proposal
 
-        # 6. Validate and save a proposal if the outcome is proposal_candidate.
-        if investigation.outcome == "proposal_candidate":
-            try:
-                with employee_session(context) as session:
-                    proposal = validate_proposal(investigation, session)
-                    proposal, was_created = save_proposal(
-                        proposal, session, PROPOSALS_DATABASE
-                    )
-            except (ValueError, PermissionError) as error:
-                raise SystemExit(f"Proposal rejected; nothing saved: {error}") from None
-            else:
-                if was_created:
+            if proposal is not None:
+                if result.was_created:
                     print(f"\nProposal created: {proposal.id}. Pending approval.")
                 else:
                     print(
-                        f"\nProposal already exists: {proposal.id}. No duplicate created."
+                        f"\nProposal already exists: {proposal.id}. "
+                        "No duplicate created."
                     )
 
-        # 7. Display tool calls and the validated investigation.
-        for message in result["messages"]:
+        # 5. Display tool calls and the validated investigation.
+        for message in result.messages:
             for call in getattr(message, "tool_calls", []):
                 print(f"Tool: {call['name']} {json.dumps(call['args'])}")
         print("\n" + investigation.model_dump_json(indent=2))
 
-        # 8. Optionally evaluate policy accuracy with a separate model call.
+        # 6. Optionally evaluate policy accuracy with a separate model call.
         if args.evaluate_policy:
             review = evaluate_policy(investigation.model_dump_json(), model)
             print("\nPolicy faithfulness review (model judgment):")
