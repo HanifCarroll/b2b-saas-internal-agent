@@ -225,11 +225,11 @@ function InvestigationWorkspace({
                     runId={run.run_id}
                     proposalId={run.result.proposal.id}
                     employees={options.employees}
-                    onStatusRefresh={() => {
-                      void queryClient.invalidateQueries({
+                    onStatusRefresh={() =>
+                      queryClient.invalidateQueries({
                         queryKey: investigationKeys.run(employee, run.run_id),
-                      });
-                    }}
+                      })
+                    }
                   />
                 )}
               </>

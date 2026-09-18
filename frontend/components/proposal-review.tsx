@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { requestApi, type WorkflowStatus } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { requestApi, proposalReviewQuery, proposalReviewKeys, type Approval } from "@/lib/api";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,27 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type Approval = {
-  id: string;
-  approved_by_employee_id: string;
-  created_at: string;
-};
-type Review = {
-  current_status: WorkflowStatus;
-  proposal: {
-    id: string;
-    ticket_id: string;
-    customer_id: string;
-    integration_id: string;
-    environment: string;
-    current_endpoint: string;
-    proposed_endpoint: string;
-    expected_configuration_version: number;
-    proposed_by_employee_id: string;
-  };
-  approval: Approval | null;
-};
-
 export function ProposalReview({
   runId,
   proposalId,
@@ -55,44 +34,28 @@ export function ProposalReview({
   runId: string;
   proposalId: string;
   employees: { id: string; name: string; role: string }[];
-  onStatusRefresh: () => void;
+  onStatusRefresh: () => Promise<void>;
 }) {
   const [employee, setEmployee] = useState("emp-priya");
-  const [busy, setBusy] = useState(false);
-  const [approvalError, setApprovalError] = useState("");
+  const queryClient = useQueryClient();
   const url = `/api/runs/${runId}/proposals/${proposalId}`;
 
   // 1. Fetch with reviewer-scoped caching and cancellation.
-  const reviewQuery = useQuery({
-    queryKey: ["proposal-review", employee, runId, proposalId],
-    queryFn: ({ signal }) => requestApi<Review>(url, employee, { signal }),
-    retry: false,
-    staleTime: 0,
-    gcTime: 0,
-  });
-  const error = approvalError || reviewQuery.error?.message || "";
-  const review = !error && !reviewQuery.isFetching ? reviewQuery.data : undefined;
+  const reviewQuery = useQuery(proposalReviewQuery({ employee, runId, proposalId }));
 
-  // 2. Display only the receipt confirmed by the approval endpoint.
-  async function approve() {
-    setBusy(true);
-    setApprovalError("");
-    try {
-      await requestApi<Approval>(`${url}/approval`, employee, {
-        method: "POST",
-      });
-      await reviewQuery.refetch({ throwOnError: true });
-    } catch (error) {
-      setApprovalError(
-        error instanceof Error
-          ? error.message
-          : "Approval could not be confirmed. Refresh before retrying.",
-      );
-    } finally {
-      onStatusRefresh();
-      setBusy(false);
-    }
-  }
+  // 2. Refresh confirmed records after success or an uncertain failure; never retry approval automatically.
+  const approval = useMutation({
+    mutationFn: () => requestApi<Approval>(`${url}/approval`, employee, { method: "POST" }),
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: proposalReviewKeys.proposal(runId, proposalId) }),
+        onStatusRefresh(),
+      ]),
+  });
+  const busy = approval.isPending || reviewQuery.isFetching;
+  const error = approval.error?.message || reviewQuery.error?.message || "";
+  const review = !error && !busy ? reviewQuery.data : undefined;
 
   return (
     <section className="flex flex-col gap-4" aria-label="Proposal review" aria-live="polite">
@@ -108,7 +71,7 @@ export function ProposalReview({
           onValueChange={(value) => {
             if (!value) return;
             setEmployee(value);
-            setApprovalError("");
+            approval.reset();
           }}
         >
           <SelectTrigger id="reviewer" className="w-full">
@@ -139,9 +102,9 @@ export function ProposalReview({
         variant="outline"
         disabled={busy}
         onClick={() => {
-          setApprovalError("");
+          approval.reset();
           void reviewQuery.refetch();
-          onStatusRefresh();
+          void onStatusRefresh();
         }}
       >
         Refresh proposal
@@ -200,7 +163,7 @@ export function ProposalReview({
           </CardContent>
           <CardFooter className="flex flex-col items-start gap-3">
             <Button
-              onClick={approve}
+              onClick={() => approval.mutate()}
               disabled={
                 busy ||
                 review.current_status.code !== "awaiting_approval" ||

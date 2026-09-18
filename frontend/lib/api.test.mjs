@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { QueryClient } from "@tanstack/react-query";
-import { historyQuery, investigationQuery, investigationKeys } from "./api.ts";
+import {
+  historyQuery,
+  investigationQuery,
+  investigationKeys,
+  proposalReviewQuery,
+  proposalReviewKeys,
+} from "./api.ts";
 
 test("employee-scoped history is fetched and invalidated independently", async (t) => {
   const calls = [];
@@ -58,4 +64,41 @@ test("unselected runs stay disabled; inaccessible runs surface errors", async (t
     client.fetchQuery(investigationQuery("emp-alex", "run-1")),
     /Record unavailable/,
   );
+});
+
+test("proposal reviews isolate reviewers and invalidate together after approval", async (t) => {
+  let approved = false;
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    if (options.headers["X-Employee-Id"] === "emp-ben") {
+      return Response.json({ detail: "Proposal unavailable" }, { status: 404 });
+    }
+    return Response.json({ approval: approved ? { id: "approval-1" } : null });
+  });
+  const client = new QueryClient();
+  t.after(() => client.clear());
+  const alex = proposalReviewQuery({
+    employee: "emp-alex",
+    runId: "run-1",
+    proposalId: "proposal-1",
+  });
+  const priya = proposalReviewQuery({
+    employee: "emp-priya",
+    runId: "run-1",
+    proposalId: "proposal-1",
+  });
+  const ben = proposalReviewQuery({
+    employee: "emp-ben",
+    runId: "run-1",
+    proposalId: "proposal-1",
+  });
+  assert.notDeepEqual(alex.queryKey, priya.queryKey);
+  assert.equal((await client.fetchQuery(alex)).approval, null);
+  assert.equal((await client.fetchQuery(priya)).approval, null);
+  await assert.rejects(client.fetchQuery(ben), /Proposal unavailable/);
+  assert.equal(client.getQueryData(ben.queryKey), undefined);
+  approved = true;
+  await client.invalidateQueries({ queryKey: proposalReviewKeys.proposal("run-1", "proposal-1") });
+  assert.equal(client.getQueryState(alex.queryKey).isInvalidated, true);
+  assert.equal(client.getQueryState(priya.queryKey).isInvalidated, true);
+  assert.equal((await client.fetchQuery(priya)).approval.id, "approval-1");
 });

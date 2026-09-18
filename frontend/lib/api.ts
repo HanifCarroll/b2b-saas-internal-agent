@@ -1,3 +1,24 @@
+export type Approval = {
+  id: string;
+  approved_by_employee_id: string;
+  created_at: string;
+};
+export type ProposalReviewResult = {
+  current_status: WorkflowStatus;
+  proposal: {
+    id: string;
+    ticket_id: string;
+    customer_id: string;
+    integration_id: string;
+    environment: string;
+    current_endpoint: string;
+    proposed_endpoint: string;
+    expected_configuration_version: number;
+    proposed_by_employee_id: string;
+  };
+  approval: Approval | null;
+};
+
 export type WorkflowStatus = {
   code:
     | "blocked"
@@ -107,5 +128,30 @@ export function investigationQuery(employee: string, runId: string | null) {
       if (!runId) throw new Error("Select an investigation first.");
       return requestApi<InvestigationRun>(`/api/investigations/${runId}`, employee, { signal });
     },
+  };
+}
+
+export const proposalReviewKeys = {
+  proposal: (runId: string, proposalId: string) => ["proposal-review", runId, proposalId] as const,
+};
+
+export function proposalReviewQuery({
+  employee,
+  runId,
+  proposalId,
+}: {
+  employee: string;
+  runId: string;
+  proposalId: string;
+}) {
+  return {
+    queryKey: [...proposalReviewKeys.proposal(runId, proposalId), employee],
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      requestApi<ProposalReviewResult>(`/api/runs/${runId}/proposals/${proposalId}`, employee, {
+        signal,
+      }),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
   };
 }
