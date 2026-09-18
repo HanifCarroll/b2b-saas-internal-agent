@@ -124,7 +124,7 @@ class InvestigationFindings(Record):
     )
     gaps: list[Text] = Field(description="Unknown or unverified facts; empty if none.")
     recommendation: Text = Field(
-        description="The investigator’s recommendation at investigation time, not current workflow instructions."
+        description="What the evidence supports, without claiming a proposal was saved, approved, or executed."
     )
 
 
