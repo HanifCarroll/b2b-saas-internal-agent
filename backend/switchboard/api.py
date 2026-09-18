@@ -82,6 +82,26 @@ app = FastAPI(
 )
 
 
+class CurrentEmployee(BaseModel):
+    employee_id: str
+    role: Role
+
+
+@app.get("/api/me", response_model=CurrentEmployee)
+def read_current_employee(
+    employee_id: str = Depends(get_request_employee_id),
+) -> CurrentEmployee:
+    context = InvestigationContext(database_path=DATABASE_PATH, employee_id=employee_id)
+    try:
+        with employee_session(context) as session:
+            return CurrentEmployee(
+                employee_id=session.employee_id,
+                role=session.get_active_employee_role(),
+            )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Employee unavailable") from None
+
+
 class DemoState(BaseModel):
     scenario_id: str | None
 

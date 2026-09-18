@@ -176,3 +176,100 @@ def test_missing_entra_configuration_prevents_startup(monkeypatch):
         with TestClient(api.app):
             pass
     auth.get_entra_settings.cache_clear()
+
+
+def test_current_employee_returns_mapped_identity_and_database_role(
+    identity,
+    review_api,  # noqa: F811
+):
+    signing_key, claims = identity
+    client, _, _ = review_api
+    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
+
+    response = client.get(
+        "/api/me", headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "employee_id": "emp-alex",
+        "role": "implementation_engineer",
+    }
+
+
+@pytest.mark.parametrize(
+    "case,expected_status",
+    [
+        ("inactive", 403),
+        ("missing_token", 401),
+        ("expired_token", 401),
+        ("unmapped_user", 403),
+        ("identity_override", 400),
+    ],
+)
+def test_current_employee_rejects_unavailable_identity(
+    identity,
+    review_api,  # noqa: F811
+    case,
+    expected_status,
+):
+    import sqlite3
+    from contextlib import closing
+
+    signing_key, claims = identity
+    client, _, _ = review_api
+    if case == "inactive":
+        with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
+            connection.execute("UPDATE employees SET active = 0 WHERE id = 'emp-alex'")
+    elif case == "expired_token":
+        claims["exp"] = 1
+    elif case == "unmapped_user":
+        claims["oid"] = WEB
+
+    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    if case == "missing_token":
+        headers = {}
+    elif case == "identity_override":
+        headers["X-Employee-Id"] = "emp-priya"
+
+    response = client.get("/api/me", headers=headers)
+
+    assert response.status_code == expected_status
+    assert set(response.json()) == {"detail"}
+
+
+def test_current_employee_reads_updated_role(identity, review_api):  # noqa: F811
+    import sqlite3
+    from contextlib import closing
+
+    signing_key, claims = identity
+    client, _, _ = review_api
+    # The token's claimed role must not override the current business directory.
+    claims["roles"] = ["technical_lead"]
+    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    assert (
+        client.get("/api/me", headers=headers).json()["role"]
+        == "implementation_engineer"
+    )
+
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
+        connection.execute(
+            "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
+        )
+
+    assert client.get("/api/me", headers=headers).json() == {
+        "employee_id": "emp-alex",
+        "role": "support_specialist",
+    }
+
+
+def test_current_employee_supports_explicit_demo_identity(review_api, monkeypatch):  # noqa: F811
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
+    client, _, _ = review_api
+
+    response = client.get("/api/me", headers={"X-Employee-Id": "emp-priya"})
+
+    assert response.status_code == 200
+    assert response.json() == {"employee_id": "emp-priya", "role": "technical_lead"}
