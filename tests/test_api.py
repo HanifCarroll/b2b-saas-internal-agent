@@ -87,3 +87,160 @@ def test_identity_header_is_required(review_api):
     client, url, _ = review_api
     assert client.get(url).status_code == 422
     assert client.post(url + "/approval").status_code == 422
+
+
+@pytest.fixture
+def investigation_api(tmp_path, monkeypatch):
+    from test_agent import ScriptedModel, structured_result
+
+    monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(api, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    monkeypatch.setattr(api, "load_dotenv", lambda *args: None)
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setattr(
+        api, "create_model", lambda: ScriptedModel(messages=iter([structured_result()]))
+    )
+    return TestClient(api.app)
+
+
+def test_investigation_history_and_approval_handoff(investigation_api):
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    response = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    )
+    assert response.status_code == 200
+    run = response.json()
+    assert run["result"]["was_created"] is True
+    assert (
+        client.get(f"/api/investigations/{run['run_id']}", headers=headers).json()
+        == run
+    )
+    assert (
+        client.get("/api/investigations", headers=headers).json()[0]["run_id"]
+        == run["run_id"]
+    )
+    assert (
+        client.get("/api/investigations", headers={"X-Employee-Id": "emp-ben"}).json()
+        == []
+    )
+    assert (
+        client.get(
+            f"/api/investigations/{run['run_id']}",
+            headers={"X-Employee-Id": "emp-priya"},
+        ).status_code
+        == 404
+    )
+
+    proposal_url = (
+        f"/api/runs/{run['run_id']}/proposals/{run['result']['proposal']['id']}"
+    )
+    assert (
+        client.post(
+            proposal_url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+        ).status_code
+        == 200
+    )
+    assert client.get(proposal_url, headers=headers).json()["approval"] is not None
+
+    with (
+        closing(
+            sqlite3.connect(api.RUNS_DIRECTORY / run["run_id"] / "business.db")
+        ) as connection,
+        connection,
+    ):
+        connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
+    assert (
+        client.get(f"/api/investigations/{run['run_id']}", headers=headers).status_code
+        == 404
+    )
+
+
+def test_invalid_demo_choices_do_not_call_model(investigation_api, monkeypatch):
+    def unexpected_model():
+        raise AssertionError("Must reject before model creation")
+
+    monkeypatch.setattr(api, "create_model", unexpected_model)
+    client = investigation_api
+    assert (
+        client.post(
+            "/api/investigations",
+            json={"scenario_id": "unknown"},
+            headers={"X-Employee-Id": "emp-alex"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/investigations",
+            json={"scenario_id": "baseline"},
+            headers={"X-Employee-Id": "unknown"},
+        ).status_code
+        == 403
+    )
+
+
+def test_blocked_investigation_is_saved_without_proposal(
+    investigation_api, monkeypatch
+):
+    from langchain_core.messages import AIMessage
+    from test_agent import ScriptedModel
+
+    from switchboard.models import InvestigationResult
+
+    blocked = InvestigationResult(
+        outcome="blocked",
+        ticket_id="CHG-1042",
+        proposed_endpoint=None,
+        evidence_ids=["CHG-1042"],
+        summary="Destination is not registered.",
+        blockers=["Unregistered destination"],
+    )
+    monkeypatch.setattr(
+        api,
+        "create_model",
+        lambda: ScriptedModel(
+            messages=iter([AIMessage(content=blocked.model_dump_json())])
+        ),
+    )
+    response = investigation_api.post(
+        "/api/investigations",
+        json={"scenario_id": "baseline"},
+        headers={"X-Employee-Id": "emp-alex"},
+    )
+    assert response.status_code == 200
+    assert response.json()["result"]["proposal"] is None
+    assert not api.PROPOSALS_DATABASE.exists()
+
+
+def test_policy_review_is_separate_and_persisted(investigation_api, monkeypatch):
+    from switchboard.policy_evaluation import PolicyReview
+
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    monkeypatch.setattr(
+        api, "evaluate_policy", lambda **kwargs: PolicyReview(issues=[])
+    )
+    url = f"/api/investigations/{run['run_id']}"
+    response = client.post(url + "/policy-review", headers=headers)
+    assert response.status_code == 200
+    refreshed = client.get(url, headers=headers).json()
+    assert refreshed["policy_review"] == response.json()
+    assert refreshed["result"] == run["result"]
+
+
+def test_model_failure_returns_safe_error(investigation_api, monkeypatch):
+    def fail():
+        raise RuntimeError("Private provider error")
+
+    monkeypatch.setattr(api, "create_model", fail)
+    response = investigation_api.post(
+        "/api/investigations",
+        json={"scenario_id": "baseline"},
+        headers={"X-Employee-Id": "emp-alex"},
+    )
+    assert response.status_code == 502
+    assert "Private provider error" not in response.text
