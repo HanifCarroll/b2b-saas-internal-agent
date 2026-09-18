@@ -103,6 +103,15 @@ class Proposal(Record):
         return str(endpoint)
 
 
+class Approval(Record):
+    """An employee's approval of a saved proposal, not proof of execution."""
+
+    id: Text
+    proposal_id: Text
+    approved_by_employee_id: Text
+    created_at: AwareDatetime
+
+
 class InvestigationResult(Record):
     """Investigator findings, not authorization to save or execute a change."""
 
