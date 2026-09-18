@@ -33,6 +33,7 @@ def paused_run(tmp_path, monkeypatch, capsys):
 def test_resume_in_fresh_process_preserves_records_and_does_not_repeat_model(
     paused_run,
 ):
+    # 1. Set up inputs and exercise the behavior under test.
     business_path = paused_run / "business.db"
     with closing(sqlite3.connect(business_path)) as connection:
         before = list(connection.iterdump())
@@ -52,6 +53,7 @@ cli.main()
         capture_output=True,
         text=True,
     )
+    # 2. Verify the expected result and any safety guarantees.
     assert process.returncode == 0, process.stderr
     assert "Review acknowledged by emp-priya" in process.stdout
     assert "remains pending approval" in process.stdout
@@ -69,6 +71,7 @@ cli.main()
 
 @pytest.mark.parametrize("denial", ["cross-customer", "inactive", "assignment-revoked"])
 def test_denied_reviewer_cannot_resume(paused_run, denial):
+    # 1. Set up inputs and exercise the behavior under test.
     employee_id = "emp-ben" if denial == "cross-customer" else "emp-priya"
     with closing(sqlite3.connect(paused_run / "business.db")) as connection, connection:
         if denial == "inactive":
@@ -86,14 +89,17 @@ def test_denied_reviewer_cannot_resume(paused_run, denial):
     ) as connection:
         graph = workflow.compile(checkpointer=cli.create_checkpointer(connection))
         state = graph.get_state({"configurable": {"thread_id": paused_run.name}})
+        # 2. Verify the expected result and any safety guarantees.
         assert state.next == ("review_proposal",)
         assert "reviewed_by_employee_id" not in state.values
 
 
 def test_view_does_not_resume(paused_run, capsys):
+    # 1. Set up inputs and exercise the behavior under test.
     cli.review_saved_workflow(
         workflow_id=paused_run.name, employee_id="emp-priya", resume=False
     )
+    # 2. Verify the expected result and any safety guarantees.
     assert "Viewing does not resume" in capsys.readouterr().out
     cli.review_saved_workflow(
         workflow_id=paused_run.name, employee_id="emp-priya", resume=True
@@ -102,6 +108,7 @@ def test_view_does_not_resume(paused_run, capsys):
 
 
 def test_graph_rechecks_reviewer_access_without_cli_guard(paused_run):
+    # 1. Set up inputs and exercise the behavior under test.
     with closing(
         sqlite3.connect(paused_run / "checkpoints.db", check_same_thread=False)
     ) as connection:
@@ -119,6 +126,7 @@ def test_graph_rechecks_reviewer_access_without_cli_guard(paused_run):
                     reviewer_employee_id="emp-ben",
                 ),
             )
+        # 2. Verify the expected result and any safety guarantees.
         assert (
             "reviewed_by_employee_id"
             not in graph.get_state(

@@ -38,6 +38,7 @@ def create_checkpointer(connection: sqlite3.Connection) -> SqliteSaver:
 
 def review_saved_workflow(*, workflow_id: str, employee_id: str, resume: bool) -> None:
     """Use a simulated reviewer session; never accept identity from resume content."""
+    # 1. Validate the workflow ID and locate its persisted records.
     try:
         run_directory = RUNS_DIRECTORY / str(UUID(workflow_id))
     except ValueError:
@@ -50,6 +51,7 @@ def review_saved_workflow(*, workflow_id: str, employee_id: str, resume: bool) -
     database_path = run_directory / "business.db"
     config: RunnableConfig = {"configurable": {"thread_id": str(UUID(workflow_id))}}
 
+    # 2. Restore the graph checkpoint and locate its proposal.
     with closing(
         sqlite3.connect(run_directory / "checkpoints.db", check_same_thread=False)
     ) as connection:
@@ -58,6 +60,7 @@ def review_saved_workflow(*, workflow_id: str, employee_id: str, resume: bool) -
         proposal = state.values.get("proposal")
         if proposal is None:
             raise ValueError("Workflow has no proposal to review")
+        # 3. Authorize the reviewer before displaying proposal details.
         reviewer_context = InvestigationContext(
             database_path=database_path, employee_id=employee_id
         )
@@ -66,11 +69,13 @@ def review_saved_workflow(*, workflow_id: str, employee_id: str, resume: bool) -
                 session=session, proposal_id=proposal.id, database_path=proposals_path
             )
         print(stored.model_dump_json(indent=2))
+        # 4. Stop for view-only requests or require a pending review pause.
         if not resume:
             print("\nViewing does not resume, approve, or execute the proposal.")
             return
         if state.next != ("review_proposal",):
             raise ValueError("Workflow is not waiting for review; nothing resumed")
+        # 5. Resume with an acknowledgment and a separately bound reviewer identity.
         result = graph.invoke(
             Command(resume={"action": "acknowledge_review"}),
             config=config,
@@ -84,12 +89,14 @@ def review_saved_workflow(*, workflow_id: str, employee_id: str, resume: bool) -
                 reviewer_employee_id=employee_id,
             ),
         )
+        # 6. Validate the completed result and report that no approval occurred.
         completed = EndpointChangeResult.model_validate(result)
         print(f"\nReview acknowledged by {completed.reviewed_by_employee_id}.")
         print("Proposal remains pending approval. No configuration changes executed.")
 
 
 def main():
+    # 1. Parse the requested CLI operation and its options.
     scenarios = load_scenarios()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario", choices=scenarios, default="baseline")
@@ -110,6 +117,7 @@ def main():
         "--employee", help="Simulated reviewer identity; not authentication"
     )
     args = parser.parse_args()
+    # 2. Handle listing or reviewer operations before starting an investigation.
     if args.list_scenarios:
         for name, scenario in scenarios.items():
             print(f"{name}: {scenario.expected[0]}")
@@ -133,7 +141,7 @@ def main():
         parser.error("--employee is only used with --review or --resume")
     selected_scenario = scenarios[args.scenario]
 
-    # 1. Create isolated, durable records for this scenario run.
+    # 3. Create isolated, durable records for this scenario run.
     model = create_model()
     workflow_id = str(uuid4())
     run_directory = RUNS_DIRECTORY / workflow_id
@@ -157,7 +165,7 @@ def main():
     )
     print(f"Workflow ID: {workflow_id}")
 
-    # 2. Supply trusted dependencies and persist graph progress in SQLite.
+    # 4. Supply trusted dependencies and persist graph progress in SQLite.
     workflow_context = EndpointChangeContext(
         agent=build_agent(model=model, now=scenario["now"]),
         investigation_context=InvestigationContext(
@@ -190,7 +198,7 @@ def main():
     except (ValueError, PermissionError) as error:
         raise SystemExit(f"Workflow rejected: {error}") from None
 
-    # 3. Display the proposal, investigation, and pause status.
+    # 5. Display the proposal, investigation, and pause status.
     if result.proposal is not None:
         if result.was_created:
             print(f"\nProposal created: {result.proposal.id}. Pending approval.")
@@ -211,7 +219,7 @@ def main():
             f"uv run python -m switchboard --resume {workflow_id} --employee emp-priya"
         )
 
-    # 4. Optionally evaluate policy accuracy, without authorizing a change.
+    # 6. Optionally evaluate policy accuracy, without authorizing a change.
     if args.evaluate_policy:
         review = evaluate_policy(
             claims=result.investigation.model_dump_json(), model=model

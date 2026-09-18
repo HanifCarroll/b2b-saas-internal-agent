@@ -42,6 +42,7 @@ def test_candidate_rejects_inconsistent_fields(candidate, field, value, message)
 
 
 def test_blocked_result_can_have_no_ticket_or_endpoint():
+    # 1. Set up inputs and exercise the behavior under test.
     result = InvestigationResult(
         outcome="blocked",
         ticket_id=None,
@@ -50,6 +51,7 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
         summary="The requested record is unavailable.",
         blockers=["Required evidence could not be retrieved."],
     )
+    # 2. Verify the expected result and any safety guarantees.
     assert result.ticket_id is None
 
 

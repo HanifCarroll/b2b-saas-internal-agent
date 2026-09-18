@@ -22,6 +22,7 @@ from switchboard.workflow import (
 
 @pytest.mark.parametrize("changes_records", [False, True])
 def test_investigation_checks_database_after_agent_failure(tmp_path, changes_records):
+    # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "business.db"
     with closing(sqlite3.connect(path)) as connection:
         seed_database(connection=connection)
@@ -72,12 +73,14 @@ def workflow_context(tmp_path, monkeypatch):
 
 
 def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
+    # 1. Set up inputs and exercise the behavior under test.
     response = structured_result()
     context = workflow_context(response)
     result = endpoint_change_graph.invoke(
         {"request": "Investigate CHG-1042"}, context=context
     )
 
+    # 2. Verify the expected result and any safety guarantees.
     assert result["investigation"].outcome == "proposal_candidate"
     assert result["was_created"] is True
     assert result["__interrupt__"][0].value["proposal_id"] == result["proposal"].id
@@ -94,6 +97,7 @@ def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
 
 
 def test_blocked_routes_to_end_without_saving(workflow_context):
+    # 1. Set up inputs and exercise the behavior under test.
     context = workflow_context(
         structured_result(
             outcome="blocked",
@@ -108,6 +112,7 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
         {"request": "Investigate CHG-1042"}, context=context
     )
 
+    # 2. Verify the expected result and any safety guarantees.
     assert result["investigation"].outcome == "blocked"
     assert "__interrupt__" not in result
     assert "proposal" not in result
@@ -118,6 +123,7 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
 def test_unsupported_candidate_fails_business_validation_without_saving(
     workflow_context,
 ):
+    # 1. Set up inputs and exercise the behavior under test.
     context = workflow_context(
         structured_result(proposed_endpoint="https://other.acme.example/deals")
     )
@@ -126,4 +132,5 @@ def test_unsupported_candidate_fails_business_validation_without_saving(
             {"request": "Investigate CHG-1042"}, context=context
         )
 
+    # 2. Verify the expected result and any safety guarantees.
     assert not context.proposals_database_path.exists()

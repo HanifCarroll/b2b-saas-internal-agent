@@ -47,6 +47,7 @@ class EndpointChangeWorkflowState(TypedDict):
 def investigate_request(
     state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
 ):
+    # 1. Require the investigator and capture the initial business records.
     agent = runtime.context.agent
     if agent is None:
         raise ValueError("Starting an investigation requires an agent")
@@ -54,6 +55,7 @@ def investigate_request(
     with closing(sqlite3.connect(employee_context.database_path)) as connection:
         database_before = list(connection.iterdump())
 
+    # 2. Run the agent and verify read-only behavior even if it fails.
     try:
         result = agent.invoke(
             {"messages": [HumanMessage(content=state["request"])]},
@@ -67,6 +69,7 @@ def investigate_request(
         if database_after != database_before:
             raise RuntimeError("Investigation changed business records")
 
+    # 3. Validate the answer and return the investigation with its messages.
     investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
 
     return {"investigation": investigation, "messages": result["messages"]}
@@ -75,10 +78,12 @@ def investigate_request(
 def prepare_proposal(
     state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
 ):
+    # 1. Require a completed investigation.
     investigation = state.get("investigation")
     if investigation is None:
         raise ValueError("Cannot prepare a proposal without an investigation")
 
+    # 2. Validate and save using the trusted employee session.
     with employee_session(runtime.context.investigation_context) as session:
         proposal = validate_proposal(investigation=investigation, session=session)
         proposal, was_created = save_proposal(
@@ -87,6 +92,7 @@ def prepare_proposal(
             database_path=runtime.context.proposals_database_path,
         )
 
+    # 3. Return the saved proposal and whether it was created.
     return {"proposal": proposal, "was_created": was_created}
 
 
@@ -94,6 +100,7 @@ def review_proposal(
     state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
 ):
     """Pause for a read acknowledgment; this never approves a change."""
+    # 1. Require a saved proposal and pause for external review.
     proposal = state.get("proposal")
     if proposal is None:
         raise ValueError("Cannot review without a proposal")
@@ -103,11 +110,13 @@ def review_proposal(
             "message": "Review the saved proposal, then acknowledge review. This is not approval.",
         }
     )
+    # 2. Validate the acknowledgment and require a reviewer identity.
     if response != {"action": "acknowledge_review"}:
         raise ValueError("Expected a review acknowledgment, not an approval decision")
     reviewer_id = runtime.context.reviewer_employee_id
     if reviewer_id is None:
         raise PermissionError("A reviewer session is required")
+    # 3. Recheck reviewer access and confirm the proposal is unchanged.
     reviewer_context = InvestigationContext(
         database_path=runtime.context.investigation_context.database_path,
         employee_id=reviewer_id,
@@ -120,15 +129,18 @@ def review_proposal(
         )
     if stored != proposal:
         raise ValueError("Proposal changed since review was requested")
+    # 4. Record acknowledgment only; approval status stays unchanged.
     return {"reviewed_by_employee_id": reviewer_id}
 
 
 def route_after_investigation(state: EndpointChangeWorkflowState):
+    # 1. Require the result produced by the investigation node.
     investigation = state.get("investigation")
 
     if investigation is None:
         raise ValueError("Cannot route without an investigation result")
 
+    # 2. Return the outcome used by the conditional edge.
     return investigation.outcome
 
 

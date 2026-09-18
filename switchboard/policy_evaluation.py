@@ -24,12 +24,14 @@ class PolicyReview(Record):
 
 def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
     """Compare claims with policy sources in a separate call, without agent history."""
+    # 1. Load the source policies and require evidence for evaluation.
     policies = [
         {"id": path.stem, "content": path.read_text()}
         for path in sorted((FIXTURES / "policies").glob("*.md"))
     ]
     if not policies:
         raise ValueError("Policy evaluation requires policy sources")
+    # 2. Ask the reviewer model to compare claims with those sources.
     prompt = (Path(__file__).parent / "prompts" / "policy_evaluation.md").read_text()
     response = model.invoke(
         [
@@ -43,6 +45,7 @@ def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
         ],
         config={"run_name": "policy-faithfulness-review"},
     )
+    # 3. Validate the response and reject fabricated source excerpts.
     review = PolicyReview.model_validate_json(response.text)
     # Reject invented source citations rather than displaying a fabricated review.
     sources = {policy["id"]: policy["content"] for policy in policies}
@@ -59,12 +62,14 @@ def main():
 
     from switchboard.agent import create_model
 
+    # 1. Load credentials, calibration examples, and the model.
     root = Path(__file__).resolve().parent.parent
     load_dotenv(root / ".env")
     examples = json.loads(
         (root / "data/evaluations/policy_faithfulness.json").read_text()
     )
     model = create_model()
+    # 2. Evaluate examples and compare with expectations withheld from the model.
     disagreements = 0
     for example in examples:
         review = evaluate_policy(claims=example["claims"], model=model)
@@ -80,6 +85,7 @@ def main():
                 }
             )
         )
+    # 3. Exit unsuccessfully if any judgment disagrees with its expected result.
     raise SystemExit(1 if disagreements else 0)
 
 

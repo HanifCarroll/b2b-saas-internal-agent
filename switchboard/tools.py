@@ -26,9 +26,10 @@ class InvestigationContext:
 
 @contextmanager
 def employee_session(context: InvestigationContext):
-    # Each tool gets its own read-only connection, including concurrent tool calls.
+    # 1. Open a separate read-only connection for this invocation.
     uri = context.database_path.resolve().as_uri() + "?mode=ro"
     with closing(sqlite3.connect(uri, uri=True)) as db_connection:
+        # 2. Bind the trusted identity and close the connection when finished.
         yield EmployeeSession(
             db_connection=db_connection, employee_id=context.employee_id
         )

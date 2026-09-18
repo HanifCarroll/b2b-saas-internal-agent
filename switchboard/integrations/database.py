@@ -19,7 +19,9 @@ def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> No
     Business records live in separate simulated systems, so their IDs are references,
     not foreign keys. Application validation must check them before saving.
     """
+    # 1. Ensure the local storage directory exists.
     database_path.parent.mkdir(parents=True, exist_ok=True)
+    # 2. Create the table without replacing existing proposals.
     with closing(sqlite3.connect(database_path)) as connection, connection:
         connection.execute(
             """
@@ -43,6 +45,7 @@ def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> No
 
 def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) -> None:
     """Initialize an empty database from fixtures; never reset existing records."""
+    # 1. Validate every fixture before creating or inserting records.
     if connection.in_transaction:
         raise ValueError("Seed requires a connection without an active transaction")
     fixtures = {}
@@ -56,6 +59,7 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
         TypeAdapter(list[model]).validate_json(content)
         # Preserve source URLs and timestamps exactly after validating their shape.
         fixtures[table] = json.loads(content)
+    # 2. Create the related tables in one transaction.
     connection.execute("PRAGMA foreign_keys = ON")
     with connection:
         connection.execute("BEGIN")
@@ -75,6 +79,7 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
         connection.execute(
             "CREATE TABLE policies (id TEXT PRIMARY KEY, content TEXT NOT NULL)"
         )
+        # 3. Insert business records and employee customer assignments.
         for record in fixtures["customers"]:
             connection.execute(
                 "INSERT INTO customers VALUES (?, ?)",
@@ -95,6 +100,7 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
                     f"INSERT INTO {table} VALUES (?, ?, ?)",
                     (record["id"], record["customer_id"], json.dumps(record)),
                 )
+        # 4. Insert policy documents before committing the transaction.
         for path in sorted((data_dir / "policies").glob("*.md")):
             connection.execute(
                 "INSERT INTO policies VALUES (?, ?)", (path.stem, path.read_text())

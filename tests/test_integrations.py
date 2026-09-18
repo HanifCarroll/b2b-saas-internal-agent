@@ -234,6 +234,7 @@ def test_unknown_employee_cannot_read_policies(database):
 
 
 def test_successful_and_denied_reads_leave_database_unchanged(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     before = list(database.iterdump())
 
@@ -244,6 +245,7 @@ def test_successful_and_denied_reads_leave_database_unchanged(database):
     with pytest.raises(PermissionError):
         get_integration(session=alex, integration_id="int-globex-prod")
 
+    # 2. Verify the expected result and any safety guarantees.
     assert list(database.iterdump()) == before
 
 
@@ -257,6 +259,7 @@ def test_seeding_existing_database_is_rejected_without_changes(database):
 
 
 def test_ticket_read_rejects_invalid_stored_datetime(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     record = get_ticket(session=alex, ticket_id="CHG-1042").model_dump(mode="json")
     record["created_at"] = "invalid"
@@ -270,6 +273,7 @@ def test_ticket_read_rejects_invalid_stored_datetime(database):
 
 
 def test_customer_read_rejects_invalid_stored_name(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     record = get_customer(session=alex, customer_id="acme").model_dump(mode="json")
     record["name"] = 123
@@ -283,6 +287,7 @@ def test_customer_read_rejects_invalid_stored_name(database):
 
 
 def test_configuration_read_rejects_invalid_stored_version(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     record = get_integration(session=alex, integration_id="int-acme-prod").model_dump(
         mode="json"
@@ -298,6 +303,7 @@ def test_configuration_read_rejects_invalid_stored_version(database):
 
 
 def test_configuration_read_does_not_expose_extra_credential_field(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     record = get_integration(session=alex, integration_id="int-acme-prod").model_dump(
         mode="json"
@@ -310,15 +316,18 @@ def test_configuration_read_does_not_expose_extra_credential_field(database):
 
     integration = get_integration(session=alex, integration_id="int-acme-prod")
 
+    # 2. Verify the expected result and any safety guarantees.
     assert "credential" not in integration.model_dump()
 
 
 def test_existing_session_uses_updated_support_role(database):
+    # 1. Set up inputs and exercise the behavior under test.
     alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     database.execute(
         "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
     )
 
+    # 2. Verify the expected result and any safety guarantees.
     assert get_ticket(session=alex, ticket_id="CHG-1042").status == "open"
     with pytest.raises(PermissionError):
         get_integration(session=alex, integration_id="int-acme-prod")
@@ -351,6 +360,7 @@ def test_existing_session_loses_access_when_customer_assignment_is_removed(datab
 
 
 def test_records_persist_after_reopening_database_in_read_only_mode(tmp_path):
+    # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "switchboard.db"
     with closing(sqlite3.connect(path)) as connection:
         seed_database(connection=connection)
@@ -360,5 +370,6 @@ def test_records_persist_after_reopening_database_in_read_only_mode(tmp_path):
         alex = EmployeeSession(db_connection=connection, employee_id="emp-alex")
         integration = get_integration(session=alex, integration_id="int-acme-prod")
 
+        # 2. Verify the expected result and any safety guarantees.
         assert integration.version == 7
         assert list(connection.iterdump()) == original

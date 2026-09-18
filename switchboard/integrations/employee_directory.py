@@ -28,10 +28,12 @@ class EmployeeSession:
 
     def get_active_employee_role(self) -> Role:
         """Return the current employee's role; deny access if inactive or unknown."""
+        # 1. Look up the active employee using the bound identity.
         row = self._db_connection.execute(
             "SELECT role FROM employees WHERE id = ? AND active = 1",
             (self._employee_id,),
         ).fetchone()
+        # 2. Reject unknown identities or roles before returning the role.
         if row is None or row[0] not in ROLES:
             raise PermissionError("Access denied")
         return row[0]

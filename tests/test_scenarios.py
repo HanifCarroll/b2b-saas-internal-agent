@@ -12,6 +12,7 @@ from switchboard.scenarios import apply_scenario, load_scenarios
 
 @pytest.mark.parametrize("name", list(load_scenarios()))
 def test_scenario_changes_only_its_intended_inputs(name):
+    # 1. Set up inputs and exercise the behavior under test.
     scenario = load_scenarios()[name]
     source_before = {
         path: path.read_bytes() for path in FIXTURES.rglob("*") if path.is_file()
@@ -28,6 +29,7 @@ def test_scenario_changes_only_its_intended_inputs(name):
         ticket_after = json.loads(
             db_connection.execute("SELECT body FROM tickets").fetchone()[0]
         )
+        # 2. Verify the expected result and any safety guarantees.
         assert ticket_after == ticket_before | scenario.ticket_updates.model_dump(
             mode="json", exclude_none=True
         )

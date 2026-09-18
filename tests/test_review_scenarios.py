@@ -20,6 +20,7 @@ REVIEW_SCENARIOS = json.loads((SCENARIOS / "reviews.json").read_text())
     "scenario", REVIEW_SCENARIOS.values(), ids=REVIEW_SCENARIOS.keys()
 )
 def test_review_scenario(scenario, tmp_path):
+    # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "proposals.db"
     with closing(sqlite3.connect(":memory:")) as connection:
         seed_database(connection=connection)
@@ -62,6 +63,7 @@ def test_review_scenario(scenario, tmp_path):
             result = get_proposal(
                 session=reviewer, proposal_id=proposal_id, database_path=path
             )
+            # 2. Verify the expected result and any safety guarantees.
             assert result == proposal
             assert result.status == "pending_approval"
         else:

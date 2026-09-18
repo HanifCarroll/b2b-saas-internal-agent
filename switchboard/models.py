@@ -119,6 +119,7 @@ class InvestigationResult(Record):
 
     @model_validator(mode="after")
     def validate_outcome(self) -> Self:
+        # 1. Require complete, consistent fields for a proposal candidate.
         if self.outcome == "proposal_candidate":
             if self.ticket_id is None:
                 raise ValueError("A proposal candidate requires a ticket ID")
@@ -128,6 +129,7 @@ class InvestigationResult(Record):
                 raise ValueError("A proposal candidate requires supporting evidence")
             if self.blockers:
                 raise ValueError("A proposal candidate cannot have blockers")
+        # 2. Require an explanation for a blocked investigation.
         elif not self.blockers:
             raise ValueError("A blocked investigation requires at least one blocker")
         return self

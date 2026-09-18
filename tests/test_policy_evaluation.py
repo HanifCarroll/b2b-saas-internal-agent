@@ -21,6 +21,7 @@ def test_policy_review_accepts_no_issues():
 
 
 def test_policy_review_rejects_invented_excerpt():
+    # 1. Set up inputs and exercise the behavior under test.
     review = {
         "issues": [
             {

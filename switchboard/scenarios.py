@@ -31,12 +31,14 @@ def load_scenarios() -> dict[str, Scenario]:
 
 def apply_scenario(*, db_connection: sqlite3.Connection, scenario: Scenario) -> dict:
     """Modify only the fresh test database, before the read-only run begins."""
+    # 1. Start from baseline inputs and apply clock or request overrides.
     inputs = json.loads((SCENARIOS / "baseline.json").read_text())
     if scenario.now is not None:
         inputs["now"] = scenario.now.isoformat()
     if scenario.request is not None:
         inputs["request"] = scenario.request
 
+    # 2. Read and validate any ticket changes before writing them.
     updates = scenario.ticket_updates.model_dump(mode="json", exclude_none=True)
     if updates:
         row = db_connection.execute(
@@ -48,6 +50,7 @@ def apply_scenario(*, db_connection: sqlite3.Connection, scenario: Scenario) -> 
         ticket.update(updates)
         content = json.dumps(ticket)
         Ticket.model_validate_json(content)
+        # 3. Persist only the scenario ticket changes in a transaction.
         with db_connection:
             db_connection.execute(
                 "UPDATE tickets SET body = ? WHERE id = ?",

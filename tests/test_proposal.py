@@ -41,6 +41,7 @@ def test_proposal_rejects_invalid_fields(field, value):
 
 
 def test_proposal_survives_reopening_and_initialization(tmp_path):
+    # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "local" / "proposals.db"
     initialize_proposal_database(path)
     proposal = Proposal.model_validate_json(json.dumps(PROPOSAL))
@@ -64,6 +65,7 @@ def test_proposal_survives_reopening_and_initialization(tmp_path):
     with closing(sqlite3.connect(path)) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute("SELECT * FROM proposals").fetchall()
+    # 2. Verify the expected result and any safety guarantees.
     assert len(rows) == 1
     assert Proposal.model_validate_json(json.dumps(dict(rows[0]))) == proposal
     assert proposal.status == "pending_approval"

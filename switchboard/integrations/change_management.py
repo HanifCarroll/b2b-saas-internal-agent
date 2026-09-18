@@ -78,11 +78,13 @@ def ensure_proposal_matches_current_records(
     *, proposal: Proposal, session: EmployeeSession
 ) -> None:
     """Raise if access, request validity, or the proposal snapshot has changed."""
+    # 1. Recheck access and whether the request is still supported.
     ticket, integration = validate_endpoint_change_request(
         ticket_id=proposal.ticket_id,
         proposed_endpoint=proposal.proposed_endpoint,
         session=session,
     )
+    # 2. Reject changes to the proposing identity or configuration snapshot.
     if (
         proposal.proposed_by_employee_id != session.employee_id
         or proposal.requester_contact_id != ticket.requester_contact_id
