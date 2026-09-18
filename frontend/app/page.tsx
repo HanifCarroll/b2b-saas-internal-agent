@@ -25,7 +25,11 @@ import {
   investigationKeys,
   type InvestigationRun,
   type PolicyReview,
+  identityKey,
+  type RequestIdentity,
+  type CurrentEmployee,
 } from "@/lib/api";
+import { AuthenticationGate, type AuthenticatedSession } from "@/components/authentication-gate";
 import { InvestigationForm } from "@/components/investigation-form";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
@@ -40,31 +44,65 @@ export default function Home() {
         },
       }),
   );
-  const [employee, setEmployee] = useState("emp-alex");
 
   return (
     <QueryClientProvider client={queryClient}>
-      <InvestigationWorkspace key={employee} employee={employee} onEmployeeChange={setEmployee} />
+      <AuthenticationGate>
+        {(session) => (
+          <WorkspaceSession key={JSON.stringify(identityKey(session.identity))} session={session} />
+        )}
+      </AuthenticationGate>
+    </QueryClientProvider>
+  );
+}
+
+function WorkspaceSession({ session }: { session: AuthenticatedSession }) {
+  // A fresh cache per session prevents late responses from reaching another account.
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, refetchOnWindowFocus: false },
+          mutations: { retry: false },
+        },
+      }),
+  );
+  const [demoEmployee, setDemoEmployee] = useState("emp-alex");
+  const identity: RequestIdentity =
+    session.identity.mode === "demo"
+      ? { mode: "demo", employeeId: demoEmployee }
+      : session.identity;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <InvestigationWorkspace
+        key={JSON.stringify(identityKey(identity))}
+        identity={identity}
+        currentEmployee={session.employee}
+        onEmployeeChange={setDemoEmployee}
+      />
     </QueryClientProvider>
   );
 }
 
 function InvestigationWorkspace({
-  employee,
+  identity,
+  currentEmployee,
   onEmployeeChange,
 }: {
-  employee: string;
+  identity: RequestIdentity;
+  currentEmployee: CurrentEmployee | null;
   onEmployeeChange: (employee: string) => void;
 }) {
+  const employee = identity.mode === "demo" ? identity.employeeId : currentEmployee!.employee_id;
   const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
-  const optionsQuery = useQuery(demoOptionsQuery);
-  const demo = useQuery(demoStateQuery);
+  const optionsQuery = useQuery(demoOptionsQuery(identity));
+  const demo = useQuery(demoStateQuery(identity));
   const mutationsInProgress = useIsMutating();
-  const histories = useQuery(historyQuery(employee));
-  const selectedRun = useQuery(investigationQuery(employee, selectedRunId));
+  const histories = useQuery(historyQuery(identity));
+  const selectedRun = useQuery(investigationQuery(identity, selectedRunId));
   const options = optionsQuery.data ?? null;
   const history = histories.data ?? [];
   const run = selectedRun.isError ? null : (selectedRun.data ?? null);
@@ -74,31 +112,31 @@ function InvestigationWorkspace({
     mutationFn: (scenario: string) =>
       requestApi<InvestigationRun>({
         path: "/api/investigations",
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: {
           method: "POST",
           body: JSON.stringify({ scenario_id: scenario }),
         },
       }),
     onSuccess: (savedRun) => {
-      queryClient.setQueryData(investigationKeys.run(employee, savedRun.run_id), savedRun);
+      queryClient.setQueryData(investigationKeys.run(identity, savedRun.run_id), savedRun);
       setSelectedRunId(savedRun.run_id);
     },
     onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: investigationKeys.history(employee) }),
+      queryClient.invalidateQueries({ queryKey: investigationKeys.history(identity) }),
   });
   const policyEvaluation = useMutation({
     mutationFn: (runId: string) =>
       requestApi<PolicyReview>({
         path: `/api/investigations/${runId}/policy-review`,
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: {
           method: "POST",
         },
       }),
     onSuccess: (policy_review, runId) => {
       queryClient.setQueryData<InvestigationRun>(
-        investigationKeys.run(employee, runId),
+        investigationKeys.run(identity, runId),
         (current) => (current ? { ...current, policy_review } : current),
       );
     },
@@ -108,7 +146,7 @@ function InvestigationWorkspace({
     mutationFn: (scenario: string) =>
       requestApi<DemoState>({
         path: "/api/demo/reset",
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: {
           method: "POST",
           body: JSON.stringify({ scenario_id: scenario, confirm: true }),
@@ -181,7 +219,9 @@ function InvestigationWorkspace({
             <Layers className="size-5" />
             Switchboard
           </div>
-          <Badge variant="outline">Local demo · Simulated identities</Badge>
+          <Badge variant="outline">
+            {identity.mode === "demo" ? "Local demo · Simulated identities" : "Microsoft sign-in"}
+          </Badge>
         </div>
       </header>
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">
@@ -201,6 +241,7 @@ function InvestigationWorkspace({
         <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="flex flex-col gap-5">
             <InvestigationForm
+              authMode={identity.mode}
               options={options}
               employee={employee}
               busy={isPending || mutationsInProgress > 0 || demo.isFetching}
@@ -234,10 +275,16 @@ function InvestigationWorkspace({
             {!run && !isPending && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Initialize the demo, then investigate</CardTitle>
+                  <CardTitle>
+                    {identity.mode === "demo"
+                      ? "Initialize the demo, then investigate"
+                      : "Investigate the active scenario"}
+                  </CardTitle>
                   <CardDescription>
-                    Reset to baseline for a valid proposal. To try another starting state, reset
-                    explicitly; starting an investigation never resets business records.
+                    {identity.mode === "demo"
+                      ? "Reset to baseline for a valid proposal. Reset explicitly to try another starting state."
+                      : "If no scenario is active, prepare the synthetic data through the local CLI."}{" "}
+                    Starting an investigation never resets business records.
                   </CardDescription>
                 </CardHeader>
               </Card>
@@ -269,10 +316,12 @@ function InvestigationWorkspace({
                     key={run.run_id}
                     runId={run.run_id}
                     proposalId={run.result.proposal.id}
+                    identity={identity}
+                    currentEmployee={currentEmployee}
                     employees={options.employees}
                     onStatusRefresh={() =>
                       queryClient.invalidateQueries({
-                        queryKey: investigationKeys.run(employee, run.run_id),
+                        queryKey: investigationKeys.run(identity, run.run_id),
                       })
                     }
                   />

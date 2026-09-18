@@ -133,43 +133,50 @@ export async function requestApi<T>({
   return response.json();
 }
 
-// Include the simulated identity in every employee-scoped cache key.
+export type CurrentEmployee = { employee_id: string; role: string };
+
+export function identityKey(identity: RequestIdentity) {
+  return identity.mode === "demo" ? ["demo", identity.employeeId] : ["entra", identity.accountId];
+}
+
+// Keep business caches separate for every mode and account.
 export const investigationKeys = {
-  history: (employee: string) => ["investigations", employee] as const,
-  run: (employee: string, runId: string | null) => ["investigation", employee, runId] as const,
+  history: (identity: RequestIdentity) => ["investigations", ...identityKey(identity)] as const,
+  run: (identity: RequestIdentity, runId: string | null) =>
+    ["investigation", ...identityKey(identity), runId] as const,
 };
 
-export const demoOptionsQuery = {
-  queryKey: ["demo-options"],
+export const demoOptionsQuery = (identity: RequestIdentity) => ({
+  queryKey: ["demo-options", ...identityKey(identity)],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     requestApi<DemoOptions>({
       path: "/api/demo-options",
-      identity: { mode: "demo", employeeId: "" },
+      identity,
       options: { signal },
     }),
-};
+});
 
-export function historyQuery(employee: string) {
+export function historyQuery(identity: RequestIdentity) {
   return {
-    queryKey: investigationKeys.history(employee),
+    queryKey: investigationKeys.history(identity),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       requestApi<InvestigationHistoryItem[]>({
         path: "/api/investigations",
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: { signal },
       }),
   };
 }
 
-export function investigationQuery(employee: string, runId: string | null) {
+export function investigationQuery(identity: RequestIdentity, runId: string | null) {
   return {
-    queryKey: investigationKeys.run(employee, runId),
+    queryKey: investigationKeys.run(identity, runId),
     enabled: runId !== null,
     queryFn: ({ signal }: { signal: AbortSignal }) => {
       if (!runId) throw new Error("Select an investigation first.");
       return requestApi<InvestigationRun>({
         path: `/api/investigations/${runId}`,
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: { signal },
       });
     },
@@ -181,20 +188,20 @@ export const proposalReviewKeys = {
 };
 
 export function proposalReviewQuery({
-  employee,
+  identity,
   runId,
   proposalId,
 }: {
-  employee: string;
+  identity: RequestIdentity;
   runId: string;
   proposalId: string;
 }) {
   return {
-    queryKey: [...proposalReviewKeys.proposal(runId, proposalId), employee],
+    queryKey: [...proposalReviewKeys.proposal(runId, proposalId), ...identityKey(identity)],
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       requestApi<ProposalReviewResult>({
         path: `/api/runs/${runId}/proposals/${proposalId}`,
-        identity: { mode: "demo", employeeId: employee },
+        identity,
         options: {
           signal,
         },
@@ -207,15 +214,15 @@ export function proposalReviewQuery({
 
 export type DemoState = { scenario_id: string | null };
 
-export const demoStateQuery = {
-  queryKey: ["demo-state"],
+export const demoStateQuery = (identity: RequestIdentity) => ({
+  queryKey: ["demo-state", ...identityKey(identity)],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     requestApi<DemoState>({
       path: "/api/demo",
-      identity: { mode: "demo", employeeId: "" },
+      identity,
       options: { signal },
     }),
-};
+});
 
 export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
   await client.cancelQueries();

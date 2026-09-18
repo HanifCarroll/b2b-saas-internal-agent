@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui
 import { Button } from "@/components/ui/button";
 
 export function InvestigationForm({
+  authMode,
   options,
   employee,
   busy,
@@ -23,6 +24,7 @@ export function InvestigationForm({
   onReset,
   activeScenario,
 }: {
+  authMode: "demo" | "entra";
   options: DemoOptions | null;
   employee: string;
   busy: boolean;
@@ -35,7 +37,9 @@ export function InvestigationForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Demo setup and investigation</CardTitle>
+        <CardTitle>
+          {authMode === "demo" ? "Demo setup and investigation" : "Investigation"}
+        </CardTitle>
         <CardDescription>
           Active scenario: {activeScenario?.replaceAll("-", " ") ?? "Not initialized"}.
           Investigations use the current shared records.
@@ -49,84 +53,86 @@ export function InvestigationForm({
           }}
           className="flex flex-col gap-5"
         >
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="scenario">Reset to scenario</FieldLabel>
-              <Select
-                items={options?.scenarios.map((item) => ({
-                  value: item.id,
-                  label: item.id.replaceAll("-", " "),
-                }))}
-                value={scenario}
+          {authMode === "demo" && (
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="scenario">Reset to scenario</FieldLabel>
+                <Select
+                  items={options?.scenarios.map((item) => ({
+                    value: item.id,
+                    label: item.id.replaceAll("-", " "),
+                  }))}
+                  value={scenario}
+                  disabled={busy || !options}
+                  onValueChange={(value) => {
+                    if (value) setScenario(value);
+                  }}
+                >
+                  <SelectTrigger id="scenario" className="w-full">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {options?.scenarios.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.id.replaceAll("-", " ")}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Button
+                type="button"
+                variant="outline"
                 disabled={busy || !options}
-                onValueChange={(value) => {
-                  if (value) setScenario(value);
-                }}
-              >
-                <SelectTrigger id="scenario" className="w-full">
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {options?.scenarios.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.id.replaceAll("-", " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy || !options}
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Reset the demo? This permanently deletes all saved investigations, proposals, approvals, and execution receipts, and restores the selected scenario.",
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Reset the demo? This permanently deletes all saved investigations, proposals, approvals, and execution receipts, and restores the selected scenario.",
+                    )
                   )
-                )
-                  onReset(scenario);
-              }}
-            >
-              Reset demo to scenario
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Reset clears all saved demo work. Changing this selection alone does nothing.
-            </p>
-            <Field>
-              <FieldLabel htmlFor="employee">Investigate as</FieldLabel>
-              <Select
-                items={options?.employees.map((item) => ({
-                  value: item.id,
-                  label: item.name,
-                }))}
-                value={employee}
-                disabled={busy || !options}
-                onValueChange={(value) => {
-                  if (!value) return;
-                  onEmployeeChange(value);
+                    onReset(scenario);
                 }}
               >
-                <SelectTrigger id="employee" className="w-full">
-                  <SelectValue placeholder="Select an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {options?.employees.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                Demo identity only, not sign-in. Customer access is enforced in Python.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
+                Reset demo to scenario
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Reset clears all saved demo work. Changing this selection alone does nothing.
+              </p>
+              <Field>
+                <FieldLabel htmlFor="employee">Investigate as</FieldLabel>
+                <Select
+                  items={options?.employees.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                  value={employee}
+                  disabled={busy || !options}
+                  onValueChange={(value) => {
+                    if (!value) return;
+                    onEmployeeChange(value);
+                  }}
+                >
+                  <SelectTrigger id="employee" className="w-full">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {options?.employees.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  Demo identity only, not sign-in. Customer access is enforced in Python.
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+          )}
           <Button type="submit" disabled={busy || !options || !activeScenario}>
             Start investigation
           </Button>

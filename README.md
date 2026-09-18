@@ -27,7 +27,7 @@ This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier cur
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
-The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Backend Entra token validation is implemented; browser sign-in, delivery verification, and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
+The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Backend Entra token validation is implemented; browser sign-in is implemented but live Microsoft authentication remains unverified. Delivery verification and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
 ## Checks
 
@@ -155,7 +155,7 @@ This is a local demo with a client-selected `X-Employee-Id` header, not authenti
 Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:check && npm run build` in `frontend/`.
 
 
-## Backend Entra authentication (frontend sign-in pending)
+## Entra authentication
 
 The API defaults to `entra` mode and requires configuration at startup. `SWITCHBOARD_AUTH_MODE=demo` explicitly enables the local simulated employee header. Never expose that mode against real business data. CLI commands remain trusted local operations, not Entra-authenticated HTTP requests.
 
@@ -163,8 +163,8 @@ For Entra mode, set the variables shown in `backend/entra.example.env` in the se
 
 In **Switchboard API → Manifest**, set `api.requestedAccessTokenVersion` to `2` and save. The API accepts only RS256-signed v2 access tokens issued by the configured tenant, for the API client ID, with `access_as_user` scope and the configured Web client as `azp`. It verifies expiry and not-before timestamps, then maps `oid` to an employee. Existing database role and customer-access checks still apply. Unmapped identities fail closed. Signing keys are fetched from Microsoft's fixed tenant endpoint and cached by PyJWT; a key-service connection failure returns 503 without allowing access.
 
-All API routes require a token in Entra mode. Supplying `X-Employee-Id` is rejected even alongside a valid token. HTTP demo reset is disabled; prepare synthetic data locally with the existing CLI reset command. The current frontend still sends simulated identity and will work only with explicit demo mode until the next implementation step.
+All API routes require a token in Entra mode. Supplying `X-Employee-Id` is rejected even alongside a valid token. HTTP demo reset is disabled; prepare synthetic data locally with the existing CLI reset command. The browser defaults to Entra mode; set `NEXT_PUBLIC_AUTH_MODE=demo` in `frontend/.env.local` to use simulated employees alongside backend demo mode. Restart Next.js after changing browser environment variables.
 
-Tests use locally signed RSA tokens, without contacting Microsoft or an LLM. Live Microsoft sign-in remains unverified until frontend integration.
+Tests use locally signed RSA tokens, without contacting Microsoft or an LLM. Live Microsoft sign-in remains unverified.
 
-The browser authentication module is in `frontend/lib/auth.ts`; its sign-in UI is not yet connected. `frontend/entra.example.env` lists the public build-time settings for that next step. It uses redirect sign-in at the application's origin (register `http://localhost:3000` as a SPA redirect URI for local use), session-scoped token storage, and account-specific token acquisition. Silent acquisition uses cached access or refresh tokens; when interactive authentication is required, the error is returned to the caller so the UI can offer sign-in again. Run frontend tests with `npm test` (Node 24; Microsoft SDK calls are mocked).
+The browser authentication module is in `frontend/lib/auth.ts`. Copy the public settings from `frontend/entra.example.env` into `frontend/.env.local` and restart Next.js. The authentication gate requires Microsoft identity and a successful `/api/me` response before displaying the workspace. Each signed-in workspace has a separate query cache; sign-out and account switching unmount it. Entra mode hides simulated employee selection and HTTP reset controls. It uses redirect sign-in at the application's origin (register `http://localhost:3000` as a SPA redirect URI for local use), session-scoped token storage, and account-specific token acquisition. Silent acquisition uses cached access or refresh tokens; when interactive authentication is required, the error is returned to the caller so the UI can offer sign-in again. Run frontend tests with `npm test` (Node 24; Microsoft SDK calls are mocked).

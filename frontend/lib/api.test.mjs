@@ -21,14 +21,24 @@ test("employee-scoped history is fetched and invalidated independently", async (
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
 
-  const alex = await client.fetchQuery(historyQuery("emp-alex"));
-  const priya = await client.fetchQuery(historyQuery("emp-priya"));
+  const alex = await client.fetchQuery(historyQuery({ mode: "demo", employeeId: "emp-alex" }));
+  const priya = await client.fetchQuery(historyQuery({ mode: "demo", employeeId: "emp-priya" }));
   assert.notDeepEqual(alex, priya);
   assert.deepEqual(calls, ["emp-alex", "emp-priya"]);
 
-  await client.invalidateQueries({ queryKey: investigationKeys.history("emp-alex") });
-  assert.equal(client.getQueryState(investigationKeys.history("emp-alex")).isInvalidated, true);
-  assert.equal(client.getQueryState(investigationKeys.history("emp-priya")).isInvalidated, false);
+  await client.invalidateQueries({
+    queryKey: investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }),
+  });
+  assert.equal(
+    client.getQueryState(investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }))
+      .isInvalidated,
+    true,
+  );
+  assert.equal(
+    client.getQueryState(investigationKeys.history({ mode: "demo", employeeId: "emp-priya" }))
+      .isInvalidated,
+    false,
+  );
 });
 
 test("canceling a run query aborts its network request", async (t) => {
@@ -43,7 +53,7 @@ test("canceling a run query aborts its network request", async (t) => {
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
-  const query = investigationQuery("emp-alex", "run-1");
+  const query = investigationQuery({ mode: "demo", employeeId: "emp-alex" }, "run-1");
   const pending = client.fetchQuery(query).catch(() => undefined);
   await client.cancelQueries({ queryKey: query.queryKey });
   await pending;
@@ -52,10 +62,10 @@ test("canceling a run query aborts its network request", async (t) => {
 });
 
 test("unselected runs stay disabled; inaccessible runs surface errors", async (t) => {
-  assert.equal(investigationQuery("emp-alex", null).enabled, false);
+  assert.equal(investigationQuery({ mode: "demo", employeeId: "emp-alex" }, null).enabled, false);
   assert.notDeepEqual(
-    investigationKeys.run("emp-alex", "run-1"),
-    investigationKeys.run("emp-priya", "run-1"),
+    investigationKeys.run({ mode: "demo", employeeId: "emp-alex" }, "run-1"),
+    investigationKeys.run({ mode: "demo", employeeId: "emp-priya" }, "run-1"),
   );
   t.mock.method(globalThis, "fetch", async () =>
     Response.json({ detail: "Record unavailable" }, { status: 403 }),
@@ -63,7 +73,7 @@ test("unselected runs stay disabled; inaccessible runs surface errors", async (t
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
   await assert.rejects(
-    client.fetchQuery(investigationQuery("emp-alex", "run-1")),
+    client.fetchQuery(investigationQuery({ mode: "demo", employeeId: "emp-alex" }, "run-1")),
     /Record unavailable/,
   );
 });
@@ -79,17 +89,17 @@ test("proposal reviews isolate reviewers and invalidate together after approval"
   const client = new QueryClient();
   t.after(() => client.clear());
   const alex = proposalReviewQuery({
-    employee: "emp-alex",
+    identity: { mode: "demo", employeeId: "emp-alex" },
     runId: "run-1",
     proposalId: "proposal-1",
   });
   const priya = proposalReviewQuery({
-    employee: "emp-priya",
+    identity: { mode: "demo", employeeId: "emp-priya" },
     runId: "run-1",
     proposalId: "proposal-1",
   });
   const ben = proposalReviewQuery({
-    employee: "emp-ben",
+    identity: { mode: "demo", employeeId: "emp-ben" },
     runId: "run-1",
     proposalId: "proposal-1",
   });
@@ -109,8 +119,13 @@ test("reset clears saved-work caches across investigators and reviewers", async 
   const client = new QueryClient();
   try {
     for (const employee of ["emp-alex", "emp-priya"]) {
-      client.setQueryData(investigationKeys.history(employee), [{ run_id: "old-run" }]);
-      client.setQueryData(investigationKeys.run(employee, "old-run"), { result: "old" });
+      client.setQueryData(investigationKeys.history({ mode: "demo", employeeId: employee }), [
+        { run_id: "old-run" },
+      ]);
+      client.setQueryData(
+        investigationKeys.run({ mode: "demo", employeeId: employee }, "old-run"),
+        { result: "old" },
+      );
       client.setQueryData([...proposalReviewKeys.proposal("old-run", "proposal"), employee], {
         approval: "old",
       });
@@ -221,4 +236,22 @@ test("a rejected write is surfaced without retrying", async (t) => {
     /Execution not permitted/,
   );
   assert.equal(requests, 1);
+});
+
+test("Entra history is account-scoped and cannot reuse demo data", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_path, options) =>
+    Response.json({ identity: new Headers(options.headers).get("Authorization") }),
+  );
+  const client = new QueryClient();
+  t.after(() => client.clear());
+  const alex = { mode: "entra", accountId: "alex", getAccessToken: async () => "alex-token" };
+  const priya = { mode: "entra", accountId: "priya", getAccessToken: async () => "priya-token" };
+  assert.deepEqual(await client.fetchQuery(historyQuery(alex)), { identity: "Bearer alex-token" });
+  assert.deepEqual(await client.fetchQuery(historyQuery(priya)), {
+    identity: "Bearer priya-token",
+  });
+  assert.notDeepEqual(
+    historyQuery(alex).queryKey,
+    historyQuery({ mode: "demo", employeeId: "alex" }).queryKey,
+  );
 });

@@ -7,6 +7,8 @@ import {
   proposalReviewQuery,
   proposalReviewKeys,
   type Approval,
+  type RequestIdentity,
+  type CurrentEmployee,
   type ExecuteProposalResult,
 } from "@/lib/api";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
@@ -34,27 +36,40 @@ import {
 export function ProposalReview({
   runId,
   proposalId,
+  identity,
+  currentEmployee,
   employees,
   onStatusRefresh,
 }: {
   runId: string;
   proposalId: string;
+  identity: RequestIdentity;
+  currentEmployee: CurrentEmployee | null;
   employees: { id: string; name: string; role: string }[];
   onStatusRefresh: () => Promise<void>;
 }) {
-  const [employee, setEmployee] = useState("emp-priya");
+  const [demoEmployee, setEmployee] = useState("emp-priya");
+  const employee = identity.mode === "demo" ? demoEmployee : currentEmployee!.employee_id;
+  const reviewerIdentity: RequestIdentity =
+    identity.mode === "demo" ? { mode: "demo", employeeId: employee } : identity;
+  const role =
+    identity.mode === "demo"
+      ? employees.find((item) => item.id === employee)?.role
+      : currentEmployee?.role;
   const queryClient = useQueryClient();
   const url = `/api/runs/${runId}/proposals/${proposalId}`;
 
   // 1. Fetch with reviewer-scoped caching and cancellation.
-  const reviewQuery = useQuery(proposalReviewQuery({ employee, runId, proposalId }));
+  const reviewQuery = useQuery(
+    proposalReviewQuery({ identity: reviewerIdentity, runId, proposalId }),
+  );
 
   // 2. Refresh confirmed records after success or an uncertain failure; never retry approval automatically.
   const approval = useMutation({
     mutationFn: () =>
       requestApi<Approval>({
         path: `${url}/approval`,
-        identity: { mode: "demo", employeeId: employee },
+        identity: reviewerIdentity,
         options: { method: "POST" },
       }),
     retry: false,
@@ -68,7 +83,7 @@ export function ProposalReview({
     mutationFn: () =>
       requestApi<ExecuteProposalResult>({
         path: `${url}/execution`,
-        identity: { mode: "demo", employeeId: employee },
+        identity: reviewerIdentity,
         options: { method: "POST" },
       }),
     retry: false,
@@ -86,40 +101,42 @@ export function ProposalReview({
 
   return (
     <section className="flex flex-col gap-4" aria-label="Proposal review" aria-live="polite">
-      <Field>
-        <FieldLabel htmlFor="reviewer">Review or execute as</FieldLabel>
-        <Select
-          items={employees.map((item) => ({
-            value: item.id,
-            label: `${item.name} · ${item.role.replaceAll("_", " ")}`,
-          }))}
-          disabled={busy}
-          value={employee}
-          onValueChange={(value) => {
-            if (!value) return;
-            setEmployee(value);
-            approval.reset();
-            execution.reset();
-          }}
-        >
-          <SelectTrigger id="reviewer" className="w-full">
-            <SelectValue placeholder="Select an option" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {employees.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name} · {item.role.replaceAll("_", " ")}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <FieldDescription>
-          Simulated identity. Current customer access and action permissions are checked by the
-          server.
-        </FieldDescription>
-      </Field>
+      {identity.mode === "demo" && (
+        <Field>
+          <FieldLabel htmlFor="reviewer">Review or execute as</FieldLabel>
+          <Select
+            items={employees.map((item) => ({
+              value: item.id,
+              label: `${item.name} · ${item.role.replaceAll("_", " ")}`,
+            }))}
+            disabled={busy}
+            value={employee}
+            onValueChange={(value) => {
+              if (!value) return;
+              setEmployee(value);
+              approval.reset();
+              execution.reset();
+            }}
+          >
+            <SelectTrigger id="reviewer" className="w-full">
+              <SelectValue placeholder="Select an option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {employees.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name} · {item.role.replaceAll("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            Simulated identity. Current customer access and action permissions are checked by the
+            server.
+          </FieldDescription>
+        </Field>
+      )}
       {error && (
         <Alert variant="destructive">
           <AlertTitle>Review unavailable</AlertTitle>
@@ -244,9 +261,7 @@ export function ProposalReview({
                     !["approval_recorded", "approval_not_required"].includes(
                       review.current_status.code,
                     ) ||
-                    !["implementation_engineer", "technical_lead"].includes(
-                      employees.find((item) => item.id === employee)?.role ?? "",
-                    )
+                    !["implementation_engineer", "technical_lead"].includes(role ?? "")
                   }
                   onClick={() => {
                     if (

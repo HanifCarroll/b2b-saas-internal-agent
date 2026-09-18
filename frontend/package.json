@@ -2,6 +2,7 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +11,7 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "test": "node --experimental-strip-types --experimental-test-module-mocks --test lib/*.test.mjs"
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --test lib/*.test.mjs && node --import tsx --experimental-test-module-mocks --test tests/*.test.tsx"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.22.0",
@@ -27,12 +28,16 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.3",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "jsdom": "^29.1.1",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }
