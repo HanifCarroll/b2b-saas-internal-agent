@@ -14,7 +14,7 @@ PROPOSALS_DATABASE = FIXTURES.parent / "local" / "proposals.db"
 
 
 def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> None:
-    """Create durable proposal storage without resetting existing proposals.
+    """Create proposal and approval storage without resetting existing records.
 
     Business records live in separate simulated systems, so their IDs are references,
     not foreign keys. Application validation must check them before saving.
@@ -39,6 +39,18 @@ def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> No
                 expected_configuration_version INTEGER NOT NULL CHECK(expected_configuration_version >= 1),
                 created_at TEXT NOT NULL,
                 status TEXT NOT NULL CHECK(status = 'pending_approval')
+            )
+            """
+        )
+
+        # 3. Keep one approval per proposal; employee identity lives in the directory.
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS approvals (
+                id TEXT PRIMARY KEY NOT NULL,
+                proposal_id TEXT NOT NULL UNIQUE REFERENCES proposals(id),
+                approved_by_employee_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
             )
             """
         )
