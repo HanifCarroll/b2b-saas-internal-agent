@@ -199,6 +199,20 @@ function InvestigationWorkspace({
             )}
             {run && (
               <>
+                <Alert
+                  variant={run.current_status.code === "unavailable" ? "destructive" : "default"}
+                >
+                  <AlertTitle>
+                    {selectedRun.isFetching
+                      ? "Refreshing current status…"
+                      : `Current status: ${run.current_status.title}`}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {selectedRun.isFetching
+                      ? "Checking the latest saved records."
+                      : run.current_status.next_action}
+                  </AlertDescription>
+                </Alert>
                 <InvestigationFindings
                   run={run}
                   expectedOutcomes={expectedOutcomes}
@@ -211,6 +225,11 @@ function InvestigationWorkspace({
                     runId={run.run_id}
                     proposalId={run.result.proposal.id}
                     employees={options.employees}
+                    onStatusRefresh={() => {
+                      void queryClient.invalidateQueries({
+                        queryKey: investigationKeys.run(employee, run.run_id),
+                      });
+                    }}
                   />
                 )}
               </>

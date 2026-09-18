@@ -23,13 +23,16 @@ export function InvestigationFindings({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
-          <CardTitle>Investigation findings</CardTitle>
+          <CardTitle>Investigation report</CardTitle>
           <Badge variant="secondary">
             {investigation.outcome === "blocked" ? "Blocked" : "Investigation complete"}
           </Badge>
         </div>
         <CardDescription>
           {run.scenario_id.replaceAll("-", " ")} · Run {run.run_id.slice(0, 8)}
+          <span className="mt-1 block">
+            Findings reflect what was known at investigation time. Current status is shown above.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
@@ -79,7 +82,7 @@ export function InvestigationFindings({
             <AlertDescription>
               {run.result.was_created
                 ? "Review the saved change below."
-                : "An identical proposal already exists. No duplicate was created; its current approval is shown below."}
+                : "An identical proposal already exists. No duplicate was created during this run."}
             </AlertDescription>
           </Alert>
         )}

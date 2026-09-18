@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { requestApi } from "@/lib/api";
+import { requestApi, type WorkflowStatus } from "@/lib/api";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,7 @@ type Approval = {
   created_at: string;
 };
 type Review = {
+  current_status: WorkflowStatus;
   proposal: {
     id: string;
     ticket_id: string;
@@ -48,10 +49,12 @@ export function ProposalReview({
   runId,
   proposalId,
   employees,
+  onStatusRefresh,
 }: {
   runId: string;
   proposalId: string;
   employees: { id: string; name: string; role: string }[];
+  onStatusRefresh: () => void;
 }) {
   const [employee, setEmployee] = useState("emp-priya");
   const [review, setReview] = useState<Review | null>(null);
@@ -64,9 +67,15 @@ export function ProposalReview({
   useEffect(() => {
     const controller = new AbortController();
     requestApi<Review>(url, employee, { signal: controller.signal })
-      .then(setReview)
+      .then((loaded) => {
+        setReview(loaded);
+        setError("");
+      })
       .catch((error) => {
-        if (!controller.signal.aborted) setError(error.message);
+        if (!controller.signal.aborted) {
+          setReview(null);
+          setError(error.message);
+        }
       });
     return () => controller.abort();
   }, [url, employee, refresh]);
@@ -76,18 +85,19 @@ export function ProposalReview({
     setBusy(true);
     setError("");
     try {
-      const approval = await requestApi<Approval>(`${url}/approval`, employee, {
+      await requestApi<Approval>(`${url}/approval`, employee, {
         method: "POST",
       });
-      setReview((current) => (current ? { ...current, approval } : null));
-      setRefresh((value) => value + 1);
+      setReview(await requestApi<Review>(url, employee));
     } catch (error) {
+      setReview(null);
       setError(
         error instanceof Error
           ? error.message
           : "Approval could not be confirmed. Refresh before retrying.",
       );
     } finally {
+      onStatusRefresh();
       setBusy(false);
     }
   }
@@ -141,6 +151,7 @@ export function ProposalReview({
           setReview(null);
           setError("");
           setRefresh((value) => value + 1);
+          onStatusRefresh();
         }}
       >
         Refresh proposal
@@ -151,11 +162,7 @@ export function ProposalReview({
             <div className="flex items-center justify-between gap-3">
               <CardTitle>{review.proposal.ticket_id}</CardTitle>
               <Badge variant={review.approval ? "default" : "secondary"}>
-                {review.approval
-                  ? "Approval recorded"
-                  : review.proposal.environment === "sandbox"
-                    ? "Independent approval not required"
-                    : "Awaiting approval"}
+                {review.current_status.title}
               </Badge>
             </div>
             <CardDescription>
@@ -206,8 +213,7 @@ export function ProposalReview({
               onClick={approve}
               disabled={
                 busy ||
-                !!review.approval ||
-                review.proposal.environment !== "production" ||
+                review.current_status.code !== "awaiting_approval" ||
                 employee === review.proposal.proposed_by_employee_id
               }
             >

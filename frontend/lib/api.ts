@@ -1,3 +1,14 @@
+export type WorkflowStatus = {
+  code:
+    | "blocked"
+    | "awaiting_approval"
+    | "approval_recorded"
+    | "approval_not_required"
+    | "unavailable";
+  title: string;
+  next_action: string;
+};
+
 export type DemoOptions = {
   scenarios: { id: string; expected: string[] }[];
   employees: { id: string; name: string; role: string }[];
@@ -13,6 +24,7 @@ export type PolicyReview = {
   limitation: string;
 };
 export type InvestigationRun = {
+  current_status: WorkflowStatus;
   run_id: string;
   scenario_id: string;
   policy_review: PolicyReview | null;
