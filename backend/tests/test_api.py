@@ -331,3 +331,49 @@ def test_missing_runs_have_safe_http_errors(investigation_api):
         f"/api/runs/{run_id}/proposals/missing",
     ):
         assert client.get(path, headers=headers).status_code == 404
+
+
+def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch):
+    from langchain_core.messages import AIMessage
+    from test_agent import ScriptedModel, structured_result
+
+    call = {
+        "name": "get_ticket",
+        "args": {"ticket_id": "CHG-1042"},
+        "id": "ticket-call",
+        "type": "tool_call",
+    }
+    monkeypatch.setattr(
+        api,
+        "create_model",
+        lambda: ScriptedModel(
+            messages=iter(
+                [
+                    AIMessage(content="", tool_calls=[call]),
+                    structured_result(),
+                ]
+            )
+        ),
+    )
+    headers = {"X-Employee-Id": "emp-alex"}
+    response = investigation_api.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    )
+    assert response.status_code == 200
+    run = response.json()
+    saved_path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
+    refreshed = investigation_api.get(
+        f"/api/investigations/{run['run_id']}", headers=headers
+    ).json()
+    for result in (
+        run["result"],
+        json.loads(saved_path.read_text()),
+        refreshed["result"],
+    ):
+        assert [c for m in result["messages"] for c in m.get("tool_calls", [])] == [
+            call
+        ]
+        tool_result = next(m for m in result["messages"] if m["type"] == "tool")
+        assert tool_result["tool_call_id"] == "ticket-call"
+        assert tool_result["status"] == "success"
+

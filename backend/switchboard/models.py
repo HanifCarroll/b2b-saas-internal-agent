@@ -2,14 +2,16 @@
 
 from typing import Annotated, Literal, Self
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, messages_from_dict
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
     HttpUrl,
+    SerializeAsAny,
     field_serializer,
+    field_validator,
     model_validator,
 )
 
@@ -148,6 +150,23 @@ class InvestigationResult(Record):
 
 class EndpointChangeResult(Record):
     investigation: InvestigationResult
-    messages: list[BaseMessage]
+    messages: list[SerializeAsAny[BaseMessage]]
     proposal: Proposal | None = None
     was_created: bool | None = None
+
+    @field_validator("messages", mode="before")
+    @classmethod
+    def restore_message_types(cls, messages):
+        """Restore message subclasses so tool calls survive JSON round trips."""
+        restored = []
+        for message in messages:
+            if isinstance(message, BaseMessage):
+                restored.append(message)
+            elif message["type"] == "tool" and "tool_call_id" not in message:
+                # Older saved runs lost tool metadata; preserve their remaining content.
+                restored.append(BaseMessage.model_validate(message))
+            else:
+                restored.extend(
+                    messages_from_dict([{"type": message["type"], "data": message}])
+                )
+        return restored
