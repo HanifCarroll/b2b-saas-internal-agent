@@ -17,9 +17,13 @@ import {
   FieldDescription,
 } from "@/components/ui/field";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ProposalReview } from "@/components/proposal-review";
@@ -200,38 +204,61 @@ export default function Home() {
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="scenario">Scenario</FieldLabel>
-                      <NativeSelect
-                        id="scenario"
+                      <Select
+                        items={options?.scenarios.map((item) => ({
+                          value: item.id,
+                          label: item.id.replaceAll("-", " "),
+                        }))}
                         value={scenario}
                         disabled={!!busy || !options}
-                        onChange={(event) => setScenario(event.target.value)}
+                        onValueChange={(value) => {
+                          if (value) setScenario(value);
+                        }}
                       >
-                        {options?.scenarios.map((item) => (
-                          <NativeSelectOption key={item.id} value={item.id}>
-                            {item.id.replaceAll("-", " ")}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
+                        <SelectTrigger id="scenario" className="w-full">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {options?.scenarios.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.id.replaceAll("-", " ")}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="employee">Investigate as</FieldLabel>
-                      <NativeSelect
-                        id="employee"
+                      <Select
+                        items={options?.employees.map((item) => ({
+                          value: item.id,
+                          label: item.name,
+                        }))}
                         value={employee}
                         disabled={!!busy || !options}
-                        onChange={(event) => {
-                          setEmployee(event.target.value);
+                        onValueChange={(value) => {
+                          if (!value) return;
+                          setEmployee(value);
                           setRun(null);
                           setHistory([]);
                           setError("");
                         }}
                       >
-                        {options?.employees.map((item) => (
-                          <NativeSelectOption key={item.id} value={item.id}>
-                            {item.name}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
+                        <SelectTrigger id="employee" className="w-full">
+                          <SelectValue placeholder="Select an option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {options?.employees.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                       <FieldDescription>
                         Demo identity only, not sign-in. Customer access is
                         enforced in Python.
@@ -258,23 +285,34 @@ export default function Home() {
               <CardContent className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel htmlFor="history">Open a previous run</FieldLabel>
-                  <NativeSelect
-                    id="history"
+                  <Select
+                    items={history.map((item) => ({
+                      value: item.run_id,
+                      label: `${item.scenario_id.replaceAll("-", " ")} · ${item.outcome === "blocked" ? "Blocked" : "Proposal"} · ${item.run_id.slice(0, 8)}`,
+                    }))}
                     disabled={!!busy}
-                    value={run?.run_id ?? ""}
-                    onChange={(event) => openRun(event.target.value)}
+                    value={run?.run_id ?? null}
+                    onValueChange={(value) => {
+                      if (value) openRun(value);
+                    }}
                   >
-                    <NativeSelectOption value="">
-                      Choose a run
-                    </NativeSelectOption>
-                    {history.map((item) => (
-                      <NativeSelectOption key={item.run_id} value={item.run_id}>
-                        {item.scenario_id.replaceAll("-", " ")} ·{" "}
-                        {item.outcome === "blocked" ? "Blocked" : "Proposal"} ·{" "}
-                        {item.run_id.slice(0, 8)}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
+                    <SelectTrigger id="history" className="w-full">
+                      <SelectValue placeholder="Choose a run" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {history.map((item) => (
+                          <SelectItem key={item.run_id} value={item.run_id}>
+                            {item.scenario_id.replaceAll("-", " ")} ·{" "}
+                            {item.outcome === "blocked"
+                              ? "Blocked"
+                              : "Proposal"}{" "}
+                            · {item.run_id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </Field>
                 <Button
                   variant="outline"

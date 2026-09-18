@@ -16,9 +16,13 @@ import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
-  NativeSelect,
-  NativeSelectOption,
-} from "@/components/ui/native-select";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Approval = {
   id: string;
@@ -96,22 +100,33 @@ export function ProposalReview({
     >
       <Field>
         <FieldLabel htmlFor="reviewer">Review as</FieldLabel>
-        <NativeSelect
-          id="reviewer"
+        <Select
+          items={employees.map((item) => ({
+            value: item.id,
+            label: `${item.name} · ${item.role.replaceAll("_", " ")}`,
+          }))}
           disabled={busy}
           value={employee}
-          onChange={(event) => {
-            setEmployee(event.target.value);
+          onValueChange={(value) => {
+            if (!value) return;
+            setEmployee(value);
             setReview(null);
             setError("");
           }}
         >
-          {employees.map((item) => (
-            <NativeSelectOption key={item.id} value={item.id}>
-              {item.name} · {item.role.replaceAll("_", " ")}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
+          <SelectTrigger id="reviewer" className="w-full">
+            <SelectValue placeholder="Select an option" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {employees.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name} · {item.role.replaceAll("_", " ")}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <FieldDescription>
           Simulated identity. Current customer access and approval authority are
           checked by the server.
