@@ -156,3 +156,18 @@ export function proposalReviewQuery({
     gcTime: 0,
   };
 }
+
+export type DemoState = { scenario_id: string | null };
+
+export const demoStateQuery = {
+  queryKey: ["demo-state"],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    requestApi<DemoState>("/api/demo", "", { signal }),
+};
+
+export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
+  await client.cancelQueries();
+  for (const key of ["investigations", "investigation", "proposal-review"]) {
+    client.removeQueries({ queryKey: [key] });
+  }
+}

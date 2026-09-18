@@ -5,6 +5,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useMutation,
+  useIsMutating,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -16,6 +17,9 @@ import { ProposalReview } from "@/components/proposal-review";
 import {
   requestApi,
   demoOptionsQuery,
+  demoStateQuery,
+  clearDemoQueries,
+  type DemoState,
   historyQuery,
   investigationQuery,
   investigationKeys,
@@ -57,6 +61,8 @@ function InvestigationWorkspace({
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
   const optionsQuery = useQuery(demoOptionsQuery);
+  const demo = useQuery(demoStateQuery);
+  const mutationsInProgress = useIsMutating();
   const histories = useQuery(historyQuery(employee));
   const selectedRun = useQuery(investigationQuery(employee, selectedRunId));
   const options = optionsQuery.data ?? null;
@@ -90,7 +96,28 @@ function InvestigationWorkspace({
     },
   });
 
-  function investigate(scenario: string) {
+  const reset = useMutation({
+    mutationFn: (scenario: string) =>
+      requestApi<DemoState>("/api/demo/reset", employee, {
+        method: "POST",
+        body: JSON.stringify({ scenario_id: scenario, confirm: true }),
+      }),
+    onMutate: async () => {
+      setSelectedRunId(null);
+      investigation.reset();
+      policyEvaluation.reset();
+      await queryClient.cancelQueries();
+    },
+    onSettled: async () => {
+      await clearDemoQueries(queryClient);
+      await queryClient.invalidateQueries();
+    },
+  });
+
+  function investigate() {
+    const scenario = demo.data?.scenario_id;
+    if (!scenario) return;
+    reset.reset();
     policyEvaluation.reset();
     setSelectedRunId(null);
     investigation.mutate(scenario);
@@ -104,6 +131,7 @@ function InvestigationWorkspace({
 
   function refreshHistory() {
     void histories.refetch();
+    void demo.refetch();
   }
 
   function evaluatePolicy() {
@@ -111,15 +139,19 @@ function InvestigationWorkspace({
   }
 
   // 3. Derive presentation from query and mutation state, rather than copying it.
-  const pendingMessage = investigation.isPending
-    ? "Investigating records and validating the result…"
-    : policyEvaluation.isPending
-      ? "Reviewing policy claims…"
-      : selectedRun.isLoading
-        ? "Loading saved investigation…"
-        : "";
+  const pendingMessage = reset.isPending
+    ? "Resetting demo records…"
+    : investigation.isPending
+      ? "Investigating records and validating the result…"
+      : policyEvaluation.isPending
+        ? "Reviewing policy claims…"
+        : selectedRun.isLoading
+          ? "Loading saved investigation…"
+          : "";
   const isPending = pendingMessage !== "";
   const error = (
+    reset.error ??
+    demo.error ??
     investigation.error ??
     policyEvaluation.error ??
     selectedRun.error ??
@@ -158,7 +190,9 @@ function InvestigationWorkspace({
             <InvestigationForm
               options={options}
               employee={employee}
-              busy={isPending}
+              busy={isPending || mutationsInProgress > 0 || demo.isFetching}
+              activeScenario={demo.isError ? null : (demo.data?.scenario_id ?? null)}
+              onReset={(scenario) => reset.mutate(scenario)}
               onEmployeeChange={onEmployeeChange}
               onInvestigate={investigate}
             />
@@ -181,18 +215,16 @@ function InvestigationWorkspace({
               <Alert>
                 <LoaderCircle className="animate-spin" />
                 <AlertTitle>{pendingMessage}</AlertTitle>
-                <AlertDescription>
-                  Results appear when the operation completes. Configuration is not being changed.
-                </AlertDescription>
+                <AlertDescription>Results appear when the operation completes.</AlertDescription>
               </Alert>
             )}
             {!run && !isPending && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Choose a scenario to begin</CardTitle>
+                  <CardTitle>Initialize the demo, then investigate</CardTitle>
                   <CardDescription>
-                    Try baseline for a valid proposal, then unregistered destination to see a
-                    blocked request. No CLI or copied IDs needed.
+                    Reset to baseline for a valid proposal. To try another starting state, reset
+                    explicitly; starting an investigation never resets business records.
                   </CardDescription>
                 </CardHeader>
               </Card>

@@ -20,31 +20,38 @@ export function InvestigationForm({
   busy,
   onEmployeeChange,
   onInvestigate,
+  onReset,
+  activeScenario,
 }: {
   options: DemoOptions | null;
   employee: string;
   busy: boolean;
   onEmployeeChange: (employee: string) => void;
-  onInvestigate: (scenario: string) => void;
+  onInvestigate: () => void;
+  onReset: (scenario: string) => void;
+  activeScenario: string | null;
 }) {
   const [scenario, setScenario] = useState("baseline");
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Start an investigation</CardTitle>
-        <CardDescription>Each run uses isolated fictional business records.</CardDescription>
+        <CardTitle>Demo setup and investigation</CardTitle>
+        <CardDescription>
+          Active scenario: {activeScenario?.replaceAll("-", " ") ?? "Not initialized"}.
+          Investigations use the current shared records.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            onInvestigate(scenario);
+            onInvestigate();
           }}
           className="flex flex-col gap-5"
         >
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="scenario">Scenario</FieldLabel>
+              <FieldLabel htmlFor="scenario">Reset to scenario</FieldLabel>
               <Select
                 items={options?.scenarios.map((item) => ({
                   value: item.id,
@@ -70,6 +77,24 @@ export function InvestigationForm({
                 </SelectContent>
               </Select>
             </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !options}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Reset the demo? This permanently deletes all saved investigations, proposals, approvals, and execution receipts, and restores the selected scenario.",
+                  )
+                )
+                  onReset(scenario);
+              }}
+            >
+              Reset demo to scenario
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Reset clears all saved demo work. Changing this selection alone does nothing.
+            </p>
             <Field>
               <FieldLabel htmlFor="employee">Investigate as</FieldLabel>
               <Select
@@ -102,7 +127,7 @@ export function InvestigationForm({
               </FieldDescription>
             </Field>
           </FieldGroup>
-          <Button type="submit" disabled={busy || !options}>
+          <Button type="submit" disabled={busy || !options || !activeScenario}>
             Start investigation
           </Button>
           <p className="text-xs text-muted-foreground">

@@ -100,7 +100,14 @@ def investigation_api(tmp_path, monkeypatch):
     monkeypatch.setattr(
         api, "create_model", lambda: ScriptedModel(messages=iter([structured_result()]))
     )
-    return TestClient(api.app)
+    client = TestClient(api.app)
+    assert (
+        client.post(
+            "/api/demo/reset", json={"scenario_id": "baseline", "confirm": True}
+        ).status_code
+        == 200
+    )
+    return client
 
 
 def test_investigation_history_and_approval_handoff(investigation_api):

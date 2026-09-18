@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from switchboard.agent import create_model
+from switchboard.demo import DemoBusyError, demo_operation, read_demo_setup, reset_demo
 from switchboard.integrations.change_management import get_proposal
 from switchboard.integrations.database import DATABASE_PATH
 from switchboard.investigations import investigate_scenario
@@ -93,7 +94,6 @@ def run_investigation(
     try:
         workflow_id, result = investigate_scenario(
             scenario_id=scenario_id,
-            selected_scenario=selected_scenario,
             model=model,
             runs_directory=RUNS_DIRECTORY,
             database_path=DATABASE_PATH,
@@ -130,8 +130,14 @@ def main():
     # 1. Parse the requested CLI operation and its options.
     scenarios = load_scenarios()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=scenarios, default="baseline")
+    parser.add_argument("--scenario", choices=scenarios, default=None)
     parser.add_argument("--list-scenarios", action="store_true")
+    parser.add_argument("--reset-demo", choices=scenarios, metavar="SCENARIO")
+    parser.add_argument(
+        "--confirm-reset",
+        action="store_true",
+        help="Confirm deletion of all saved investigations, proposals, approvals, and executions",
+    )
     parser.add_argument(
         "--evaluate-policy",
         action="store_true",
@@ -156,6 +162,49 @@ def main():
             print(f"{name}: {scenario.expected[0]}")
         return
 
+    if args.reset_demo:
+        if (
+            args.review
+            or args.run
+            or args.employee
+            or args.scenario
+            or args.evaluate_policy
+        ):
+            parser.error(
+                "--reset-demo cannot be combined with investigation or review options"
+            )
+        if not args.confirm_reset:
+            parser.error(
+                "Reset deletes all saved demo work. Add --confirm-reset to proceed"
+            )
+        try:
+            reset_demo(
+                database_path=DATABASE_PATH,
+                runs_directory=RUNS_DIRECTORY,
+                scenario_id=args.reset_demo,
+            )
+        except (DemoBusyError, ValueError) as error:
+            raise SystemExit(str(error)) from None
+        print(f"Demo reset to {args.reset_demo}. Saved demo work cleared.")
+        return
+
+    if args.confirm_reset:
+        parser.error("--confirm-reset requires --reset-demo")
+
+    try:
+        with demo_operation(database_path=DATABASE_PATH):
+            run_command(args=args, parser=parser, scenarios=scenarios)
+    except DemoBusyError as error:
+        raise SystemExit(str(error)) from None
+
+
+def run_command(
+    *,
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    scenarios: dict[str, Scenario],
+) -> None:
+    """Dispatch a CLI read or investigation while reset is excluded."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
     if args.review:
@@ -178,11 +227,15 @@ def main():
     if args.employee or args.run:
         parser.error("--employee and --run are only used with --review")
 
-    selected_scenario = scenarios[args.scenario]
+    setup = read_demo_setup(DATABASE_PATH)
+    if setup is None:
+        parser.error("Reset the demo first: --reset-demo baseline --confirm-reset")
+    scenario_id = args.scenario or setup[0]
+    selected_scenario = scenarios[scenario_id]
 
     # 3. Run the selected investigation.
     run_investigation(
-        scenario_id=args.scenario,
+        scenario_id=scenario_id,
         selected_scenario=selected_scenario,
         evaluate_policy_claims=args.evaluate_policy,
     )

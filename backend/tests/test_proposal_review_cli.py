@@ -15,6 +15,13 @@ from switchboard import __main__ as cli
 def completed_run(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
+    from switchboard.demo import reset_demo
+
+    reset_demo(
+        database_path=cli.DATABASE_PATH,
+        runs_directory=cli.RUNS_DIRECTORY,
+        scenario_id="baseline",
+    )
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr(

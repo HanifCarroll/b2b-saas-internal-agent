@@ -7,10 +7,11 @@ from pathlib import Path
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from pydantic import BaseModel, StrictBool
 
 from switchboard.agent import create_model
+from switchboard.demo import DemoBusyError, demo_operation, read_demo_setup, reset_demo
 from switchboard.integrations.change_management import (
     approve_proposal,
     get_proposal_review,
@@ -46,7 +47,57 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Switchboard local demo", lifespan=lifespan)
+def protect_demo_operation(request: Request):
+    if request.url.path == "/api/demo/reset":
+        yield
+        return
+
+    try:
+        with demo_operation(database_path=DATABASE_PATH):
+            yield
+    except DemoBusyError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+
+
+app = FastAPI(
+    title="Switchboard local demo",
+    lifespan=lifespan,
+    dependencies=[Depends(protect_demo_operation)],
+)
+
+
+class DemoState(BaseModel):
+    scenario_id: str | None
+
+
+class ResetRequest(BaseModel):
+    scenario_id: str
+    confirm: StrictBool
+
+
+@app.get("/api/demo", response_model=DemoState)
+def read_demo() -> DemoState:
+    setup = read_demo_setup(DATABASE_PATH)
+    return DemoState(scenario_id=setup[0] if setup else None)
+
+
+@app.post("/api/demo/reset", response_model=DemoState)
+def reset_demo_state(request: ResetRequest) -> DemoState:
+    if not request.confirm:
+        raise HTTPException(
+            status_code=422, detail="Confirm deletion of all saved demo work"
+        )
+    try:
+        reset_demo(
+            database_path=DATABASE_PATH,
+            runs_directory=RUNS_DIRECTORY,
+            scenario_id=request.scenario_id,
+        )
+    except DemoBusyError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    return DemoState(scenario_id=request.scenario_id)
 
 
 class ProposalReview(BaseModel):
@@ -169,11 +220,17 @@ def start_investigation(
     if not any(e["id"] == x_employee_id and e["active"] for e in employees):
         raise HTTPException(status_code=403, detail="Employee unavailable")
 
+    setup = read_demo_setup(DATABASE_PATH)
+    if setup is None or setup[0] != request.scenario_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Reset the demo to the selected scenario before investigating",
+        )
+
     # 2. Run the existing workflow, including deterministic validation and saving.
     try:
         run_id, result = investigate_scenario(
             scenario_id=request.scenario_id,
-            selected_scenario=scenarios[request.scenario_id],
             model=create_model(),
             runs_directory=RUNS_DIRECTORY,
             database_path=DATABASE_PATH,

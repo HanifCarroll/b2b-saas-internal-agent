@@ -223,6 +223,13 @@ def test_cli_rejects_invalid_result_without_retry(monkeypatch, response, tmp_pat
 
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
+    from switchboard.demo import reset_demo
+
+    reset_demo(
+        database_path=cli.DATABASE_PATH,
+        runs_directory=cli.RUNS_DIRECTORY,
+        scenario_id="baseline",
+    )
     model = ScriptedModel(messages=iter([AIMessage(content=response)]))
     monkeypatch.setattr(cli, "create_model", lambda: model)
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
@@ -252,6 +259,13 @@ def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
 
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
+    from switchboard.demo import reset_demo
+
+    reset_demo(
+        database_path=cli.DATABASE_PATH,
+        runs_directory=cli.RUNS_DIRECTORY,
+        scenario_id="baseline",
+    )
     cli.main()
     output = capsys.readouterr().out
 
@@ -275,6 +289,13 @@ def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr("sys.argv", ["switchboard"])
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
+    from switchboard.demo import reset_demo
+
+    reset_demo(
+        database_path=cli.DATABASE_PATH,
+        runs_directory=cli.RUNS_DIRECTORY,
+        scenario_id="baseline",
+    )
     cli.main()
     capsys.readouterr()
     cli.main()

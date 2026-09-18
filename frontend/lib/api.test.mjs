@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { QueryClient } from "@tanstack/react-query";
 import {
+  clearDemoQueries,
   historyQuery,
   investigationQuery,
   investigationKeys,
@@ -101,4 +102,25 @@ test("proposal reviews isolate reviewers and invalidate together after approval"
   assert.equal(client.getQueryState(alex.queryKey).isInvalidated, true);
   assert.equal(client.getQueryState(priya.queryKey).isInvalidated, true);
   assert.equal((await client.fetchQuery(priya)).approval.id, "approval-1");
+});
+
+test("reset clears saved-work caches across investigators and reviewers", async () => {
+  const client = new QueryClient();
+  try {
+    for (const employee of ["emp-alex", "emp-priya"]) {
+      client.setQueryData(investigationKeys.history(employee), [{ run_id: "old-run" }]);
+      client.setQueryData(investigationKeys.run(employee, "old-run"), { result: "old" });
+      client.setQueryData([...proposalReviewKeys.proposal("old-run", "proposal"), employee], {
+        approval: "old",
+      });
+    }
+    client.setQueryData(["demo-options"], { scenarios: ["baseline"] });
+    await clearDemoQueries(client);
+    assert.equal(client.getQueriesData({ queryKey: ["investigations"] }).length, 0);
+    assert.equal(client.getQueriesData({ queryKey: ["investigation"] }).length, 0);
+    assert.equal(client.getQueriesData({ queryKey: ["proposal-review"] }).length, 0);
+    assert.deepEqual(client.getQueryData(["demo-options"]), { scenarios: ["baseline"] });
+  } finally {
+    client.clear();
+  }
 });

@@ -19,6 +19,7 @@ Run the following Python commands from `backend/`. Store local model and tracing
 cd backend
 uv sync
 # Add DEEPSEEK_API_KEY=your-key to a local .env file (ignored by Git).
+uv run python -m switchboard --reset-demo baseline --confirm-reset
 uv run python -m switchboard
 ```
 
@@ -43,12 +44,15 @@ Tests use a scripted model, exercise the actual graph and tools, and make no pai
 
 ```sh
 uv run python -m switchboard --list-scenarios
-uv run python -m switchboard --scenario unregistered-destination
+uv run python -m switchboard --reset-demo unregistered-destination --confirm-reset
+uv run python -m switchboard
 ```
 
-Available scenarios are `baseline`, `unregistered-destination`, `unauthorized-contact`, `outside-window`, `cross-customer`, and `policy-override`. The default remains `baseline`. Listing scenarios does not call the model.
+Available scenarios are `baseline`, `unregistered-destination`, `unauthorized-contact`, `outside-window`, `cross-customer`, and `policy-override`. Investigations use the currently initialized scenario. Listing or resetting scenarios does not call the model.
 
-The first investigation initializes the shared database from fixtures and applies the selected scenario once. Later investigations reuse the current records and stored scenario inputs. Selecting a different scenario is rejected rather than silently resetting records. Explicit scenario-reset controls are the next slice. The CLI investigator remains Alex; the UI can select a simulated investigator. Tools enforce read-only database connections. An unavailable record produces a safe tool error.
+Reset explicitly restores the selected scenario and clears all saved investigations, proposals, approvals, and execution receipts. CLI reset requires `--confirm-reset`; UI reset requires confirmation of the deletion. Starting an investigation never creates or resets business records. Selecting a scenario in the UI only chooses the next reset target; the active scenario is displayed separately.
+
+Reset builds and validates replacement records before clearing history and replacing the database. If history deletion fails, the old business database remains intact, although some history may already have been removed. A POSIX file lock excludes reset while CLI/API operations are running and rejects new operations during reset. This is a local macOS/Linux demo, not a distributed job system. The CLI investigator remains Alex; the UI can select a simulated investigator. Tools enforce read-only database connections.
 
 Expected outcomes in `backend/data/scenarios/investigations.json` are printed after the run for manual review and are never passed to the model. They are not automated evaluation scores. In LangSmith, find `investigation-<scenario>` or filter by `scenario_id`. Review whether the response matches the expected outcomes and whether tool results support its claims. The cross-customer case should finish with an explanation of the unavailable record. Its tool result retains error status; a completed response does not mean access succeeded.
 
@@ -59,7 +63,8 @@ Expected outcomes in `backend/data/scenarios/investigations.json` are printed af
 - `backend/switchboard/__main__.py`: command-line setup, execution, and output.
 - `backend/switchboard/integrations/`: simulated business systems and access checks.
 - `backend/switchboard/models.py`: shared validated record types.
-- `backend/switchboard/scenarios.py`: scenario loading and one-time shared demo initialization.
+- `backend/switchboard/scenarios.py`: scenario definitions and transactional fixture setup.
+- `backend/switchboard/demo.py`: explicit reset, active scenario, and cross-process reset exclusion.
 - `backend/switchboard/prompts/`: system prompts.
 - `backend/data/fixtures/`: starting business records and policy documents.
 - `backend/data/scenarios/`: baseline request and investigation variations.
@@ -139,7 +144,7 @@ npm ci
 npm run dev -- --hostname 127.0.0.1
 ```
 
-Open http://localhost:3000. Choose a scenario and simulated investigator, then start the investigation. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change the reviewer to test access restrictions, then approve explicitly as an independent assigned technical lead. The current stored approval appears separately from the investigation report.
+Open http://localhost:3000. Choose a reset scenario, click **Reset demo to scenario**, and confirm deletion of saved work. Then select a simulated investigator and start an investigation against the active scenario. Subsequent investigations reuse the current records. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change the reviewer to test access restrictions, then approve explicitly as an independent assigned technical lead. The current stored approval appears separately from the investigation report.
 
 Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Expected outcomes are for manual comparison and assume the baseline investigator, Alex; choosing another employee changes the access context.
 

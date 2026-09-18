@@ -9,9 +9,9 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from switchboard.agent import build_agent
+from switchboard.demo import read_demo_setup
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import EndpointChangeResult
-from switchboard.scenarios import Scenario, initialize_demo_database
 from switchboard.tools import InvestigationContext
 from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
@@ -19,19 +19,20 @@ from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 def investigate_scenario(
     *,
     scenario_id: str,
-    selected_scenario: Scenario,
     model: BaseChatModel,
     runs_directory: Path,
     database_path: Path,
     employee_id: str | None = None,
 ) -> tuple[str, EndpointChangeResult]:
     """Investigate shared business records and retain a separate historical result."""
-    # 1. Initialize the selected demo once, then reuse its current business state.
-    scenario = initialize_demo_database(
-        database_path=database_path,
-        scenario_id=scenario_id,
-        selected_scenario=selected_scenario,
-    )
+    # 1. Read the explicitly initialized demo; never seed or reapply a scenario here.
+    setup = read_demo_setup(database_path)
+    if setup is None:
+        raise ValueError("Reset the demo to a scenario before investigating")
+    active_scenario, scenario = setup
+    if active_scenario != scenario_id:
+        raise ValueError("Selected scenario is not active; reset the demo first")
+
     with closing(sqlite3.connect(database_path)) as connection:
         requester = employee_id or scenario["requester_employee_id"]
         session = EmployeeSession(db_connection=connection, employee_id=requester)
