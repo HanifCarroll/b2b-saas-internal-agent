@@ -27,7 +27,7 @@ This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier cur
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
-The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Real sign-in, delivery verification, and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
+The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Backend Entra token validation is implemented; browser sign-in, delivery verification, and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
 ## Checks
 
@@ -135,7 +135,7 @@ The Next.js/shadcn UI uses FastAPI and the same investigation graph and business
 
 ```sh
 cd backend
-uv run uvicorn switchboard.api:app --host 127.0.0.1 --port 8000
+SWITCHBOARD_AUTH_MODE=demo uv run uvicorn switchboard.api:app --host 127.0.0.1 --port 8000
 ```
 
 ```sh
@@ -153,3 +153,16 @@ The optional **Evaluate policy claims** button makes a separate model call and s
 This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI separates approval from a confirmed Execute change action. Execution uses actual server UTC time and rechecks the production change window; the scenario clock does not override it. Refresh reads the saved execution receipt and reports configuration updated with delivery not yet verified. Delivery verification remains unimplemented. Proposals include a required manual-intervention recovery plan. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
 
 Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:check && npm run build` in `frontend/`.
+
+
+## Backend Entra authentication (frontend sign-in pending)
+
+The API defaults to `entra` mode and requires configuration at startup. `SWITCHBOARD_AUTH_MODE=demo` explicitly enables the local simulated employee header. Never expose that mode against real business data. CLI commands remain trusted local operations, not Entra-authenticated HTTP requests.
+
+For Entra mode, set the variables shown in `backend/entra.example.env` in the server environment or merge them into your existing ignored `backend/.env`. Do not overwrite existing model credentials. The example maps Hanif's tenant user Object ID to `emp-alex`; these IDs are public identifiers, not credentials. The mapping is scoped to the configured tenant. Restart the server after changing configuration.
+
+In **Switchboard API → Manifest**, set `api.requestedAccessTokenVersion` to `2` and save. The API accepts only RS256-signed v2 access tokens issued by the configured tenant, for the API client ID, with `access_as_user` scope and the configured Web client as `azp`. It verifies expiry and not-before timestamps, then maps `oid` to an employee. Existing database role and customer-access checks still apply. Unmapped identities fail closed. Signing keys are fetched from Microsoft's fixed tenant endpoint and cached by PyJWT; a key-service connection failure returns 503 without allowing access.
+
+All API routes require a token in Entra mode. Supplying `X-Employee-Id` is rejected even alongside a valid token. HTTP demo reset is disabled; prepare synthetic data locally with the existing CLI reset command. The current frontend still sends simulated identity and will work only with explicit demo mode until the next implementation step.
+
+Tests use locally signed RSA tokens, without contacting Microsoft or an LLM. Live Microsoft sign-in remains unverified until frontend integration.
