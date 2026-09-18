@@ -1,7 +1,4 @@
-import sqlite3
-from contextlib import closing
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 from langchain.agents import AgentState
@@ -27,7 +24,6 @@ class EndpointChangeContext:
         OutputAgentState[Any],
     ]
     investigation_context: InvestigationContext
-    proposals_database_path: Path
 
 
 class EndpointChangeWorkflowState(TypedDict):
@@ -41,28 +37,14 @@ class EndpointChangeWorkflowState(TypedDict):
 def investigate_request(
     state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
 ):
-    # 1. Require the investigator and capture the initial business records.
-    agent = runtime.context.agent
-    employee_context = runtime.context.investigation_context
-    with closing(sqlite3.connect(employee_context.database_path)) as connection:
-        database_before = list(connection.iterdump())
+    # 1. Run the investigator; its tools enforce read-only database connections.
+    result = runtime.context.agent.invoke(
+        {"messages": [HumanMessage(content=state["request"])]},
+        context=runtime.context.investigation_context,
+        config={"recursion_limit": 12},
+    )
 
-    # 2. Run the agent and verify read-only behavior even if it fails.
-    try:
-        result = agent.invoke(
-            {"messages": [HumanMessage(content=state["request"])]},
-            context=employee_context,
-            config={"recursion_limit": 12},
-        )
-    finally:
-        # Check even when the agent fails, before any proposal can be prepared.
-        with closing(sqlite3.connect(employee_context.database_path)) as connection:
-            database_after = list(connection.iterdump())
-
-        if database_after != database_before:
-            raise RuntimeError("Investigation changed business records")
-
-    # 3. Validate the answer and return the investigation with its messages.
+    # 2. Validate the answer and return the investigation with its messages.
     investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
 
     return {"investigation": investigation, "messages": result["messages"]}
@@ -82,7 +64,7 @@ def prepare_proposal(
         proposal, was_created = save_proposal(
             proposal=proposal,
             session=session,
-            database_path=runtime.context.proposals_database_path,
+            database_path=runtime.context.investigation_context.database_path,
         )
 
     # 3. Return the saved proposal and whether it was created.

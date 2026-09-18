@@ -10,7 +10,7 @@ from uuid import uuid4
 from switchboard.models import Approval, Proposal
 from switchboard.proposals import validate_endpoint_change_request
 
-from .database import PROPOSALS_DATABASE, initialize_proposal_database
+from .database import DATABASE_PATH, initialize_proposal_database
 from .employee_directory import ROLES, EmployeeSession
 
 
@@ -18,7 +18,7 @@ def save_proposal(
     *,
     proposal: Proposal,
     session: EmployeeSession,
-    database_path: Path = PROPOSALS_DATABASE,
+    database_path: Path = DATABASE_PATH,
 ) -> tuple[Proposal, bool]:
     """Recheck authorization and records, then save or return an identical proposal.
 
@@ -107,7 +107,7 @@ def get_proposal(
     *,
     session: EmployeeSession,
     proposal_id: str,
-    database_path: Path = PROPOSALS_DATABASE,
+    database_path: Path = DATABASE_PATH,
 ) -> Proposal:
     """Read a proposal for an active employee assigned to its customer.
 
@@ -147,7 +147,7 @@ def approve_proposal(
     *,
     proposal_id: str,
     session: EmployeeSession,
-    database_path: Path = PROPOSALS_DATABASE,
+    database_path: Path = DATABASE_PATH,
 ) -> Approval:
     """Record independent technical-lead approval or return the existing approval.
 
@@ -206,7 +206,7 @@ def get_proposal_review(
     *,
     session: EmployeeSession,
     proposal_id: str,
-    database_path: Path = PROPOSALS_DATABASE,
+    database_path: Path = DATABASE_PATH,
 ) -> tuple[Proposal, Approval | None]:
     """Return an accessible proposal together with its optional approval receipt."""
     # 1. Require current access before querying approval storage.

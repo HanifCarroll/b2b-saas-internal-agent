@@ -10,59 +10,62 @@ from pydantic import TypeAdapter
 from switchboard.models import Customer, Employee, Integration, Ticket
 
 FIXTURES = Path(__file__).resolve().parents[2] / "data" / "fixtures"
-PROPOSALS_DATABASE = FIXTURES.parent / "local" / "proposals.db"
+DATABASE_PATH = FIXTURES.parent / "local" / "switchboard.db"
 
 
-def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> None:
+def initialize_proposal_database(database_path: Path = DATABASE_PATH) -> None:
     """Create proposal and approval storage without resetting existing records.
 
-    Business records live in separate simulated systems, so their IDs are references,
-    not foreign keys. Application validation must check them before saving.
+    The demo seeds these tables alongside business records. This helper also
+    supports focused storage tests; it never resets existing records.
     """
     # 1. Ensure the local storage directory exists.
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     # 2. Create the table without replacing existing proposals.
     with closing(sqlite3.connect(database_path)) as connection, connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS proposals (
-                id TEXT PRIMARY KEY NOT NULL,
-                proposed_by_employee_id TEXT NOT NULL,
-                ticket_id TEXT NOT NULL,
-                requester_contact_id TEXT NOT NULL,
-                customer_id TEXT NOT NULL,
-                integration_id TEXT NOT NULL,
-                environment TEXT NOT NULL CHECK(environment IN ('sandbox', 'production')),
-                current_endpoint TEXT NOT NULL,
-                proposed_endpoint TEXT NOT NULL,
-                expected_configuration_version INTEGER NOT NULL CHECK(expected_configuration_version >= 1),
-                recovery_plan TEXT NOT NULL CHECK(recovery_plan = 'manual_intervention'),
-                created_at TEXT NOT NULL,
-                status TEXT NOT NULL CHECK(status = 'pending_approval')
-            )
-            """
-        )
+        create_change_tables(connection)
 
-        # 3. Keep one approval per proposal; employee identity lives in the directory.
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS approvals (
-                id TEXT PRIMARY KEY NOT NULL,
-                proposal_id TEXT NOT NULL UNIQUE REFERENCES proposals(id),
-                approved_by_employee_id TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            """
+
+def create_change_tables(connection: sqlite3.Connection) -> None:
+    """Create proposal and approval tables on the business connection."""
+    # 1. Store the immutable proposal snapshot.
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS proposals (
+            id TEXT PRIMARY KEY NOT NULL,
+            proposed_by_employee_id TEXT NOT NULL,
+            ticket_id TEXT NOT NULL,
+            requester_contact_id TEXT NOT NULL,
+            customer_id TEXT NOT NULL,
+            integration_id TEXT NOT NULL,
+            environment TEXT NOT NULL CHECK(environment IN ('sandbox', 'production')),
+            current_endpoint TEXT NOT NULL,
+            proposed_endpoint TEXT NOT NULL,
+            expected_configuration_version INTEGER NOT NULL CHECK(expected_configuration_version >= 1),
+            recovery_plan TEXT NOT NULL CHECK(recovery_plan = 'manual_intervention'),
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status = 'pending_approval')
         )
+        """
+    )
+
+    # 2. Keep one approval per proposal.
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS approvals (
+            id TEXT PRIMARY KEY NOT NULL,
+            proposal_id TEXT NOT NULL UNIQUE REFERENCES proposals(id),
+            approved_by_employee_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
 
 
 def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) -> None:
     """Initialize an empty database from fixtures; never reset existing records."""
     # 1. Validate every fixture before creating or inserting records.
-    if connection.in_transaction:
-        raise ValueError("Seed requires a connection without an active transaction")
-
     fixtures = {}
     for table, model in (
         ("customers", Customer),
@@ -77,8 +80,9 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
 
     # 2. Create the related tables in one transaction.
     connection.execute("PRAGMA foreign_keys = ON")
-    with connection:
-        connection.execute("BEGIN")
+    connection.execute("SAVEPOINT seed_records")
+    try:
+        create_change_tables(connection)
         connection.execute(
             "CREATE TABLE customers (id TEXT PRIMARY KEY, body TEXT NOT NULL)"
         )
@@ -95,6 +99,24 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
 
         connection.execute(
             "CREATE TABLE policies (id TEXT PRIMARY KEY, content TEXT NOT NULL)"
+        )
+
+        # Receipts share the configuration database so a future write can commit both.
+        # Business functions validate proposal and approval references before writing.
+        connection.execute(
+            """
+            CREATE TABLE executions (
+                id TEXT PRIMARY KEY NOT NULL,
+                proposal_id TEXT NOT NULL UNIQUE,
+                executed_by_employee_id TEXT NOT NULL REFERENCES employees(id),
+                approval_id TEXT,
+                executed_at TEXT NOT NULL,
+                previous_configuration_version INTEGER NOT NULL
+                    CHECK(previous_configuration_version >= 1),
+                resulting_configuration_version INTEGER NOT NULL
+                    CHECK(resulting_configuration_version = previous_configuration_version + 1)
+            )
+            """
         )
 
         # 3. Insert business records and employee customer assignments.
@@ -126,3 +148,10 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
             connection.execute(
                 "INSERT INTO policies VALUES (?, ?)", (path.stem, path.read_text())
             )
+
+    except BaseException:
+        connection.execute("ROLLBACK TO seed_records")
+        connection.execute("RELEASE seed_records")
+        raise
+    else:
+        connection.execute("RELEASE seed_records")

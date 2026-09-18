@@ -10,32 +10,34 @@ from pydantic import ValidationError
 
 from switchboard.agent import create_model
 from switchboard.integrations.change_management import get_proposal
-from switchboard.integrations.database import PROPOSALS_DATABASE
+from switchboard.integrations.database import DATABASE_PATH
 from switchboard.investigations import investigate_scenario
 from switchboard.models import EndpointChangeResult
 from switchboard.policy_evaluation import evaluate_policy
 from switchboard.scenarios import Scenario, load_scenarios
 from switchboard.tools import InvestigationContext, employee_session
 
-RUNS_DIRECTORY = PROPOSALS_DATABASE.parent / "workflows"
+RUNS_DIRECTORY = DATABASE_PATH.parent / "workflows"
 
 
 def review_saved_proposal(
     *, proposal_id: str, workflow_id: str, employee_id: str
 ) -> None:
-    """Display a proposal using the selected scenario's current employee records."""
-    # 1. Locate the scenario database without restoring graph state.
+    """Display a proposal using the shared database's current employee records."""
+    # 1. Locate the investigation history and its shared database.
     try:
         run_directory = RUNS_DIRECTORY / str(UUID(workflow_id))
     except ValueError:
         raise ValueError("Invalid workflow ID") from None
 
     manifest_path = run_directory / "run.json"
-    database_path = run_directory / "business.db"
-    if not manifest_path.is_file() or not database_path.is_file():
+    if not manifest_path.is_file():
         raise ValueError("Scenario run unavailable")
 
     manifest = json.loads(manifest_path.read_text())
+    database_path = Path(manifest["database_path"])
+    if not database_path.is_file():
+        raise ValueError("Business database unavailable")
 
     # 2. Bind reviewer identity and check access through the business function.
     reviewer_context = InvestigationContext(
@@ -45,7 +47,7 @@ def review_saved_proposal(
         proposal = get_proposal(
             session=session,
             proposal_id=proposal_id,
-            database_path=Path(manifest["proposals_database_path"]),
+            database_path=Path(manifest["database_path"]),
         )
 
     # 3. Display only the authorized record; viewing makes no changes.
@@ -94,7 +96,7 @@ def run_investigation(
             selected_scenario=selected_scenario,
             model=model,
             runs_directory=RUNS_DIRECTORY,
-            proposals_database_path=PROPOSALS_DATABASE,
+            database_path=DATABASE_PATH,
         )
     except ValidationError as error:
         raise SystemExit(
@@ -116,7 +118,9 @@ def run_investigation(
         print("\nPolicy faithfulness review (model judgment):")
         print(review.model_dump_json(indent=2))
 
-    print("\nVerified: business records unchanged.")
+    print(
+        "\nInvestigation used read-only business tools; proposal storage is reported above."
+    )
     print("\nExpected outcomes for manual review (not an automated grade):")
     for expected in selected_scenario.expected:
         print(f"- {expected}")
@@ -137,7 +141,9 @@ def main():
         "--review", metavar="PROPOSAL_ID", help="Display a saved proposal"
     )
     parser.add_argument(
-        "--run", metavar="WORKFLOW_ID", help="Scenario run supplying employee records"
+        "--run",
+        metavar="WORKFLOW_ID",
+        help="Investigation history identifying the shared demo",
     )
     parser.add_argument(
         "--employee", help="Simulated reviewer identity; not authentication"

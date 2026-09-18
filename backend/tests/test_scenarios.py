@@ -66,3 +66,69 @@ def test_unauthorized_contact_really_is_not_authorized():
     ].ticket_updates.requester_contact_id
 
     assert contact not in {item["id"] for item in acme["authorized_contacts"]}
+
+
+def test_shared_setup_reuses_records_and_rejects_scenario_switch(tmp_path):
+    from switchboard.scenarios import initialize_demo_database
+
+    path = tmp_path / "switchboard.db"
+    scenarios = load_scenarios()
+    inputs = initialize_demo_database(
+        database_path=path,
+        scenario_id="baseline",
+        selected_scenario=scenarios["baseline"],
+    )
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute(
+            "UPDATE tickets SET body = json_set(body, '$.subject', 'Changed after investigation')"
+        )
+
+    assert (
+        initialize_demo_database(
+            database_path=path,
+            scenario_id="baseline",
+            selected_scenario=scenarios["baseline"],
+        )
+        == inputs
+    )
+    with closing(sqlite3.connect(path)) as connection:
+        before = list(connection.iterdump())
+        assert (
+            "Changed after investigation"
+            in connection.execute("SELECT body FROM tickets LIMIT 1").fetchone()[0]
+        )
+
+    with pytest.raises(ValueError, match="Reset the demo"):
+        initialize_demo_database(
+            database_path=path,
+            scenario_id="unregistered-destination",
+            selected_scenario=scenarios["unregistered-destination"],
+        )
+
+    with closing(sqlite3.connect(path)) as connection:
+        assert list(connection.iterdump()) == before
+
+
+def test_failed_shared_setup_rolls_back_all_tables(tmp_path, monkeypatch):
+    from switchboard import scenarios
+
+    path = tmp_path / "switchboard.db"
+
+    def fail(**kwargs):
+        raise ValueError("Setup interrupted")
+
+    monkeypatch.setattr(scenarios, "apply_scenario", fail)
+    with pytest.raises(ValueError, match="Setup interrupted"):
+        scenarios.initialize_demo_database(
+            database_path=path,
+            scenario_id="baseline",
+            selected_scenario=scenarios.load_scenarios()["baseline"],
+        )
+
+    with closing(sqlite3.connect(path)) as connection:
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+            == []
+        )

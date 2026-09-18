@@ -15,7 +15,7 @@ from switchboard.integrations.change_management import (
     approve_proposal,
     get_proposal_review,
 )
-from switchboard.integrations.database import FIXTURES, PROPOSALS_DATABASE
+from switchboard.integrations.database import DATABASE_PATH, FIXTURES
 from switchboard.investigations import investigate_scenario
 from switchboard.models import Approval, Proposal, Role
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
@@ -37,7 +37,7 @@ from switchboard.workflow_status import (
 
 logger = logging.getLogger(__name__)
 
-RUNS_DIRECTORY = PROPOSALS_DATABASE.parent / "workflows"
+RUNS_DIRECTORY = DATABASE_PATH.parent / "workflows"
 
 
 @asynccontextmanager
@@ -75,9 +75,7 @@ class DemoOptions(BaseModel):
     employees: list[EmployeeOption]
 
 
-def review_context(
-    *, run_id: UUID, employee_id: str
-) -> tuple[InvestigationContext, Path]:
+def review_context(*, run_id: UUID, employee_id: str) -> InvestigationContext:
     """Resolve only application-created run manifests, never client filesystem paths."""
     try:
         manifest = load_run_manifest(runs_directory=RUNS_DIRECTORY, run_id=run_id)
@@ -86,10 +84,8 @@ def review_context(
             status_code=404, detail="Scenario run unavailable"
         ) from None
 
-    database_path = RUNS_DIRECTORY / str(run_id) / "business.db"
-    return InvestigationContext(
-        database_path=database_path, employee_id=employee_id
-    ), Path(manifest["proposals_database_path"])
+    database_path = Path(manifest["database_path"])
+    return InvestigationContext(database_path=database_path, employee_id=employee_id)
 
 
 @app.get("/api/runs/{run_id}/proposals/{proposal_id}", response_model=ProposalReview)
@@ -97,13 +93,15 @@ def read_proposal(
     run_id: UUID, proposal_id: str, x_employee_id: str = Header(min_length=1)
 ) -> ProposalReview:
     # 1. Resolve application storage and simulated employee context.
-    context, storage = review_context(run_id=run_id, employee_id=x_employee_id)
+    context = review_context(run_id=run_id, employee_id=x_employee_id)
 
     # 2. Delegate authorization and storage to the business functions.
     try:
         with employee_session(context) as session:
             proposal, approval = get_proposal_review(
-                session=session, proposal_id=proposal_id, database_path=storage
+                session=session,
+                proposal_id=proposal_id,
+                database_path=context.database_path,
             )
     except PermissionError:
         raise HTTPException(status_code=404, detail="Proposal unavailable") from None
@@ -122,13 +120,15 @@ def record_approval(
     run_id: UUID, proposal_id: str, x_employee_id: str = Header(min_length=1)
 ) -> Approval:
     # 1. Resolve application storage and simulated employee context.
-    context, storage = review_context(run_id=run_id, employee_id=x_employee_id)
+    context = review_context(run_id=run_id, employee_id=x_employee_id)
 
     # 2. Delegate authorization and storage to the business functions.
     try:
         with employee_session(context) as session:
             return approve_proposal(
-                session=session, proposal_id=proposal_id, database_path=storage
+                session=session,
+                proposal_id=proposal_id,
+                database_path=context.database_path,
             )
     except PermissionError:
         raise HTTPException(
@@ -176,7 +176,7 @@ def start_investigation(
             selected_scenario=scenarios[request.scenario_id],
             model=create_model(),
             runs_directory=RUNS_DIRECTORY,
-            proposals_database_path=PROPOSALS_DATABASE,
+            database_path=DATABASE_PATH,
             employee_id=x_employee_id,
         )
     except (ValueError, PermissionError):
@@ -197,10 +197,9 @@ def start_investigation(
         current_status=get_workflow_status(
             result=result,
             context=InvestigationContext(
-                database_path=RUNS_DIRECTORY / run_id / "business.db",
+                database_path=DATABASE_PATH,
                 employee_id=x_employee_id,
             ),
-            proposals_database_path=PROPOSALS_DATABASE,
         ),
     )
 

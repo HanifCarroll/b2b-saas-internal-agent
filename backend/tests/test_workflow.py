@@ -20,33 +20,18 @@ from switchboard.workflow import (
 )
 
 
-@pytest.mark.parametrize("changes_records", [False, True])
-def test_investigation_checks_database_after_agent_failure(tmp_path, changes_records):
-    # 1. Set up inputs and exercise the behavior under test.
-    path = tmp_path / "business.db"
-    with closing(sqlite3.connect(path)) as connection:
-        seed_database(connection=connection)
-
-    def fail(*args, **kwargs):
-        if changes_records:
-            with closing(sqlite3.connect(path)) as connection, connection:
-                connection.execute("UPDATE employees SET active = 0")
-
-        raise ValueError("Agent failed")
-
+def test_investigation_propagates_agent_failure(tmp_path):
     agent = Mock()
-    agent.invoke.side_effect = fail
+    agent.invoke.side_effect = ValueError("Agent failed")
     runtime = Runtime(
         context=EndpointChangeContext(
             agent=agent,
-            investigation_context=InvestigationContext(path, "emp-alex"),
-            proposals_database_path=tmp_path / "proposals.db",
+            investigation_context=InvestigationContext(
+                tmp_path / "switchboard.db", "emp-alex"
+            ),
         )
     )
-    error_type = RuntimeError if changes_records else ValueError
-    message = "changed business records" if changes_records else "Agent failed"
-
-    with pytest.raises(error_type, match=message):
+    with pytest.raises(ValueError, match="Agent failed"):
         investigate_request({"request": "Investigate CHG-1042"}, runtime)
 
 
@@ -62,7 +47,6 @@ def workflow_context(tmp_path, monkeypatch):
         return EndpointChangeContext(
             agent=build_agent(model=model, now="2026-09-22T14:15:00Z"),
             investigation_context=InvestigationContext(path, "emp-alex"),
-            proposals_database_path=tmp_path / "proposals.db",
         )
 
     yield make_context
@@ -72,7 +56,20 @@ def workflow_context(tmp_path, monkeypatch):
         with closing(sqlite3.connect(":memory:")) as expected:
             seed_database(connection=expected)
 
-            assert list(actual.iterdump()) == list(expected.iterdump())
+            for table in (
+                "customers",
+                "employees",
+                "assignments",
+                "tickets",
+                "integrations",
+                "policies",
+                "approvals",
+                "executions",
+            ):
+                assert (
+                    actual.execute(f"SELECT * FROM {table}").fetchall()
+                    == expected.execute(f"SELECT * FROM {table}").fetchall()
+                )
 
 
 def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
@@ -93,7 +90,9 @@ def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
     assert proposal.ticket_id == "CHG-1042"
     assert proposal.proposed_by_employee_id == "emp-alex"
     assert proposal.status == "pending_approval"
-    with closing(sqlite3.connect(context.proposals_database_path)) as connection:
+    with closing(
+        sqlite3.connect(context.investigation_context.database_path)
+    ) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute("SELECT * FROM proposals").fetchall()
 
@@ -128,7 +127,10 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
     assert "__interrupt__" not in result
     assert "proposal" not in result
     assert "was_created" not in result
-    assert not context.proposals_database_path.exists()
+    with closing(
+        sqlite3.connect(context.investigation_context.database_path)
+    ) as connection:
+        assert connection.execute("SELECT count(*) FROM proposals").fetchone()[0] == 0
 
 
 def test_unsupported_candidate_fails_business_validation_without_saving(
@@ -145,4 +147,7 @@ def test_unsupported_candidate_fails_business_validation_without_saving(
         )
 
     # 2. Verify the expected result and any safety guarantees.
-    assert not context.proposals_database_path.exists()
+    with closing(
+        sqlite3.connect(context.investigation_context.database_path)
+    ) as connection:
+        assert connection.execute("SELECT count(*) FROM proposals").fetchone()[0] == 0

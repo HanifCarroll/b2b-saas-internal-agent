@@ -22,8 +22,9 @@ def review_api(tmp_path, monkeypatch):
     run_id = str(uuid4())
     directory = tmp_path / run_id
     directory.mkdir()
-    storage = tmp_path / "proposals.db"
-    with closing(sqlite3.connect(directory / "business.db")) as connection:
+    storage = tmp_path / "switchboard.db"
+    monkeypatch.setattr(api, "DATABASE_PATH", storage)
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
         seed_database(connection=connection)
         session = EmployeeSession(db_connection=connection, employee_id="emp-alex")
         proposal, _ = save_proposal(
@@ -32,9 +33,7 @@ def review_api(tmp_path, monkeypatch):
             database_path=storage,
         )
 
-    (directory / "run.json").write_text(
-        json.dumps({"proposals_database_path": str(storage)})
-    )
+    (directory / "run.json").write_text(json.dumps({"database_path": str(storage)}))
     monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path)
     return TestClient(api.app), f"/api/runs/{run_id}/proposals/{proposal.id}", directory
 
@@ -72,7 +71,7 @@ def test_self_approval_and_revoked_access_are_rejected(review_api):
         ).status_code
         == 403
     )
-    with closing(sqlite3.connect(directory / "business.db")) as connection, connection:
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-priya'")
 
     assert client.get(url, headers={"X-Employee-Id": "emp-priya"}).status_code == 404
@@ -95,7 +94,7 @@ def investigation_api(tmp_path, monkeypatch):
     from test_agent import ScriptedModel, structured_result
 
     monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path / "runs")
-    monkeypatch.setattr(api, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "switchboard.db")
     monkeypatch.setattr(api, "load_dotenv", lambda *args: None)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr(
@@ -145,9 +144,7 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     assert client.get(proposal_url, headers=headers).json()["approval"] is not None
 
     with (
-        closing(
-            sqlite3.connect(api.RUNS_DIRECTORY / run["run_id"] / "business.db")
-        ) as connection,
+        closing(sqlite3.connect(api.DATABASE_PATH)) as connection,
         connection,
     ):
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
@@ -218,7 +215,8 @@ def test_blocked_investigation_is_saved_without_proposal(
     assert response.status_code == 200
     assert response.json()["current_status"]["code"] == "blocked"
     assert response.json()["result"]["proposal"] is None
-    assert not api.PROPOSALS_DATABASE.exists()
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
+        assert connection.execute("SELECT count(*) FROM proposals").fetchone()[0] == 0
 
 
 def test_policy_review_is_separate_and_persisted(investigation_api, monkeypatch):
@@ -322,7 +320,7 @@ def test_policy_review_rechecks_access_before_saving(investigation_api, monkeypa
 
     def revoke_during_evaluation(**kwargs):
         with (
-            closing(sqlite3.connect(directory / "business.db")) as connection,
+            closing(sqlite3.connect(api.DATABASE_PATH)) as connection,
             connection,
         ):
             connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
@@ -459,3 +457,80 @@ def test_sandbox_status_does_not_request_independent_approval(review_api):
     status = proposal_status(proposal=proposal, approval=None)
     assert status.code == "approval_not_required"
     assert "Execution is not implemented" in status.next_action
+
+
+def test_later_investigation_observes_shared_configuration(
+    investigation_api, monkeypatch
+):
+    from langchain_core.messages import AIMessage
+    from test_agent import ScriptedModel, structured_result
+
+    headers = {"X-Employee-Id": "emp-alex"}
+    first = investigation_api.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    history = api.RUNS_DIRECTORY / first["run_id"] / "result.json"
+    original = history.read_bytes()
+
+    # 1. Simulate a business-system update between two investigations.
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
+        connection.execute(
+            """UPDATE integrations
+               SET body = json_set(body, '$.version', 8)
+               WHERE id = 'int-acme-prod'"""
+        )
+
+    # 2. Exercise the real tool against the second investigation's database.
+    monkeypatch.setattr(
+        api,
+        "create_model",
+        lambda: ScriptedModel(
+            messages=iter(
+                [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "get_integration",
+                                "args": {"integration_id": "int-acme-prod"},
+                                "id": "read-current",
+                                "type": "tool_call",
+                            }
+                        ],
+                    ),
+                    structured_result(),
+                ]
+            )
+        ),
+    )
+    response = investigation_api.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    )
+    assert response.status_code == 200
+    second = response.json()
+    tool = next(m for m in second["result"]["messages"] if m["type"] == "tool")
+    assert json.loads(tool["content"])["version"] == 8
+    assert second["result"]["proposal"]["expected_configuration_version"] == 8
+    assert first["result"]["proposal"]["expected_configuration_version"] == 7
+    assert history.read_bytes() == original
+    assert first["run_id"] != second["run_id"]
+    assert not list(api.RUNS_DIRECTORY.rglob("*.db"))
+
+    # 3. All business and workflow tables exist in the same database.
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {
+            "employees",
+            "customers",
+            "tickets",
+            "integrations",
+            "policies",
+            "proposals",
+            "approvals",
+            "executions",
+        } <= tables

@@ -113,6 +113,30 @@ class Approval(Record):
     created_at: AwareDatetime
 
 
+class Execution(Record):
+    """Receipt of a configuration change, not proof of successful delivery."""
+
+    id: Text
+    proposal_id: Text
+    executed_by_employee_id: Text
+    approval_id: Text | None
+    executed_at: AwareDatetime
+    previous_configuration_version: Annotated[int, Field(ge=1)]
+    resulting_configuration_version: Annotated[int, Field(ge=1)]
+
+    @model_validator(mode="after")
+    def validate_version_increment(self) -> Self:
+        if (
+            self.resulting_configuration_version
+            != self.previous_configuration_version + 1
+        ):
+            raise ValueError(
+                "Execution must increment the configuration version by one"
+            )
+
+        return self
+
+
 class InvestigationFindings(Record):
     """Readable sections generated with the investigation, not a second model call."""
 

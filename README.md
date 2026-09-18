@@ -22,7 +22,7 @@ uv sync
 uv run python -m switchboard
 ```
 
-This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. Each new run creates an isolated, persistent SQLite business database from the JSON fixtures under `backend/data/local/workflows/<workflow-id>/`. Candidate runs finish after saving a proposal. The terminal shows tool calls, the investigation, and confirmation that business records remain unchanged.
+This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. All runs use one persistent business database at `backend/data/local/switchboard.db`. Separate investigation histories live under `backend/data/local/workflows/<workflow-id>/`. Candidate runs finish after saving a proposal. The terminal shows tool calls, the investigation, and the confirmed proposal storage outcome.
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
@@ -48,7 +48,7 @@ uv run python -m switchboard --scenario unregistered-destination
 
 Available scenarios are `baseline`, `unregistered-destination`, `unauthorized-contact`, `outside-window`, `cross-customer`, and `policy-override`. The default remains `baseline`. Listing scenarios does not call the model.
 
-Each selected scenario starts with the same source fixtures and applies its changes only to its own persistent run database before the investigation. The trusted employee remains Alex. An unavailable record produces a safe tool error and the agent explains the incomplete investigation. The database is checked for changes even when a run fails.
+The first investigation initializes the shared database from fixtures and applies the selected scenario once. Later investigations reuse the current records and stored scenario inputs. Selecting a different scenario is rejected rather than silently resetting records. Explicit scenario-reset controls are the next slice. The CLI investigator remains Alex; the UI can select a simulated investigator. Tools enforce read-only database connections. An unavailable record produces a safe tool error.
 
 Expected outcomes in `backend/data/scenarios/investigations.json` are printed after the run for manual review and are never passed to the model. They are not automated evaluation scores. In LangSmith, find `investigation-<scenario>` or filter by `scenario_id`. Review whether the response matches the expected outcomes and whether tool results support its claims. The cross-customer case should finish with an explanation of the unavailable record. Its tool result retains error status; a completed response does not mean access succeeded.
 
@@ -59,7 +59,7 @@ Expected outcomes in `backend/data/scenarios/investigations.json` are printed af
 - `backend/switchboard/__main__.py`: command-line setup, execution, and output.
 - `backend/switchboard/integrations/`: simulated business systems and access checks.
 - `backend/switchboard/models.py`: shared validated record types.
-- `backend/switchboard/scenarios.py`: scenario loading and isolated data changes.
+- `backend/switchboard/scenarios.py`: scenario loading and one-time shared demo initialization.
 - `backend/switchboard/prompts/`: system prompts.
 - `backend/data/fixtures/`: starting business records and policy documents.
 - `backend/data/scenarios/`: baseline request and investigation variations.
@@ -87,13 +87,13 @@ The reviewer reports specific claims, source excerpts, and explanations. Invalid
 
 `Proposal` describes the exact endpoint change to submit for approval, including the employee and customer contact IDs, ticket, customer, integration, environment, observed endpoint and configuration version, proposed endpoint, and creation time. Its initial status is `pending_approval`. IDs and timestamps are supplied by application code; model validation checks shape, not business authorization.
 
-`initialize_proposal_database()` in `backend/switchboard/integrations/database.py` creates `backend/data/local/proposals.db` without clearing existing proposals. This local directory is ignored by Git. Proposal storage is separate from the per-run business databases, so new scenarios cannot delete saved proposals. References to business records are checked by application code before saving; they are not cross-database foreign keys.
+Business records, proposals, approvals, and execution receipts share `backend/data/local/switchboard.db`. Initialization creates all tables together. Investigation histories contain only manifests, results, and optional policy evaluations; they do not own databases. Tests use temporary databases. There is no migration path for old demo records.
 
 `validate_proposal()` in `backend/switchboard/proposals.py` reads access-controlled records, checks the customer relationship and authorized contact, and compares the proposed endpoint with the structured ticket request and registered destinations for that environment. It builds the proposal from those records and the employee session. A request for the already-configured endpoint is rejected.
 
 The CLI calls `save_proposal()` in `backend/switchboard/integrations/change_management.py` for validated candidates and prints the saved ID. Saving rechecks the employee and configuration snapshot and returns the existing proposal for an identical retry. Blocked or rejected candidates save nothing. The agent still has only read-only tools. Configuration, approval, and execution are unchanged.
 
-These are synthetic scenario proposals: identical snapshots across scenarios share a proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval is implemented; approval decisions are not. The optional policy review runs after saving and is diagnostic, not a gate for saving.
+Identical requests against unchanged shared records reuse the existing proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval and explicit approval are implemented; execution is not. The optional policy review runs after saving and is diagnostic, not a gate for saving.
 
 ## Proposal review scenarios
 
@@ -114,11 +114,11 @@ Investigations finish after saving. Review is a separate application operation u
 uv run python -m switchboard --review PROPOSAL_ID --run WORKFLOW_ID --employee emp-priya
 ```
 
-The proposal ID identifies the business record. `--run` selects the isolated scenario database containing employee identities and customer assignments; it does not resume a graph. Review uses the existing `get_proposal` business function and checks current access on every read. It requires no model, API key, or graph checkpoint. Keep the run directory and proposals database to review after exiting Python.
+The proposal ID identifies the business record. `--run` locates the investigation history and its shared database; it does not select an isolated business world or resume a graph. Review checks current shared employee permissions and customer assignments on every read. It requires no model, API key, or graph checkpoint.
 
 `--employee` simulates a trusted application session for this local demo; it is not authentication. A deployed application must bind identity through sign-in. Viewing does not approve or execute a proposal. Approval decisions are available through the local web UI and `approve_proposal`; the CLI review command only displays proposals.
 
-The candidate route is now `investigate_request → prepare_proposal → END`. The graph context always requires an agent. There is no review node, interrupt, or `--resume` command. Existing saved proposals and scenario run directories remain usable with the new review command; old checkpoints are left untouched but are no longer used.
+The candidate route is now `investigate_request → prepare_proposal → END`. The graph context always requires an agent. There is no review node, interrupt, or `--resume` command. Old isolated demo records are discarded; no compatibility layer is provided.
 
 ```sh
 uv run pytest tests/test_proposal_review_cli.py tests/test_review_scenarios.py -v
@@ -141,10 +141,10 @@ npm run dev -- --hostname 127.0.0.1
 
 Open http://localhost:3000. Choose a scenario and simulated investigator, then start the investigation. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change the reviewer to test access restrictions, then approve explicitly as an independent assigned technical lead. The current stored approval appears separately from the investigation report.
 
-Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Runs created before result persistence and access snapshots were added remain reviewable by the existing proposal endpoints/CLI but are not listed in this history. Expected outcomes are for manual comparison and assume the baseline investigator, Alex; choosing another employee changes the access context.
+Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Expected outcomes are for manual comparison and assume the baseline investigator, Alex; choosing another employee changes the access context.
 
 The optional **Evaluate policy claims** button makes a separate model call and stores its judgment. It does not authorize a proposal. Investigation and policy evaluation use the existing model credentials in `backend/.env`; retrieval and approval do not call a model. The pending indicator does not claim token-by-token or node-by-node progress. Completed results survive browser refresh; there is no background job queue or resumable live progress in this local slice.
 
-This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and recovery planning remain unimplemented. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
+This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and delivery verification remain unimplemented. Proposals include a required manual-intervention recovery plan. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
 
 Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:check && npm run build` in `frontend/`.

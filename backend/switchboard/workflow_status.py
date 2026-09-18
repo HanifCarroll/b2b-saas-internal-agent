@@ -1,6 +1,5 @@
 """Current workflow guidance derived from business records, never model claims."""
 
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -49,7 +48,6 @@ def get_workflow_status(
     *,
     result: EndpointChangeResult,
     context: InvestigationContext,
-    proposals_database_path: Path,
 ) -> WorkflowStatus:
     """Read current approval under the caller's existing access controls."""
     # 1. A blocked investigation never reaches proposal review.
@@ -67,7 +65,7 @@ def get_workflow_status(
                 proposal, approval = get_proposal_review(
                     session=session,
                     proposal_id=result.proposal.id,
-                    database_path=proposals_database_path,
+                    database_path=context.database_path,
                 )
         except PermissionError:
             pass  # Missing and inaccessible records must remain indistinguishable.

@@ -31,10 +31,13 @@ def load_run_manifest(*, runs_directory: Path, run_id: UUID) -> dict:
     """Resolve application-created run IDs, never client filesystem paths."""
     directory = runs_directory / str(run_id)
     manifest_path = directory / "run.json"
-    if not manifest_path.is_file() or not (directory / "business.db").is_file():
+    if not manifest_path.is_file():
         raise FileNotFoundError("Scenario run unavailable")
 
-    return json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text())
+    if not Path(manifest["database_path"]).is_file():
+        raise FileNotFoundError("Business database unavailable")
+    return manifest
 
 
 def require_run_access(*, context: InvestigationContext, manifest: dict) -> None:
@@ -65,7 +68,7 @@ def get_investigation_run(
     directory = runs_directory / str(run_id)
     manifest = load_run_manifest(runs_directory=runs_directory, run_id=run_id)
     context = InvestigationContext(
-        database_path=directory / "business.db", employee_id=employee_id
+        database_path=Path(manifest["database_path"]), employee_id=employee_id
     )
     result_path = directory / "result.json"
     if not result_path.is_file():
@@ -83,7 +86,6 @@ def get_investigation_run(
         current_status=get_workflow_status(
             result=result,
             context=context,
-            proposals_database_path=Path(manifest["proposals_database_path"]),
         ),
         policy_review=PolicyReview.model_validate_json(policy_path.read_text())
         if policy_path.exists()
@@ -130,7 +132,7 @@ def save_policy_review(
     manifest = load_run_manifest(runs_directory=runs_directory, run_id=run_id)
     require_run_access(
         context=InvestigationContext(
-            database_path=directory / "business.db", employee_id=employee_id
+            database_path=Path(manifest["database_path"]), employee_id=employee_id
         ),
         manifest=manifest,
     )

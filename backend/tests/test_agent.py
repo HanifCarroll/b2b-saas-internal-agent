@@ -222,6 +222,7 @@ def test_cli_rejects_invalid_result_without_retry(monkeypatch, response, tmp_pat
     from switchboard import __main__ as cli
 
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
+    monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
     model = ScriptedModel(messages=iter([AIMessage(content=response)]))
     monkeypatch.setattr(cli, "create_model", lambda: model)
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
@@ -249,15 +250,15 @@ def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr("sys.argv", ["switchboard"])
 
-    monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
+    monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
     cli.main()
     output = capsys.readouterr().out
 
     # 2. Verify the expected result and any safety guarantees.
     assert "Proposal created:" in output
     assert '"outcome": "proposal_candidate"' in output
-    assert "Verified: business records unchanged." in output
+    assert "Investigation used read-only business tools" in output
 
 
 def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
@@ -272,8 +273,8 @@ def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr("sys.argv", ["switchboard"])
-    monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
+    monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
     cli.main()
     capsys.readouterr()
     cli.main()

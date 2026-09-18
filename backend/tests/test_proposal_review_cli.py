@@ -14,7 +14,7 @@ from switchboard import __main__ as cli
 @pytest.fixture
 def completed_run(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
-    monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    monkeypatch.setattr(cli, "DATABASE_PATH", tmp_path / "switchboard.db")
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr(
@@ -33,11 +33,11 @@ def test_review_in_fresh_process_preserves_records_without_model(
     completed_run,
 ):
     # 1. Set up inputs and exercise the behavior under test.
-    business_path = completed_run / "business.db"
+    business_path = cli.DATABASE_PATH
     with closing(sqlite3.connect(business_path)) as connection:
         before = list(connection.iterdump())
 
-    with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
+    with closing(sqlite3.connect(cli.DATABASE_PATH)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
         proposals_before = list(connection.iterdump())
 
@@ -72,7 +72,7 @@ cli.main()
     with closing(sqlite3.connect(business_path)) as connection:
         assert list(connection.iterdump()) == before
 
-    with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
+    with closing(sqlite3.connect(cli.DATABASE_PATH)) as connection:
         assert connection.execute("SELECT status FROM proposals").fetchall() == [
             ("pending_approval",)
         ]
@@ -84,7 +84,7 @@ def test_denied_reviewer_cannot_read(completed_run, denial):
     # 1. Set up inputs and exercise the behavior under test.
     employee_id = "emp-ben" if denial == "cross-customer" else "emp-priya"
     with (
-        closing(sqlite3.connect(completed_run / "business.db")) as connection,
+        closing(sqlite3.connect(cli.DATABASE_PATH)) as connection,
         connection,
     ):
         if denial == "inactive":
@@ -94,7 +94,7 @@ def test_denied_reviewer_cannot_read(completed_run, denial):
                 "DELETE FROM assignments WHERE employee_id = 'emp-priya'"
             )
 
-    with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
+    with closing(sqlite3.connect(cli.DATABASE_PATH)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
 
     with pytest.raises(PermissionError, match="Record unavailable"):
@@ -107,7 +107,7 @@ def test_denied_reviewer_cannot_read(completed_run, denial):
 
 def test_review_rechecks_access_each_time(completed_run, capsys):
     # 1. An assigned reviewer can retrieve the persisted proposal.
-    with closing(sqlite3.connect(cli.PROPOSALS_DATABASE)) as connection:
+    with closing(sqlite3.connect(cli.DATABASE_PATH)) as connection:
         proposal_id = connection.execute("SELECT id FROM proposals").fetchone()[0]
 
     cli.review_saved_proposal(
@@ -118,7 +118,7 @@ def test_review_rechecks_access_each_time(completed_run, capsys):
 
     # 2. Revoking access prevents another read, even after a successful review.
     with (
-        closing(sqlite3.connect(completed_run / "business.db")) as connection,
+        closing(sqlite3.connect(cli.DATABASE_PATH)) as connection,
         connection,
     ):
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-priya'")

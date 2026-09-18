@@ -9,10 +9,9 @@ from uuid import uuid4
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from switchboard.agent import build_agent
-from switchboard.integrations.database import seed_database
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import EndpointChangeResult
-from switchboard.scenarios import Scenario, apply_scenario
+from switchboard.scenarios import Scenario, initialize_demo_database
 from switchboard.tools import InvestigationContext
 from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
@@ -23,18 +22,17 @@ def investigate_scenario(
     selected_scenario: Scenario,
     model: BaseChatModel,
     runs_directory: Path,
-    proposals_database_path: Path,
+    database_path: Path,
     employee_id: str | None = None,
 ) -> tuple[str, EndpointChangeResult]:
-    """Create isolated records, run the existing graph, and retain its result."""
-    # 1. Create durable scenario records and a trusted run manifest.
-    workflow_id = str(uuid4())
-    directory = runs_directory / workflow_id
-    directory.mkdir(parents=True)
-    database_path = directory / "business.db"
+    """Investigate shared business records and retain a separate historical result."""
+    # 1. Initialize the selected demo once, then reuse its current business state.
+    scenario = initialize_demo_database(
+        database_path=database_path,
+        scenario_id=scenario_id,
+        selected_scenario=selected_scenario,
+    )
     with closing(sqlite3.connect(database_path)) as connection:
-        seed_database(connection=connection)
-        scenario = apply_scenario(db_connection=connection, scenario=selected_scenario)
         requester = employee_id or scenario["requester_employee_id"]
         session = EmployeeSession(db_connection=connection, employee_id=requester)
         role = session.get_active_employee_role()
@@ -46,6 +44,9 @@ def investigate_scenario(
             )
         ]
 
+    workflow_id = str(uuid4())
+    directory = runs_directory / workflow_id
+    directory.mkdir(parents=True)
     (directory / "run.json").write_text(
         json.dumps(
             {
@@ -53,7 +54,7 @@ def investigate_scenario(
                 "requester_employee_id": requester,
                 "requester_role": role,
                 "customer_ids": customer_ids,
-                "proposals_database_path": str(proposals_database_path.resolve()),
+                "database_path": str(database_path.resolve()),
             },
             indent=2,
         )
@@ -67,7 +68,6 @@ def investigate_scenario(
             database_path=database_path,
             employee_id=requester,
         ),
-        proposals_database_path=proposals_database_path,
     )
     raw_result = endpoint_change_graph.invoke(
         {"request": scenario["request"]},
