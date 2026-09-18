@@ -10,9 +10,8 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import interrupt
 
-from switchboard.integrations.change_management import get_proposal, save_proposal
+from switchboard.integrations.change_management import save_proposal
 from switchboard.models import EndpointChangeResult, InvestigationResult, Proposal
 from switchboard.proposals import validate_proposal
 from switchboard.tools import InvestigationContext, employee_session
@@ -21,18 +20,14 @@ from switchboard.tools import InvestigationContext, employee_session
 # Dependencies supplied by the application that the workflow will use
 @dataclass(frozen=True)
 class EndpointChangeContext:
-    agent: (
-        CompiledStateGraph[
-            AgentState[Any],
-            InvestigationContext | None,
-            InputAgentState,
-            OutputAgentState[Any],
-        ]
-        | None
-    )
+    agent: CompiledStateGraph[
+        AgentState[Any],
+        InvestigationContext | None,
+        InputAgentState,
+        OutputAgentState[Any],
+    ]
     investigation_context: InvestigationContext
     proposals_database_path: Path
-    reviewer_employee_id: str | None = None
 
 
 class EndpointChangeWorkflowState(TypedDict):
@@ -41,7 +36,6 @@ class EndpointChangeWorkflowState(TypedDict):
     proposal: NotRequired[Proposal]
     was_created: NotRequired[bool]
     messages: NotRequired[list[BaseMessage]]
-    reviewed_by_employee_id: NotRequired[str]
 
 
 def investigate_request(
@@ -49,8 +43,6 @@ def investigate_request(
 ):
     # 1. Require the investigator and capture the initial business records.
     agent = runtime.context.agent
-    if agent is None:
-        raise ValueError("Starting an investigation requires an agent")
     employee_context = runtime.context.investigation_context
     with closing(sqlite3.connect(employee_context.database_path)) as connection:
         database_before = list(connection.iterdump())
@@ -96,43 +88,6 @@ def prepare_proposal(
     return {"proposal": proposal, "was_created": was_created}
 
 
-def review_proposal(
-    state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
-):
-    """Pause for a read acknowledgment; this never approves a change."""
-    # 1. Require a saved proposal and pause for external review.
-    proposal = state.get("proposal")
-    if proposal is None:
-        raise ValueError("Cannot review without a proposal")
-    response = interrupt(
-        {
-            "proposal_id": proposal.id,
-            "message": "Review the saved proposal, then acknowledge review. This is not approval.",
-        }
-    )
-    # 2. Validate the acknowledgment and require a reviewer identity.
-    if response != {"action": "acknowledge_review"}:
-        raise ValueError("Expected a review acknowledgment, not an approval decision")
-    reviewer_id = runtime.context.reviewer_employee_id
-    if reviewer_id is None:
-        raise PermissionError("A reviewer session is required")
-    # 3. Recheck reviewer access and confirm the proposal is unchanged.
-    reviewer_context = InvestigationContext(
-        database_path=runtime.context.investigation_context.database_path,
-        employee_id=reviewer_id,
-    )
-    with employee_session(reviewer_context) as session:
-        stored = get_proposal(
-            session=session,
-            proposal_id=proposal.id,
-            database_path=runtime.context.proposals_database_path,
-        )
-    if stored != proposal:
-        raise ValueError("Proposal changed since review was requested")
-    # 4. Record acknowledgment only; approval status stays unchanged.
-    return {"reviewed_by_employee_id": reviewer_id}
-
-
 def route_after_investigation(state: EndpointChangeWorkflowState):
     # 1. Require the result produced by the investigation node.
     investigation = state.get("investigation")
@@ -154,7 +109,6 @@ workflow = StateGraph(
 # Add nodes
 workflow.add_node("investigate_request", investigate_request)
 workflow.add_node("prepare_proposal", prepare_proposal)
-workflow.add_node("review_proposal", review_proposal)
 
 # Add edges
 workflow.add_edge(START, "investigate_request")
@@ -166,6 +120,5 @@ workflow.add_conditional_edges(
         "blocked": END,
     },
 )
-workflow.add_edge("prepare_proposal", "review_proposal")
-workflow.add_edge("review_proposal", END)
+workflow.add_edge("prepare_proposal", END)
 endpoint_change_graph = workflow.compile()

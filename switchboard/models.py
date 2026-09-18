@@ -140,4 +140,3 @@ class EndpointChangeResult(Record):
     messages: list[BaseMessage]
     proposal: Proposal | None = None
     was_created: bool | None = None
-    reviewed_by_employee_id: Text | None = None

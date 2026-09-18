@@ -10,7 +10,7 @@ uv sync
 uv run python -m switchboard
 ```
 
-This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. Each new run creates an isolated, persistent SQLite business database from the JSON fixtures under `data/local/workflows/<workflow-id>/`. Candidate runs pause for review after saving. The terminal shows tool calls, the investigation, and confirmation that business records remain unchanged.
+This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier currently serving V4.1 Flash. Each new run creates an isolated, persistent SQLite business database from the JSON fixtures under `data/local/workflows/<workflow-id>/`. Candidate runs finish after saving a proposal. The terminal shows tool calls, the investigation, and confirmation that business records remain unchanged.
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
@@ -81,7 +81,7 @@ The reviewer reports specific claims, source excerpts, and explanations. Invalid
 
 The CLI calls `save_proposal()` in `switchboard/integrations/change_management.py` for validated candidates and prints the saved ID. Saving rechecks the employee and configuration snapshot and returns the existing proposal for an identical retry. Blocked or rejected candidates save nothing. The agent still has only read-only tools. Configuration, approval, and execution are unchanged.
 
-These are synthetic scenario proposals: identical snapshots across scenarios share a proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval and review acknowledgment are implemented; approval decisions are not. The optional policy review runs after saving and is diagnostic, not a gate for saving.
+These are synthetic scenario proposals: identical snapshots across scenarios share a proposal. Creation timestamps use the actual application clock; the investigation uses the scenario clock. Access-controlled proposal retrieval is implemented; approval decisions are not. The optional policy review runs after saving and is diagnostic, not a gate for saving.
 
 ## Proposal review scenarios
 
@@ -91,26 +91,23 @@ These are synthetic scenario proposals: identical snapshots across scenarios sha
 uv run pytest tests/test_review_scenarios.py -v
 ```
 
-The eight cases cover assigned roles, another customer's employee, inactive or unassigned reviewers, missing proposals, and configuration changes after saving. They verify that reading neither changes records nor approves a proposal. These are executable retrieval scenarios, not CLI investigation scenarios; they make no paid model calls. These retrieval tests are separate from graph pause/resume tests. Approval decisions are not implemented yet.
+The eight cases cover assigned roles, another customer's employee, inactive or unassigned reviewers, missing proposals, and configuration changes after saving. They verify that reading neither changes records nor approves a proposal. These are executable retrieval scenarios, not CLI investigation scenarios; they make no paid model calls. CLI review tests also check access after process exit. Approval decisions are not implemented yet.
 
 
-## Pause and resume for review
+## Review a saved proposal
+
+Investigations finish after saving. Review is a separate application operation using the proposal ID printed by the investigation:
 
 ```sh
-uv run python -m switchboard --scenario baseline
-# Substitute the printed workflow ID in the commands below.
-uv run python -m switchboard --review WORKFLOW_ID --employee emp-priya
-uv run python -m switchboard --resume WORKFLOW_ID --employee emp-priya
+uv run python -m switchboard --review PROPOSAL_ID --run WORKFLOW_ID --employee emp-priya
 ```
 
-The candidate route is `investigate_request → prepare_proposal → review_proposal`. The last node calls `interrupt()` with a proposal ID. Blocked investigations end without pausing. SQLite checkpoints retain the graph state under the printed workflow ID; a separate business database and run manifest preserve the original scenario and employee context. All are local, ignored by Git, and require no hosted service. Keep the run directory and proposals database to resume after exiting Python.
+The proposal ID identifies the business record. `--run` selects the isolated scenario database containing employee identities and customer assignments; it does not resume a graph. Review uses the existing `get_proposal` business function and checks current access on every read. It requires no model, API key, or graph checkpoint. Keep the run directory and proposals database to review after exiting Python.
 
-`--review` displays the proposal after checking the reviewer's current access. `--resume` acknowledges review and completes this initial workflow; it does not approve or execute the proposal. The proposal stays `pending_approval`. Review and resume make no LLM calls. The review node rechecks access after resumption, while proposal preparation remains in the previous node so it is not repeated. Repeat resume attempts after completion are rejected.
+`--employee` simulates a trusted application session for this local demo; it is not authentication. A deployed application must bind identity through sign-in. Viewing does not approve or execute a proposal. Approval decisions are not implemented yet.
 
-`--employee` simulates a trusted application session for this local portfolio demo; it is not authentication. In a deployed application the reviewer identity must come from sign-in, not request text. Resume content contains only the acknowledgment action. Read permission does not grant approval authority, so assigned support staff and the proposing engineer may also acknowledge review.
-
-The CLI handles interrupt metadata before validating the normal result. URL fields serialize as strings for checkpoints and restore into validated record models. Tests include closing and reopening checkpoints in a fresh Python process, denied reviewers, view-only behavior, and unchanged business records:
+The candidate route is now `investigate_request → prepare_proposal → END`. The graph context always requires an agent. There is no review node, interrupt, or `--resume` command. Existing saved proposals and scenario run directories remain usable with the new review command; old checkpoints are left untouched but are no longer used.
 
 ```sh
-uv run pytest tests/test_review_resume.py -v
+uv run pytest tests/test_proposal_review_cli.py tests/test_review_scenarios.py -v
 ```

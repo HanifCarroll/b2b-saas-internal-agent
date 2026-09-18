@@ -83,7 +83,7 @@ def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
     # 2. Verify the expected result and any safety guarantees.
     assert result["investigation"].outcome == "proposal_candidate"
     assert result["was_created"] is True
-    assert result["__interrupt__"][0].value["proposal_id"] == result["proposal"].id
+    assert "__interrupt__" not in result
     assert result["messages"][-1].text == response.text
     proposal = result["proposal"]
     assert proposal.ticket_id == "CHG-1042"
