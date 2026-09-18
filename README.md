@@ -111,3 +111,23 @@ The candidate route is now `investigate_request → prepare_proposal → END`. T
 ```sh
 uv run pytest tests/test_proposal_review_cli.py tests/test_review_scenarios.py -v
 ```
+
+## Local proposal review UI
+
+The Next.js/shadcn screen uses FastAPI to review and approve existing proposals. No model calls are made by this slice. Start both services from the repository root in separate terminals:
+
+```sh
+uv run uvicorn switchboard.api:app --host 127.0.0.1 --port 8000
+```
+
+```sh
+cd frontend
+npm ci
+npm run dev -- --hostname 127.0.0.1
+```
+
+Open http://localhost:3000 and enter the run ID and proposal ID from an existing CLI investigation. Select a simulated employee, load the proposal, then explicitly approve it as an independent technical lead. The screen displays the stored approval receipt and refreshes after approval. Changing IDs or employee clears the previous result. Business functions enforce access on every request; the UI is not the authorization boundary.
+
+This is a local demo with a client-selected `X-Employee-Id` header, not authentication. Keep both services local. It is not ready for public hosting until sign-in replaces simulated identity. The UI records approval only; execution and recovery planning remain unimplemented. Approval records are displayed separately from the proposal's original status. Next.js proxies `/api` to the local FastAPI service; API documentation is at http://127.0.0.1:8000/docs.
+
+Checks: `uv run pytest -v`, and `npm run lint && npm run build` in `frontend/`.
