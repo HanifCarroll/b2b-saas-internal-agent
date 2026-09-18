@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { requestApi, type WorkflowStatus } from "@/lib/api";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -57,41 +58,32 @@ export function ProposalReview({
   onStatusRefresh: () => void;
 }) {
   const [employee, setEmployee] = useState("emp-priya");
-  const [review, setReview] = useState<Review | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
+  const [approvalError, setApprovalError] = useState("");
   const url = `/api/runs/${runId}/proposals/${proposalId}`;
 
-  // 1. Reload with current reviewer access; ignore stale responses.
-  useEffect(() => {
-    const controller = new AbortController();
-    requestApi<Review>(url, employee, { signal: controller.signal })
-      .then((loaded) => {
-        setReview(loaded);
-        setError("");
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setReview(null);
-          setError(error.message);
-        }
-      });
-    return () => controller.abort();
-  }, [url, employee, refresh]);
+  // 1. Fetch with reviewer-scoped caching and cancellation.
+  const reviewQuery = useQuery({
+    queryKey: ["proposal-review", employee, runId, proposalId],
+    queryFn: ({ signal }) => requestApi<Review>(url, employee, { signal }),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const error = approvalError || reviewQuery.error?.message || "";
+  const review = !error && !reviewQuery.isFetching ? reviewQuery.data : undefined;
 
   // 2. Display only the receipt confirmed by the approval endpoint.
   async function approve() {
     setBusy(true);
-    setError("");
+    setApprovalError("");
     try {
       await requestApi<Approval>(`${url}/approval`, employee, {
         method: "POST",
       });
-      setReview(await requestApi<Review>(url, employee));
+      await reviewQuery.refetch({ throwOnError: true });
     } catch (error) {
-      setReview(null);
-      setError(
+      setApprovalError(
         error instanceof Error
           ? error.message
           : "Approval could not be confirmed. Refresh before retrying.",
@@ -116,8 +108,7 @@ export function ProposalReview({
           onValueChange={(value) => {
             if (!value) return;
             setEmployee(value);
-            setReview(null);
-            setError("");
+            setApprovalError("");
           }}
         >
           <SelectTrigger id="reviewer" className="w-full">
@@ -148,9 +139,8 @@ export function ProposalReview({
         variant="outline"
         disabled={busy}
         onClick={() => {
-          setReview(null);
-          setError("");
-          setRefresh((value) => value + 1);
+          setApprovalError("");
+          void reviewQuery.refetch();
           onStatusRefresh();
         }}
       >

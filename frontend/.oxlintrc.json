@@ -6,7 +6,27 @@
   },
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/exhaustive-deps": "warn"
+    "react/exhaustive-deps": "warn",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "react",
+            "importNames": ["useEffect"],
+            "message": "useEffect is forbidden. Derive values during render; use event handlers for actions, TanStack Query for remote data, and a keyed component for resets. For external-system lifecycles, propose an explicit exception; do not rename the hook or disable this rule. See AGENTS.md.",
+            "allowTypeImports": true
+          }
+        ]
+      }
+    ],
+    "no-restricted-properties": [
+      "error",
+      {
+        "property": "useEffect",
+        "message": "useEffect is forbidden. Derive values during render; use event handlers for actions, TanStack Query for remote data, and a keyed component for resets. For external-system lifecycles, propose an explicit exception; do not rename the hook or disable this rule. See AGENTS.md."
+      }
+    ]
   },
   "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts"],
   "overrides": [
