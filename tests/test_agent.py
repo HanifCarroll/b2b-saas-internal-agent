@@ -187,9 +187,10 @@ def test_tool_database_connection_rejects_writes(database_path):
 @pytest.mark.parametrize(
     "response", ["not JSON", structured_result(ticket_id=None).text]
 )
-def test_cli_rejects_invalid_result_without_retry(monkeypatch, response):
+def test_cli_rejects_invalid_result_without_retry(monkeypatch, response, tmp_path):
     from switchboard import __main__ as cli
 
+    monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     model = ScriptedModel(messages=iter([AIMessage(content=response)]))
     monkeypatch.setattr(cli, "create_model", lambda: model)
     monkeypatch.setattr(cli, "load_dotenv", lambda *args: None)
@@ -214,6 +215,7 @@ def test_cli_accepts_valid_result(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr("sys.argv", ["switchboard"])
 
     monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     cli.main()
     output = capsys.readouterr().out
     assert "Proposal created:" in output
@@ -233,6 +235,7 @@ def test_cli_reports_existing_proposal_on_retry(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr("sys.argv", ["switchboard"])
     monkeypatch.setattr(cli, "PROPOSALS_DATABASE", tmp_path / "proposals.db")
+    monkeypatch.setattr(cli, "RUNS_DIRECTORY", tmp_path / "workflows")
     cli.main()
     capsys.readouterr()
     cli.main()

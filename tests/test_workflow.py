@@ -80,6 +80,7 @@ def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
 
     assert result["investigation"].outcome == "proposal_candidate"
     assert result["was_created"] is True
+    assert result["__interrupt__"][0].value["proposal_id"] == result["proposal"].id
     assert result["messages"][-1].text == response.text
     proposal = result["proposal"]
     assert proposal.ticket_id == "CHG-1042"
@@ -108,6 +109,7 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
     )
 
     assert result["investigation"].outcome == "blocked"
+    assert "__interrupt__" not in result
     assert "proposal" not in result
     assert "was_created" not in result
     assert not context.proposals_database_path.exists()

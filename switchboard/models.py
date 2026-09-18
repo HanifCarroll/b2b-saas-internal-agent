@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    field_serializer,
     model_validator,
 )
 
@@ -96,6 +97,11 @@ class Proposal(Record):
     created_at: AwareDatetime
     status: Literal["pending_approval"] = "pending_approval"
 
+    @field_serializer("current_endpoint", "proposed_endpoint")
+    def serialize_endpoint(self, endpoint: HttpUrl) -> str:
+        """Store URLs as strings in graph checkpoints as well as JSON."""
+        return str(endpoint)
+
 
 class InvestigationResult(Record):
     """Investigator findings, not authorization to save or execute a change."""
@@ -106,6 +112,10 @@ class InvestigationResult(Record):
     evidence_ids: list[Text]
     summary: Text
     blockers: list[Text]
+
+    @field_serializer("proposed_endpoint")
+    def serialize_endpoint(self, endpoint: HttpUrl | None) -> str | None:
+        return str(endpoint) if endpoint is not None else None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> Self:
@@ -128,3 +138,4 @@ class EndpointChangeResult(Record):
     messages: list[BaseMessage]
     proposal: Proposal | None = None
     was_created: bool | None = None
+    reviewed_by_employee_id: Text | None = None
