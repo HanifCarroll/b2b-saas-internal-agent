@@ -40,6 +40,17 @@ class EmployeeSession:
 
         return row[0]
 
+    def require_customer_access(
+        self, *, customer_id: str, allowed_roles: set[str]
+    ) -> None:
+        """Raise PermissionError unless active, in an allowed role, and assigned.
+
+        Reuse the record-read checks; the caller does not need the customer data.
+        """
+        self.read_authorized_record(
+            table="customers", record_id=customer_id, allowed_roles=allowed_roles
+        )
+
     def read_authorized_record(
         self, *, table: str, record_id: str, allowed_roles: set[str]
     ) -> dict:

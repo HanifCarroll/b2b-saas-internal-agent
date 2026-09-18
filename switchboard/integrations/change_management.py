@@ -1,11 +1,13 @@
-"""Persist proposals; never approve or execute configuration changes."""
+"""Read and save proposals and approvals; never execute configuration changes."""
 
 import json
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from switchboard.models import Proposal
+from switchboard.models import Approval, Proposal
 from switchboard.proposals import validate_endpoint_change_request
 
 from .database import PROPOSALS_DATABASE, initialize_proposal_database
@@ -130,11 +132,70 @@ def get_proposal(
             raise PermissionError("Record unavailable")
 
         # 3. Recheck active status and role, and require customer assignment.
-        session.read_authorized_record(
-            table="customers", record_id=row["customer_id"], allowed_roles=ROLES
+        session.require_customer_access(
+            customer_id=row["customer_id"], allowed_roles=ROLES
         )
     except PermissionError:
         raise PermissionError("Record unavailable") from None
 
     # 4. Return the stored proposal only after access has been checked.
     return Proposal.model_validate_json(json.dumps(dict(row)))
+
+
+def approve_proposal(
+    *,
+    proposal_id: str,
+    session: EmployeeSession,
+    database_path: Path = PROPOSALS_DATABASE,
+) -> Approval:
+    """Record independent technical-lead approval or return the existing approval.
+
+    Approves the stored proposal snapshot, which must remain immutable. Sandbox
+    proposals need no independent approval. Execution must separately recheck
+    authority, configuration, the change window, and the recovery plan.
+    """
+    # 1. Load the saved proposal through current customer-access checks.
+    proposal = get_proposal(
+        session=session, proposal_id=proposal_id, database_path=database_path
+    )
+
+    # 2. Require an independent technical lead for a production proposal.
+    session.require_customer_access(
+        customer_id=proposal.customer_id,
+        allowed_roles={"technical_lead"},
+    )
+    if session.employee_id == proposal.proposed_by_employee_id:
+        raise PermissionError(
+            "The proposing employee cannot approve their own proposal"
+        )
+    if proposal.environment != "production":
+        raise ValueError("Sandbox proposals do not require independent approval")
+
+    # 3. Serialize retries so only one approval can be stored for this proposal.
+    initialize_proposal_database(database_path)
+    with closing(sqlite3.connect(database_path)) as connection, connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT * FROM approvals WHERE proposal_id = ?", (proposal_id,)
+        ).fetchone()
+        if existing is not None:
+            return Approval.model_validate_json(json.dumps(dict(existing)))
+
+        # 4. Bind the approver and timestamp in application code, then persist.
+        approval = Approval(
+            id=str(uuid4()),
+            proposal_id=proposal.id,
+            approved_by_employee_id=session.employee_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        connection.execute(
+            """
+            INSERT INTO approvals (id, proposal_id, approved_by_employee_id, created_at)
+            VALUES (:id, :proposal_id, :approved_by_employee_id, :created_at)
+            """,
+            approval.model_dump(mode="json"),
+        )
+
+    return approval
