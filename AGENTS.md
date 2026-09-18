@@ -16,3 +16,4 @@
 - Separate logical blocks within functions with one blank line, including setup, validation, execution, and output.
 - Add a blank line after an early-return block before the next operation, and between validation checks and the work they protect.
 - Keep closely related statements together; do not add blank lines between every statement.
+- Give each function one clear responsibility. When callers need only part of a function’s behavior, consider extracting that responsibility into a shared function rather than calling the whole function and discarding its result.
