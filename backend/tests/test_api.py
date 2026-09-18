@@ -464,7 +464,7 @@ def test_sandbox_status_does_not_request_independent_approval(review_api):
     proposal = Proposal.model_validate_json(json.dumps(record))
     status = proposal_status(proposal=proposal, approval=None)
     assert status.code == "approval_not_required"
-    assert "Execution is not implemented" in status.next_action
+    assert "execute the saved sandbox proposal" in status.next_action
 
 
 def test_later_investigation_observes_shared_configuration(
@@ -542,3 +542,138 @@ def test_later_investigation_observes_shared_configuration(
             "approvals",
             "executions",
         } <= tables
+
+
+def test_execution_uses_server_time_and_returns_retry_receipt(review_api, monkeypatch):
+    from datetime import datetime, timezone
+
+    # 1. Approve the saved proposal and set a trusted server clock inside the window.
+    client, url, _ = review_api
+    approval = client.post(url + "/approval", headers={"X-Employee-Id": "emp-priya"})
+    assert approval.status_code == 200
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
+        connection.execute("UPDATE approvals SET created_at = '2026-09-22T13:00:00Z'")
+
+    class ServerClock:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 9, 22, 14, 30, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(api, "datetime", ServerClock)
+
+    # 2. Client-supplied identity/time fields cannot replace server-bound values.
+    response = client.post(
+        url + "/execution",
+        headers={"X-Employee-Id": "emp-alex"},
+        json={"executed_at": "2000-01-01T00:00:00Z", "employee_id": "emp-priya"},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["was_created"] is True
+    assert result["execution"]["executed_by_employee_id"] == "emp-alex"
+    assert result["execution"]["executed_at"] == "2026-09-22T14:30:00Z"
+    assert result["execution"]["approval_id"] == approval.json()["id"]
+
+    # 3. A repeated HTTP request returns the receipt without another version increment.
+    retry = client.post(url + "/execution", headers={"X-Employee-Id": "emp-alex"})
+    assert retry.status_code == 200
+    assert retry.json() == result | {"was_created": False}
+    refreshed = client.get(url, headers={"X-Employee-Id": "emp-alex"})
+    assert refreshed.status_code == 200
+    assert refreshed.json()["execution"] == result["execution"]
+    assert refreshed.json()["current_status"]["code"] == "configuration_updated"
+    assert "not yet verified" in refreshed.json()["current_status"]["title"]
+    assert client.get(url, headers={"X-Employee-Id": "emp-ben"}).status_code == 404
+
+    from switchboard.models import EndpointChangeResult, Proposal
+    from switchboard.tools import InvestigationContext
+    from switchboard.workflow_status import get_workflow_status
+
+    status = get_workflow_status(
+        result=EndpointChangeResult(
+            investigation=candidate(),
+            messages=[],
+            proposal=Proposal.model_validate_json(
+                json.dumps(refreshed.json()["proposal"])
+            ),
+        ),
+        context=InvestigationContext(
+            database_path=api.DATABASE_PATH, employee_id="emp-alex"
+        ),
+    )
+    assert status.code == "configuration_updated"
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
+        assert connection.execute("SELECT count(*) FROM executions").fetchone()[0] == 1
+        assert (
+            connection.execute(
+                "SELECT json_extract(body, '$.version') FROM integrations WHERE id = 'int-acme-prod'"
+            ).fetchone()[0]
+            == 8
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_identity",
+        "other_customer",
+        "missing_proposal",
+        "missing_approval",
+        "outside_window",
+        "stale",
+    ],
+)
+def test_execution_api_rejects_without_writes(review_api, monkeypatch, case):
+    from datetime import datetime, timezone
+
+    # 1. Set up each denied request against an unchanged configuration.
+    client, url, _ = review_api
+    if case in {"outside_window", "stale"}:
+        assert (
+            client.post(
+                url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+            ).status_code
+            == 200
+        )
+        with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
+            connection.execute(
+                "UPDATE approvals SET created_at = '2026-09-22T13:00:00Z'"
+            )
+            if case == "stale":
+                connection.execute(
+                    "UPDATE integrations SET body = json_set(body, '$.version', 8) WHERE id = 'int-acme-prod'"
+                )
+
+    class ServerClock:
+        @staticmethod
+        def now(tz):
+            return datetime(
+                2026,
+                9,
+                22,
+                18 if case == "outside_window" else 14,
+                30,
+                tzinfo=timezone.utc,
+            )
+
+    monkeypatch.setattr(api, "datetime", ServerClock)
+    headers = {"X-Employee-Id": "emp-ben" if case == "other_customer" else "emp-alex"}
+    if case == "missing_identity":
+        headers = {}
+    if case == "missing_proposal":
+        url = url.rsplit("/", 1)[0] + "/missing"
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
+        before = list(connection.iterdump())
+
+    # 2. Reject at the HTTP boundary and preserve every database record.
+    response = client.post(url + "/execution", headers=headers)
+    expected = (
+        422
+        if case == "missing_identity"
+        else 403
+        if case in {"other_customer", "missing_proposal"}
+        else 409
+    )
+    assert response.status_code == expected
+    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
+        assert list(connection.iterdump()) == before

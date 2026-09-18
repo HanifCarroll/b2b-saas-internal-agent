@@ -211,6 +211,7 @@ class SaveProposalResult:
 class ProposalReviewResult:
     proposal: Proposal
     approval: Approval | None
+    execution: Execution | None = None
 
 
 @dataclass(frozen=True)

@@ -242,8 +242,19 @@ def get_proposal_review(
             "SELECT * FROM approvals WHERE proposal_id = ?", (proposal_id,)
         ).fetchone()
 
+        execution_row = connection.execute(
+            "SELECT * FROM executions WHERE proposal_id = ?", (proposal_id,)
+        ).fetchone()
+
     approval = Approval.model_validate_json(json.dumps(dict(row))) if row else None
-    return ProposalReviewResult(proposal=proposal, approval=approval)
+    execution = (
+        Execution.model_validate_json(json.dumps(dict(execution_row)))
+        if execution_row
+        else None
+    )
+    return ProposalReviewResult(
+        proposal=proposal, approval=approval, execution=execution
+    )
 
 
 def execute_proposal(

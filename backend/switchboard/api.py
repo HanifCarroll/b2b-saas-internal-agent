@@ -3,6 +3,7 @@
 import json
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -14,11 +15,18 @@ from switchboard.agent import create_model
 from switchboard.demo import DemoBusyError, demo_operation, read_demo_setup, reset_demo
 from switchboard.integrations.change_management import (
     approve_proposal,
+    execute_proposal,
     get_proposal_review,
 )
 from switchboard.integrations.database import DATABASE_PATH, FIXTURES
 from switchboard.investigations import investigate_scenario
-from switchboard.models import Approval, Proposal, Role
+from switchboard.models import (
+    Approval,
+    ExecuteProposalResult,
+    Execution,
+    Proposal,
+    Role,
+)
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
 from switchboard.runs import (
     InvestigationRun,
@@ -103,6 +111,7 @@ def reset_demo_state(request: ResetRequest) -> DemoState:
 class ProposalReview(BaseModel):
     proposal: Proposal
     approval: Approval | None
+    execution: Execution | None
     current_status: WorkflowStatus
 
 
@@ -162,7 +171,10 @@ def read_proposal(
     return ProposalReview(
         proposal=proposal,
         approval=approval,
-        current_status=proposal_status(proposal=proposal, approval=approval),
+        execution=proposal_review.execution,
+        current_status=proposal_status(
+            proposal=proposal, approval=approval, execution=proposal_review.execution
+        ),
     )
 
 
@@ -190,6 +202,37 @@ def record_approval(
     except ValueError:
         raise HTTPException(
             status_code=409, detail="Proposal is not eligible for independent approval"
+        ) from None
+
+
+@app.post(
+    "/api/runs/{run_id}/proposals/{proposal_id}/execution",
+    response_model=ExecuteProposalResult,
+)
+def record_execution(
+    run_id: UUID, proposal_id: str, x_employee_id: str = Header(min_length=1)
+) -> ExecuteProposalResult:
+    """Execute through deterministic checks; a receipt does not verify delivery."""
+    # 1. Resolve application storage and simulated employee identity.
+    context = review_context(run_id=run_id, employee_id=x_employee_id)
+
+    # 2. Supply server time and delegate the atomic change to the business function.
+    try:
+        with employee_session(context) as session:
+            return execute_proposal(
+                proposal_id=proposal_id,
+                session=session,
+                executed_at=datetime.now(timezone.utc),
+                database_path=context.database_path,
+            )
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail="Execution not permitted or proposal unavailable"
+        ) from None
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="Proposal does not meet current execution requirements",
         ) from None
 
 

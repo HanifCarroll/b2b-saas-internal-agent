@@ -5,12 +5,13 @@ from typing import Literal
 from pydantic import BaseModel
 
 from switchboard.integrations.change_management import get_proposal_review
-from switchboard.models import Approval, EndpointChangeResult, Proposal
+from switchboard.models import Approval, EndpointChangeResult, Execution, Proposal
 from switchboard.tools import InvestigationContext, employee_session
 
 
 class WorkflowStatus(BaseModel):
     code: Literal[
+        "configuration_updated",
         "blocked",
         "awaiting_approval",
         "approval_recorded",
@@ -21,20 +22,29 @@ class WorkflowStatus(BaseModel):
     next_action: str
 
 
-def proposal_status(*, proposal: Proposal, approval: Approval | None) -> WorkflowStatus:
+def proposal_status(
+    *, proposal: Proposal, approval: Approval | None, execution: Execution | None = None
+) -> WorkflowStatus:
     """Describe recorded approval; this does not establish readiness to execute."""
+    if execution is not None:
+        return WorkflowStatus(
+            code="configuration_updated",
+            title="Configuration updated — delivery not yet verified",
+            next_action="Verify delivery separately. If verification fails, stop for manual intervention; do not repeat the configuration change.",
+        )
+
     if approval is not None:
         return WorkflowStatus(
             code="approval_recorded",
             title="Approval recorded",
-            next_action="Execution is not implemented yet.",
+            next_action="Execute the saved proposal. The server rechecks permissions, configuration, and the production change window.",
         )
 
     if proposal.environment == "sandbox":
         return WorkflowStatus(
             code="approval_not_required",
             title="Independent approval not required",
-            next_action="Review the saved sandbox proposal. Execution is not implemented yet.",
+            next_action="Review and execute the saved sandbox proposal. The server rechecks permissions and configuration.",
         )
 
     return WorkflowStatus(
@@ -72,7 +82,11 @@ def get_workflow_status(
         except PermissionError:
             pass  # Missing and inaccessible records must remain indistinguishable.
         else:
-            return proposal_status(proposal=proposal, approval=approval)
+            return proposal_status(
+                proposal=proposal,
+                approval=approval,
+                execution=proposal_review.execution,
+            )
 
     return WorkflowStatus(
         code="unavailable",
