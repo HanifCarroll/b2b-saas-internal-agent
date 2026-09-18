@@ -393,49 +393,6 @@ def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch)
         assert result["investigation"]["findings"]["recommendation"]
 
 
-def test_legacy_summary_loads_without_rewriting_history(investigation_api):
-    client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
-    run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
-    ).json()
-    path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
-    saved = json.loads(path.read_text())
-    saved["investigation"].pop("findings")
-    saved["investigation"]["summary"] = "Original report, preserved verbatim."
-    saved["messages"].append({"type": "tool", "content": "Old tool result"})
-    path.write_text(json.dumps(saved))
-    before = path.read_bytes()
-
-    response = client.get(f"/api/investigations/{run['run_id']}", headers=headers)
-    assert response.status_code == 200
-    findings = response.json()["result"]["investigation"]["findings"]
-    assert findings["overview"] == saved["investigation"]["summary"]
-    assert findings["checks"] == []
-    assert "older report" in findings["gaps"][0]
-    assert path.read_bytes() == before
-
-
-def test_older_next_step_loads_as_historical_recommendation(investigation_api):
-    client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
-    run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
-    ).json()
-    path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
-    saved = json.loads(path.read_text())
-    findings = saved["investigation"]["findings"]
-    findings["next_step"] = findings.pop("recommendation")
-    path.write_text(json.dumps(saved))
-    before = path.read_bytes()
-    loaded = client.get(f"/api/investigations/{run['run_id']}", headers=headers).json()
-    assert (
-        loaded["result"]["investigation"]["findings"]["recommendation"]
-        == findings["next_step"]
-    )
-    assert path.read_bytes() == before
-
-
 def test_current_status_tracks_approval_without_rewriting_investigation(
     investigation_api,
 ):

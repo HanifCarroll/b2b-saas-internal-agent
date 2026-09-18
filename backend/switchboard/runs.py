@@ -39,7 +39,7 @@ def load_run_manifest(*, runs_directory: Path, run_id: UUID) -> dict:
 
 def require_run_access(*, context: InvestigationContext, manifest: dict) -> None:
     """Require the original requester and their current role and customer access."""
-    # 1. Reject other employees and legacy manifests without an access snapshot.
+    # 1. Require the original employee and a complete access snapshot.
     if manifest.get("requester_employee_id") != context.employee_id:
         raise PermissionError("Investigation unavailable")
 
@@ -73,20 +73,7 @@ def get_investigation_run(
 
     # 2. Recheck current access before returning any saved evidence.
     require_run_access(context=context, manifest=manifest)
-    saved = json.loads(result_path.read_text())
-    investigation = saved["investigation"]
-    if "findings" not in investigation and "summary" in investigation:
-        investigation["findings"] = {
-            "overview": investigation.pop("summary"),
-            "checks": [],
-            "policy_requirements": [],
-            "gaps": ["This older report did not store separate findings sections."],
-            "recommendation": "See the original report above for its recommended next step.",
-        }
-    findings = investigation.get("findings", {})
-    if "recommendation" not in findings and "next_step" in findings:
-        findings["recommendation"] = findings.pop("next_step")
-    result = EndpointChangeResult.model_validate_json(json.dumps(saved))
+    result = EndpointChangeResult.model_validate_json(result_path.read_text())
 
     policy_path = directory / "policy-review.json"
     return InvestigationRun(
