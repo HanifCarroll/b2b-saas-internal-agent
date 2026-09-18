@@ -34,7 +34,7 @@ def structured_result(**overrides):
             "checks": [],
             "policy_requirements": [],
             "gaps": [],
-            "next_step": "Review the evidence before proceeding.",
+            "recommendation": "Review the evidence before proceeding.",
         },
         "blockers": [],
     }
@@ -150,7 +150,7 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
                         checks=[],
                         policy_requirements=[],
                         gaps=[],
-                        next_step="Review the evidence before proceeding.",
+                        recommendation="Review the evidence before proceeding.",
                     ),
                     blockers=[explanation],
                 ),

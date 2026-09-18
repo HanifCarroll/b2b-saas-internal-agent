@@ -199,7 +199,7 @@ def test_blocked_investigation_is_saved_without_proposal(
             checks=[],
             policy_requirements=[],
             gaps=[],
-            next_step="Review the evidence before proceeding.",
+            recommendation="Review the evidence before proceeding.",
         ),
         blockers=["Unregistered destination"],
     )
@@ -271,7 +271,7 @@ def test_blocked_inaccessible_ticket_remains_in_own_history(
             checks=[],
             policy_requirements=[],
             gaps=[],
-            next_step="Review the evidence before proceeding.",
+            recommendation="Review the evidence before proceeding.",
         ),
         blockers=["Could not retrieve record"],
     )
@@ -389,7 +389,7 @@ def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch)
         tool_result = next(m for m in result["messages"] if m["type"] == "tool")
         assert tool_result["tool_call_id"] == "ticket-call"
         assert tool_result["status"] == "success"
-        assert result["investigation"]["findings"]["next_step"]
+        assert result["investigation"]["findings"]["recommendation"]
 
 
 def test_legacy_summary_loads_without_rewriting_history(investigation_api):
@@ -412,4 +412,24 @@ def test_legacy_summary_loads_without_rewriting_history(investigation_api):
     assert findings["overview"] == saved["investigation"]["summary"]
     assert findings["checks"] == []
     assert "older report" in findings["gaps"][0]
+    assert path.read_bytes() == before
+
+
+def test_older_next_step_loads_as_historical_recommendation(investigation_api):
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
+    saved = json.loads(path.read_text())
+    findings = saved["investigation"]["findings"]
+    findings["next_step"] = findings.pop("recommendation")
+    path.write_text(json.dumps(saved))
+    before = path.read_bytes()
+    loaded = client.get(f"/api/investigations/{run['run_id']}", headers=headers).json()
+    assert (
+        loaded["result"]["investigation"]["findings"]["recommendation"]
+        == findings["next_step"]
+    )
     assert path.read_bytes() == before

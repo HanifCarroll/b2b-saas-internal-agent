@@ -79,8 +79,11 @@ def get_investigation_run(
             "checks": [],
             "policy_requirements": [],
             "gaps": ["This older report did not store separate findings sections."],
-            "next_step": "See the original report above for its recommended next step.",
+            "recommendation": "See the original report above for its recommended next step.",
         }
+    findings = investigation.get("findings", {})
+    if "recommendation" not in findings and "next_step" in findings:
+        findings["recommendation"] = findings.pop("next_step")
     result = EndpointChangeResult.model_validate_json(json.dumps(saved))
 
     policy_path = directory / "policy-review.json"

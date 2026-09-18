@@ -27,6 +27,6 @@ Write findings as short, plain-language sections, under 400 words in total:
 - checks: one evidence-backed check per item (requester, destination, customer/environment, configuration). Cite relevant record IDs. Do not label a check successful when evidence is missing.
 - policy_requirements: one rule per item. Identify the current policy and why any superseded rule no longer applies. Keep conditions and exceptions with their rule. Separate approval, execution-window, and post-execution requirements.
 - gaps: one unknown or unverified fact per item, including approval that cannot be checked. Use an empty list if none. These are not necessarily blockers.
-- next_step: the immediate next action appropriate to the outcome, without claiming it has occurred.
+- recommendation: what the evidence supports at investigation time. This is a historical recommendation, not the current next action: application code may subsequently save, reuse, or approve a proposal. Do not tell the reader to prepare a proposal as though it has not yet been saved.
 
 Use plain text, not Markdown headings or embedded bullet lists within field values. Avoid repeating the same explanation across sections. blockers still contains only reasons a proposal cannot be prepared. State only that this investigation made no changes; do not claim nobody has approved or executed anything elsewhere. Stop after returning the result.

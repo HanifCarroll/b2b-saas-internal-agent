@@ -20,7 +20,7 @@ def validate_proposal(
     """Build a proposal from authorized records; raise if the request is unsupported.
 
     Approval and execution windows are checked later, before execution.
-    The model's summary and evidence IDs are not proof of business authorization.
+    The model's findings and evidence IDs are not proof of business authorization.
     """
     # 1. Require a candidate with the fields needed to prepare a proposal.
     if (

@@ -39,7 +39,7 @@ export function InvestigationFindings({
         {[
           { title: "Evidence checks", items: findings.checks },
           { title: "Policy requirements", items: findings.policy_requirements },
-          { title: "Unknown or unverified", items: findings.gaps },
+          { title: "Unknown at investigation time", items: findings.gaps },
         ].map(({ title, items }) =>
           items.length > 0 ? (
             <section key={title} className="flex flex-col gap-2">
@@ -53,8 +53,8 @@ export function InvestigationFindings({
           ) : null,
         )}
         <section className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">Next step</h3>
-          <p className="text-sm leading-relaxed break-words">{findings.next_step}</p>
+          <h3 className="text-sm font-semibold">Investigator’s recommendation</h3>
+          <p className="text-sm leading-relaxed break-words">{findings.recommendation}</p>
         </section>
         {investigation.blockers.length > 0 && (
           <Alert variant="destructive">

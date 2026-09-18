@@ -123,8 +123,8 @@ class InvestigationFindings(Record):
         description="Applicable policy rules, including their conditions and exceptions."
     )
     gaps: list[Text] = Field(description="Unknown or unverified facts; empty if none.")
-    next_step: Text = Field(
-        description="The next action, without claiming it happened."
+    recommendation: Text = Field(
+        description="The investigator’s recommendation at investigation time, not current workflow instructions."
     )
 
 

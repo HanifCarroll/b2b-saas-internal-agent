@@ -114,7 +114,7 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
                 checks=[],
                 policy_requirements=[],
                 gaps=[],
-                next_step="Review the evidence before proceeding.",
+                recommendation="Review the evidence before proceeding.",
             ),
             blockers=["Required evidence is unavailable."],
         )

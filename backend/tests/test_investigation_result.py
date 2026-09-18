@@ -20,7 +20,7 @@ def candidate():
             "checks": [],
             "policy_requirements": [],
             "gaps": [],
-            "next_step": "Review the evidence before proceeding.",
+            "recommendation": "Review the evidence before proceeding.",
         },
         "blockers": [],
     }
@@ -61,7 +61,7 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
             checks=[],
             policy_requirements=[],
             gaps=[],
-            next_step="Review the evidence before proceeding.",
+            recommendation="Review the evidence before proceeding.",
         ),
         blockers=["Required evidence could not be retrieved."],
     )
@@ -95,7 +95,7 @@ def test_invalid_field_values_are_rejected(candidate, field, value):
 
 
 @pytest.mark.parametrize(
-    "field", ["overview", "checks", "policy_requirements", "gaps", "next_step"]
+    "field", ["overview", "checks", "policy_requirements", "gaps", "recommendation"]
 )
 def test_findings_sections_are_required(candidate, field):
     candidate["findings"].pop(field)

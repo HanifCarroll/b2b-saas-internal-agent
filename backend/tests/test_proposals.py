@@ -33,7 +33,7 @@ def candidate(endpoint="https://events.acme.example/deals"):
             checks=[],
             policy_requirements=[],
             gaps=[],
-            next_step="Review the evidence before proceeding.",
+            recommendation="Review the evidence before proceeding.",
         ),
         blockers=[],
     )
@@ -101,7 +101,7 @@ def test_blocked_result_is_rejected(connection):
             checks=[],
             policy_requirements=[],
             gaps=[],
-            next_step="Review the evidence before proceeding.",
+            recommendation="Review the evidence before proceeding.",
         ),
         blockers=["Missing ticket"],
     )

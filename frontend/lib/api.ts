@@ -24,7 +24,7 @@ export type InvestigationRun = {
         checks: string[];
         policy_requirements: string[];
         gaps: string[];
-        next_step: string;
+        recommendation: string;
       };
       blockers: string[];
       evidence_ids: string[];
