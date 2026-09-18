@@ -376,3 +376,66 @@ def test_records_persist_after_reopening_database_in_read_only_mode(tmp_path):
         # 2. Verify the expected result and any safety guarantees.
         assert integration.version == 7
         assert list(connection.iterdump()) == original
+
+
+def test_customer_access_check_does_not_decode_customer_data(database):
+    database.execute("UPDATE customers SET body = 'invalid JSON' WHERE id = 'acme'")
+    session = EmployeeSession(db_connection=database, employee_id="emp-alex")
+
+    assert (
+        session.require_customer_access(
+            customer_id="acme", allowed_roles={"implementation_engineer"}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("record_id", ["CHG-1042", "missing"])
+def test_authorized_read_preserves_callers_transaction(database, record_id):
+    # 1. Make an uncommitted change owned by the caller.
+    database.execute(
+        "UPDATE employees SET role = 'technical_lead' WHERE id = 'emp-alex'"
+    )
+    session = EmployeeSession(db_connection=database, employee_id="emp-alex")
+
+    # 2. Both successful and denied reads must leave that transaction open.
+    if record_id == "missing":
+        with pytest.raises(PermissionError):
+            get_ticket(session=session, ticket_id=record_id)
+    else:
+        get_ticket(session=session, ticket_id=record_id)
+
+    assert database.in_transaction
+    database.rollback()
+    assert session.get_active_employee_role() == "implementation_engineer"
+
+
+def test_record_read_uses_one_snapshot_during_concurrent_change(tmp_path, monkeypatch):
+    # 1. Allow another connection to commit while the reader holds a snapshot.
+    path = tmp_path / "business.db"
+    with (
+        closing(sqlite3.connect(path)) as reader,
+        closing(sqlite3.connect(path)) as writer,
+    ):
+        reader.execute("PRAGMA journal_mode = WAL")
+        seed_database(connection=reader)
+        session = EmployeeSession(db_connection=reader, employee_id="emp-alex")
+        check_access = session.require_customer_access
+
+        def check_then_change(*, customer_id, allowed_roles):
+            check_access(customer_id=customer_id, allowed_roles=allowed_roles)
+            with writer:
+                writer.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
+                writer.execute("UPDATE tickets SET body = '{}' WHERE id = 'CHG-1042'")
+
+        monkeypatch.setattr(session, "require_customer_access", check_then_change)
+
+        # 2. The read sees the authorized snapshot, never the later replacement body.
+        assert get_ticket(session=session, ticket_id="CHG-1042").id == "CHG-1042"
+        assert not reader.in_transaction
+
+        # 3. The next read sees the revocation and fails before retrieving the body.
+        with pytest.raises(PermissionError):
+            get_ticket(session=session, ticket_id="CHG-1042")
+
+        assert not reader.in_transaction

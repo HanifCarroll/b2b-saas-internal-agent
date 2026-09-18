@@ -43,46 +43,57 @@ class EmployeeSession:
     def require_customer_access(
         self, *, customer_id: str, allowed_roles: set[str]
     ) -> None:
-        """Raise PermissionError unless active, in an allowed role, and assigned.
+        """Require an active employee with a recognized role and customer assignment."""
+        # 1. Limit permission to recognized roles, even if the caller supplies others.
+        permitted_roles = sorted(allowed_roles & ROLES)
+        if not permitted_roles:
+            raise PermissionError("Record unavailable")
 
-        Reuse the record-read checks; the caller does not need the customer data.
-        """
-        self.read_authorized_record(
-            table="customers", record_id=customer_id, allowed_roles=allowed_roles
-        )
-
-    def read_authorized_record(
-        self, *, table: str, record_id: str, allowed_roles: set[str]
-    ) -> dict:
-        """Return a record only when both role and customer assignment permit it."""
-        # 1. Require an active employee with a role permitted by this operation.
-        role = self.get_active_employee_role()
-        if role not in allowed_roles:
-            raise PermissionError("Access denied")
-
-        # 2. Enforce customer assignment in the query, before retrieving the body.
-        # Recheck active status and role in that same query.
-        # table is an internal constant, never a tool argument.
-        customer_column = "record.id" if table == "customers" else "record.customer_id"
-        role_placeholders = ",".join("?" for _ in allowed_roles)
+        # 2. Check existence, identity, role, and assignment without reading the body.
+        role_placeholders = ",".join("?" for _ in permitted_roles)
         row = self._db_connection.execute(
             f"""
-            SELECT record.body
-            FROM {table} AS record
+            SELECT 1
+            FROM customers AS customer
             JOIN assignments AS assignment
-              ON assignment.customer_id = {customer_column}
+              ON assignment.customer_id = customer.id
             JOIN employees AS employee
               ON employee.id = assignment.employee_id
-            WHERE record.id = ?
+            WHERE customer.id = ?
               AND employee.id = ?
               AND employee.active = 1
               AND employee.role IN ({role_placeholders})
             """,
-            (record_id, self._employee_id, *sorted(allowed_roles)),
+            (customer_id, self._employee_id, *permitted_roles),
         ).fetchone()
-
-        # Missing and forbidden records have the same response to avoid disclosure.
         if row is None:
             raise PermissionError("Record unavailable")
 
-        return json.loads(row[0])
+    def read_authorized_record(
+        self, *, table: str, record_id: str, allowed_roles: set[str]
+    ) -> dict:
+        """Authorize and retrieve a record within one consistent database snapshot."""
+        # 1. Keep ownership lookup, authorization, and retrieval in one snapshot.
+        # A savepoint also works inside a caller's transaction without committing it.
+        # table is an internal constant, never a tool argument.
+        customer_column = "id" if table == "customers" else "customer_id"
+        self._db_connection.execute("SAVEPOINT authorized_record_read")
+        try:
+            row = self._db_connection.execute(
+                f"SELECT {customer_column} FROM {table} WHERE id = ?", (record_id,)
+            ).fetchone()
+            if row is None:
+                raise PermissionError("Record unavailable")
+
+            # 2. Use the shared permission check before retrieving customer data.
+            self.require_customer_access(
+                customer_id=row[0], allowed_roles=allowed_roles
+            )
+
+            # 3. Retrieve and decode the body only after authorization succeeds.
+            row = self._db_connection.execute(
+                f"SELECT body FROM {table} WHERE id = ?", (record_id,)
+            ).fetchone()
+            return json.loads(row[0])
+        finally:
+            self._db_connection.execute("RELEASE SAVEPOINT authorized_record_read")
