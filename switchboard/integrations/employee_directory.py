@@ -17,7 +17,7 @@ class EmployeeSession:
     as tools. Never expose the constructor, connection, or arbitrary SQL. Checks reread directory state.
     """
 
-    def __init__(self, db_connection: sqlite3.Connection, employee_id: str):
+    def __init__(self, *, db_connection: sqlite3.Connection, employee_id: str):
         self._db_connection = db_connection
         self._employee_id = employee_id
 
@@ -37,7 +37,7 @@ class EmployeeSession:
         return row[0]
 
     def read_authorized_record(
-        self, table: str, record_id: str, allowed_roles: set[str]
+        self, *, table: str, record_id: str, allowed_roles: set[str]
     ) -> dict:
         """Return a record only when both role and customer assignment permit it."""
         # 1. Require an active employee with a role permitted by this operation.

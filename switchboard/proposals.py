@@ -15,7 +15,7 @@ from switchboard.models import Integration, InvestigationResult, Proposal, Ticke
 
 
 def validate_proposal(
-    investigation: InvestigationResult, session: EmployeeSession
+    *, investigation: InvestigationResult, session: EmployeeSession
 ) -> Proposal:
     """Build a proposal from authorized records; raise if the request is unsupported.
 
@@ -31,7 +31,9 @@ def validate_proposal(
         raise ValueError("Investigation is not a proposal candidate")
 
     ticket, integration = validate_endpoint_change_request(
-        investigation.ticket_id, investigation.proposed_endpoint, session
+        ticket_id=investigation.ticket_id,
+        proposed_endpoint=investigation.proposed_endpoint,
+        session=session,
     )
 
     return Proposal(
@@ -50,6 +52,7 @@ def validate_proposal(
 
 
 def validate_endpoint_change_request(
+    *,
     ticket_id: str,
     proposed_endpoint: HttpUrl,
     session: EmployeeSession,
@@ -59,9 +62,13 @@ def validate_endpoint_change_request(
     Checks access, customer ownership, requester authority, and destination.
     This does not grant approval or permission to execute the change.
     """
-    ticket = support_desk.get_ticket(session, ticket_id)
-    customer = customer_registry.get_customer(session, ticket.customer_id)
-    integration = configuration_service.get_integration(session, ticket.integration_id)
+    ticket = support_desk.get_ticket(session=session, ticket_id=ticket_id)
+    customer = customer_registry.get_customer(
+        session=session, customer_id=ticket.customer_id
+    )
+    integration = configuration_service.get_integration(
+        session=session, integration_id=ticket.integration_id
+    )
     if integration.customer_id != customer.id:
         raise ValueError("Ticket and integration belong to different customers")
     if ticket.requester_contact_id not in {

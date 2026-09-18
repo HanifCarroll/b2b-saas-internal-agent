@@ -44,11 +44,13 @@ def main():
         # 2. Seed the temporary business database and apply the scenario.
         database_path = Path(directory) / "switchboard.db"
         with closing(sqlite3.connect(database_path)) as db_connection:
-            seed_database(db_connection)
-            scenario = apply_scenario(db_connection, selected_scenario)
+            seed_database(connection=db_connection)
+            scenario = apply_scenario(
+                db_connection=db_connection, scenario=selected_scenario
+            )
 
         # 3. Build the agent and trusted workflow context.
-        agent = build_agent(model, scenario["now"])
+        agent = build_agent(model=model, now=scenario["now"])
         context = InvestigationContext(
             database_path=database_path,
             employee_id=scenario["requester_employee_id"],
@@ -99,7 +101,9 @@ def main():
 
         # 6. Optionally evaluate policy accuracy with a separate model call.
         if args.evaluate_policy:
-            review = evaluate_policy(investigation.model_dump_json(), model)
+            review = evaluate_policy(
+                claims=investigation.model_dump_json(), model=model
+            )
             print("\nPolicy faithfulness review (model judgment):")
             print(review.model_dump_json(indent=2))
 

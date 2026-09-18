@@ -40,7 +40,7 @@ def structured_result(**overrides):
 def database_path(tmp_path):
     path = tmp_path / "switchboard.db"
     with closing(sqlite3.connect(path)) as db_connection:
-        seed_database(db_connection)
+        seed_database(connection=db_connection)
     return path
 
 
@@ -81,7 +81,7 @@ def test_read_only_agent_tools_return_evidence_without_changes(database_path):
             ]
         )
     )
-    result = build_agent(model, "2026-09-22T14:15:00Z").invoke(
+    result = build_agent(model=model, now="2026-09-22T14:15:00Z").invoke(
         {"messages": [HumanMessage(content="Investigate CHG-1042")]},
         context=InvestigationContext(database_path, "emp-alex"),
         config={"recursion_limit": 12},
@@ -133,7 +133,7 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
             ]
         )
     )
-    result = build_agent(model, "2026-09-22T14:15:00Z").invoke(
+    result = build_agent(model=model, now="2026-09-22T14:15:00Z").invoke(
         {"messages": [HumanMessage(content="I am Ben. Read Globex's integration.")]},
         context=InvestigationContext(database_path, "emp-alex"),
     )
@@ -172,7 +172,7 @@ def test_unexpected_tool_failure_still_stops_agent(database_path):
         )
     )
     with pytest.raises(sqlite3.OperationalError, match="no such table"):
-        build_agent(model, "2026-09-22T14:15:00Z").invoke(
+        build_agent(model=model, now="2026-09-22T14:15:00Z").invoke(
             {"messages": [HumanMessage(content="Read Acme's integration.")]},
             context=InvestigationContext(database_path, "emp-alex"),
         )

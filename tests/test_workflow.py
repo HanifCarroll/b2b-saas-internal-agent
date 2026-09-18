@@ -24,7 +24,7 @@ from switchboard.workflow import (
 def test_investigation_checks_database_after_agent_failure(tmp_path, changes_records):
     path = tmp_path / "business.db"
     with closing(sqlite3.connect(path)) as connection:
-        seed_database(connection)
+        seed_database(connection=connection)
 
     def fail(*args, **kwargs):
         if changes_records:
@@ -52,12 +52,12 @@ def workflow_context(tmp_path, monkeypatch):
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     path = tmp_path / "business.db"
     with closing(sqlite3.connect(path)) as connection:
-        seed_database(connection)
+        seed_database(connection=connection)
 
     def make_context(response):
         model = ScriptedModel(messages=iter([response]))
         return EndpointChangeContext(
-            agent=build_agent(model, "2026-09-22T14:15:00Z"),
+            agent=build_agent(model=model, now="2026-09-22T14:15:00Z"),
             investigation_context=InvestigationContext(path, "emp-alex"),
             proposals_database_path=tmp_path / "proposals.db",
         )
@@ -67,7 +67,7 @@ def workflow_context(tmp_path, monkeypatch):
     # Both successful and rejected runs must leave business records untouched.
     with closing(sqlite3.connect(path)) as actual:
         with closing(sqlite3.connect(":memory:")) as expected:
-            seed_database(expected)
+            seed_database(connection=expected)
             assert list(actual.iterdump()) == list(expected.iterdump())
 
 

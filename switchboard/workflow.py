@@ -72,9 +72,11 @@ def prepare_proposal(
         raise ValueError("Cannot prepare a proposal without an investigation")
 
     with employee_session(runtime.context.investigation_context) as session:
-        proposal = validate_proposal(investigation, session)
+        proposal = validate_proposal(investigation=investigation, session=session)
         proposal, was_created = save_proposal(
-            proposal, session, runtime.context.proposals_database_path
+            proposal=proposal,
+            session=session,
+            database_path=runtime.context.proposals_database_path,
         )
 
     return {"proposal": proposal, "was_created": was_created}

@@ -29,7 +29,7 @@ def load_scenarios() -> dict[str, Scenario]:
     return TypeAdapter(dict[str, Scenario]).validate_json(content)
 
 
-def apply_scenario(db_connection: sqlite3.Connection, scenario: Scenario) -> dict:
+def apply_scenario(*, db_connection: sqlite3.Connection, scenario: Scenario) -> dict:
     """Modify only the fresh test database, before the read-only run begins."""
     inputs = json.loads((SCENARIOS / "baseline.json").read_text())
     if scenario.now is not None:

@@ -22,7 +22,7 @@ class PolicyReview(Record):
     limitation: str = Field(default="Model judgment, not proof of correctness.")
 
 
-def evaluate_policy(claims: str, model: BaseChatModel) -> PolicyReview:
+def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
     """Compare claims with policy sources in a separate call, without agent history."""
     policies = [
         {"id": path.stem, "content": path.read_text()}
@@ -67,7 +67,7 @@ def main():
     model = create_model()
     disagreements = 0
     for example in examples:
-        review = evaluate_policy(example["claims"], model)
+        review = evaluate_policy(claims=example["claims"], model=model)
         matches = bool(review.issues) == example["expect_issue"]
         if not matches:
             disagreements += 1

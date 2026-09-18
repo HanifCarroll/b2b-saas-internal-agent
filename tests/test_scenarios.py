@@ -17,14 +17,14 @@ def test_scenario_changes_only_its_intended_inputs(name):
         path: path.read_bytes() for path in FIXTURES.rglob("*") if path.is_file()
     }
     with closing(sqlite3.connect(":memory:")) as db_connection:
-        seed_database(db_connection)
+        seed_database(connection=db_connection)
         integrations_before = db_connection.execute(
             "SELECT * FROM integrations"
         ).fetchall()
         ticket_before = json.loads(
             db_connection.execute("SELECT body FROM tickets").fetchone()[0]
         )
-        inputs = apply_scenario(db_connection, scenario)
+        inputs = apply_scenario(db_connection=db_connection, scenario=scenario)
         ticket_after = json.loads(
             db_connection.execute("SELECT body FROM tickets").fetchone()[0]
         )

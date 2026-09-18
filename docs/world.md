@@ -47,7 +47,7 @@ Support can read assigned customers’ tickets, integration status, and redacted
 
 ## Everyday complications
 
-- An old runbook still permits self-approval.
+- An old runbook permits self-approval.
 - A ticket requests an endpoint that has not been registered.
 - Two employees submit conflicting changes for the same integration.
 

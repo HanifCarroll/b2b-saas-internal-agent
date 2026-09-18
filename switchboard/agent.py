@@ -33,7 +33,7 @@ def explain_unavailable_record(error: Exception, request) -> str | None:
     return None  # Unexpected failures must still fail the run.
 
 
-def build_agent(model, now: str):
+def build_agent(*, model, now: str):
     """Investigate with thinking and request a final JSON result."""
     prompt = (Path(__file__).parent / "prompts" / "investigation.md").read_text()
     return create_agent(

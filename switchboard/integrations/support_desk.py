@@ -7,8 +7,10 @@ from switchboard.models import Ticket
 from .employee_directory import ROLES, EmployeeSession
 
 
-def get_ticket(session: EmployeeSession, ticket_id: str) -> Ticket:
-    record = session.read_authorized_record("tickets", ticket_id, ROLES)
+def get_ticket(*, session: EmployeeSession, ticket_id: str) -> Ticket:
+    record = session.read_authorized_record(
+        table="tickets", record_id=ticket_id, allowed_roles=ROLES
+    )
     record = {
         key: record[key]
         for key in (

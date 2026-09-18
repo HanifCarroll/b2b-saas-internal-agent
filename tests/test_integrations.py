@@ -25,7 +25,7 @@ from switchboard.models import Customer, Integration, Ticket
 def database():
     """A fresh database containing the normal Switchboard records."""
     with closing(sqlite3.connect(":memory:")) as connection:
-        seed_database(connection)
+        seed_database(connection=connection)
         yield connection
 
 
@@ -47,7 +47,7 @@ def assert_seed_rejected(tmp_path, records, *, invalid_field):
 
     with closing(sqlite3.connect(":memory:")) as connection:
         with pytest.raises(ValidationError) as error:
-            seed_database(connection, data_dir)
+            seed_database(connection=connection, data_dir=data_dir)
 
         # Pydantic identifies the first record (index 0) and the invalid field.
         assert error.value.errors()[0]["loc"][:2] == (0, invalid_field)
@@ -57,7 +57,7 @@ def assert_seed_rejected(tmp_path, records, *, invalid_field):
 def test_missing_fixture_files_leave_database_empty(tmp_path):
     with closing(sqlite3.connect(":memory:")) as connection:
         with pytest.raises(FileNotFoundError):
-            seed_database(connection, tmp_path)
+            seed_database(connection=connection, data_dir=tmp_path)
 
         assert connection.execute("SELECT name FROM sqlite_master").fetchall() == []
 
@@ -139,42 +139,42 @@ def test_ticket_rejects_unrecognized_fields(sample_records, tmp_path):
 
 
 def test_alex_can_read_acme_ticket(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
-    ticket = get_ticket(alex, "CHG-1042")
+    ticket = get_ticket(session=alex, ticket_id="CHG-1042")
 
     assert isinstance(ticket, Ticket)
     assert ticket.integration_id == "int-acme-prod"
 
 
 def test_alex_can_read_acme_customer(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
-    customer = get_customer(alex, "acme")
+    customer = get_customer(session=alex, customer_id="acme")
 
     assert isinstance(customer, Customer)
     assert customer.name == "Acme Services"
 
 
 def test_alex_can_read_acme_production_configuration(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
-    integration = get_integration(alex, "int-acme-prod")
+    integration = get_integration(session=alex, integration_id="int-acme-prod")
 
     assert isinstance(integration, Integration)
     assert integration.version == 7
 
 
 def test_alex_can_read_acme_sandbox_configuration(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
-    integration = get_integration(alex, "int-acme-sandbox")
+    integration = get_integration(session=alex, integration_id="int-acme-sandbox")
 
     assert integration.environment == "sandbox"
 
 
 def test_policy_library_includes_current_and_superseded_versions(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
     policies = {policy["id"]: policy["content"] for policy in list_policies(alex)}
 
@@ -184,65 +184,65 @@ def test_policy_library_includes_current_and_superseded_versions(database):
 
 
 def test_alex_cannot_read_globex_customer(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
     with pytest.raises(PermissionError):
-        get_customer(alex, "globex")
+        get_customer(session=alex, customer_id="globex")
 
 
 def test_alex_cannot_read_globex_configuration(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
     with pytest.raises(PermissionError):
-        get_integration(alex, "int-globex-prod")
+        get_integration(session=alex, integration_id="int-globex-prod")
 
 
 def test_missing_integration_is_unavailable(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
     with pytest.raises(PermissionError):
-        get_integration(alex, "missing")
+        get_integration(session=alex, integration_id="missing")
 
 
 def test_sql_in_record_id_cannot_bypass_access_checks(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
 
     with pytest.raises(PermissionError):
-        get_integration(alex, "int-acme-prod' OR 1=1 --")
+        get_integration(session=alex, integration_id="int-acme-prod' OR 1=1 --")
 
 
 def test_ben_can_read_globex_configuration(database):
-    ben = EmployeeSession(database, "emp-ben")
+    ben = EmployeeSession(db_connection=database, employee_id="emp-ben")
 
-    integration = get_integration(ben, "int-globex-prod")
+    integration = get_integration(session=ben, integration_id="int-globex-prod")
 
     assert integration.customer_id == "globex"
 
 
 def test_ben_cannot_read_acme_ticket(database):
-    ben = EmployeeSession(database, "emp-ben")
+    ben = EmployeeSession(db_connection=database, employee_id="emp-ben")
 
     with pytest.raises(PermissionError):
-        get_ticket(ben, "CHG-1042")
+        get_ticket(session=ben, ticket_id="CHG-1042")
 
 
 def test_unknown_employee_cannot_read_policies(database):
-    unknown_employee = EmployeeSession(database, "unknown")
+    unknown_employee = EmployeeSession(db_connection=database, employee_id="unknown")
 
     with pytest.raises(PermissionError):
         list_policies(unknown_employee)
 
 
 def test_successful_and_denied_reads_leave_database_unchanged(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     before = list(database.iterdump())
 
-    get_ticket(alex, "CHG-1042")
-    get_customer(alex, "acme")
-    get_integration(alex, "int-acme-prod")
+    get_ticket(session=alex, ticket_id="CHG-1042")
+    get_customer(session=alex, customer_id="acme")
+    get_integration(session=alex, integration_id="int-acme-prod")
     list_policies(alex)
     with pytest.raises(PermissionError):
-        get_integration(alex, "int-globex-prod")
+        get_integration(session=alex, integration_id="int-globex-prod")
 
     assert list(database.iterdump()) == before
 
@@ -251,14 +251,14 @@ def test_seeding_existing_database_is_rejected_without_changes(database):
     before = list(database.iterdump())
 
     with pytest.raises(sqlite3.OperationalError):
-        seed_database(database)
+        seed_database(connection=database)
 
     assert list(database.iterdump()) == before
 
 
 def test_ticket_read_rejects_invalid_stored_datetime(database):
-    alex = EmployeeSession(database, "emp-alex")
-    record = get_ticket(alex, "CHG-1042").model_dump(mode="json")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
+    record = get_ticket(session=alex, ticket_id="CHG-1042").model_dump(mode="json")
     record["created_at"] = "invalid"
     database.execute(
         "UPDATE tickets SET body = ? WHERE id = ?",
@@ -266,12 +266,12 @@ def test_ticket_read_rejects_invalid_stored_datetime(database):
     )
 
     with pytest.raises(ValidationError):
-        get_ticket(alex, "CHG-1042")
+        get_ticket(session=alex, ticket_id="CHG-1042")
 
 
 def test_customer_read_rejects_invalid_stored_name(database):
-    alex = EmployeeSession(database, "emp-alex")
-    record = get_customer(alex, "acme").model_dump(mode="json")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
+    record = get_customer(session=alex, customer_id="acme").model_dump(mode="json")
     record["name"] = 123
     database.execute(
         "UPDATE customers SET body = ? WHERE id = ?",
@@ -279,12 +279,14 @@ def test_customer_read_rejects_invalid_stored_name(database):
     )
 
     with pytest.raises(ValidationError):
-        get_customer(alex, "acme")
+        get_customer(session=alex, customer_id="acme")
 
 
 def test_configuration_read_rejects_invalid_stored_version(database):
-    alex = EmployeeSession(database, "emp-alex")
-    record = get_integration(alex, "int-acme-prod").model_dump(mode="json")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
+    record = get_integration(session=alex, integration_id="int-acme-prod").model_dump(
+        mode="json"
+    )
     record["version"] = 0
     database.execute(
         "UPDATE integrations SET body = ? WHERE id = ?",
@@ -292,69 +294,71 @@ def test_configuration_read_rejects_invalid_stored_version(database):
     )
 
     with pytest.raises(ValidationError):
-        get_integration(alex, "int-acme-prod")
+        get_integration(session=alex, integration_id="int-acme-prod")
 
 
 def test_configuration_read_does_not_expose_extra_credential_field(database):
-    alex = EmployeeSession(database, "emp-alex")
-    record = get_integration(alex, "int-acme-prod").model_dump(mode="json")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
+    record = get_integration(session=alex, integration_id="int-acme-prod").model_dump(
+        mode="json"
+    )
     record["credential"] = "test-secret"
     database.execute(
         "UPDATE integrations SET body = ? WHERE id = ?",
         (json.dumps(record), "int-acme-prod"),
     )
 
-    integration = get_integration(alex, "int-acme-prod")
+    integration = get_integration(session=alex, integration_id="int-acme-prod")
 
     assert "credential" not in integration.model_dump()
 
 
 def test_existing_session_uses_updated_support_role(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     database.execute(
         "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
     )
 
-    assert get_ticket(alex, "CHG-1042").status == "open"
+    assert get_ticket(session=alex, ticket_id="CHG-1042").status == "open"
     with pytest.raises(PermissionError):
-        get_integration(alex, "int-acme-prod")
+        get_integration(session=alex, integration_id="int-acme-prod")
 
 
 def test_existing_session_rejects_unrecognized_role(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     database.execute("UPDATE employees SET role = 'unknown_role' WHERE id = 'emp-alex'")
 
     with pytest.raises(PermissionError):
-        get_ticket(alex, "CHG-1042")
+        get_ticket(session=alex, ticket_id="CHG-1042")
 
 
 def test_existing_session_loses_access_when_employee_is_deactivated(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     database.execute("UPDATE employees SET active = 0 WHERE id = 'emp-alex'")
 
     with pytest.raises(PermissionError):
         list_policies(alex)
     with pytest.raises(PermissionError):
-        get_integration(alex, "int-acme-prod")
+        get_integration(session=alex, integration_id="int-acme-prod")
 
 
 def test_existing_session_loses_access_when_customer_assignment_is_removed(database):
-    alex = EmployeeSession(database, "emp-alex")
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
     database.execute("DELETE FROM assignments WHERE employee_id = 'emp-alex'")
 
     with pytest.raises(PermissionError):
-        get_ticket(alex, "CHG-1042")
+        get_ticket(session=alex, ticket_id="CHG-1042")
 
 
 def test_records_persist_after_reopening_database_in_read_only_mode(tmp_path):
     path = tmp_path / "switchboard.db"
     with closing(sqlite3.connect(path)) as connection:
-        seed_database(connection)
+        seed_database(connection=connection)
         original = list(connection.iterdump())
 
     with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as connection:
-        alex = EmployeeSession(connection, "emp-alex")
-        integration = get_integration(alex, "int-acme-prod")
+        alex = EmployeeSession(db_connection=connection, employee_id="emp-alex")
+        integration = get_integration(session=alex, integration_id="int-acme-prod")
 
         assert integration.version == 7
         assert list(connection.iterdump()) == original

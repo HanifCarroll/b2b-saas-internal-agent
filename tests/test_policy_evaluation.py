@@ -12,7 +12,12 @@ from switchboard.policy_evaluation import evaluate_policy
 
 def test_policy_review_accepts_no_issues():
     model = GenericFakeChatModel(messages=iter([AIMessage(content='{"issues": []}')]))
-    assert evaluate_policy("An independent approver is required.", model).issues == []
+    assert (
+        evaluate_policy(
+            claims="An independent approver is required.", model=model
+        ).issues
+        == []
+    )
 
 
 def test_policy_review_rejects_invented_excerpt():
@@ -28,10 +33,10 @@ def test_policy_review_rejects_invented_excerpt():
     }
     model = GenericFakeChatModel(messages=iter([AIMessage(content=json.dumps(review))]))
     with pytest.raises(ValueError, match="unverified source excerpt"):
-        evaluate_policy("Never roll back.", model)
+        evaluate_policy(claims="Never roll back.", model=model)
 
 
 def test_invalid_judge_output_is_not_a_pass():
     model = GenericFakeChatModel(messages=iter([AIMessage(content="Looks good")]))
     with pytest.raises(ValidationError):
-        evaluate_policy("Never roll back.", model)
+        evaluate_policy(claims="Never roll back.", model=model)

@@ -29,7 +29,9 @@ def employee_session(context: InvestigationContext):
     # Each tool gets its own read-only connection, including concurrent tool calls.
     uri = context.database_path.resolve().as_uri() + "?mode=ro"
     with closing(sqlite3.connect(uri, uri=True)) as db_connection:
-        yield EmployeeSession(db_connection, context.employee_id)
+        yield EmployeeSession(
+            db_connection=db_connection, employee_id=context.employee_id
+        )
 
 
 @tool
@@ -47,7 +49,9 @@ def get_ticket(ticket_id: str, runtime: ToolRuntime[InvestigationContext]) -> di
     Raises PermissionError when access is denied or the ticket is unavailable.
     """
     with employee_session(runtime.context) as session:
-        return support_desk.get_ticket(session, ticket_id).model_dump(mode="json")
+        return support_desk.get_ticket(session=session, ticket_id=ticket_id).model_dump(
+            mode="json"
+        )
 
 
 @tool
@@ -64,9 +68,9 @@ def get_customer(customer_id: str, runtime: ToolRuntime[InvestigationContext]) -
     Raises PermissionError when access is denied or the customer is unavailable.
     """
     with employee_session(runtime.context) as session:
-        return customer_registry.get_customer(session, customer_id).model_dump(
-            mode="json"
-        )
+        return customer_registry.get_customer(
+            session=session, customer_id=customer_id
+        ).model_dump(mode="json")
 
 
 @tool
@@ -86,7 +90,7 @@ def get_integration(
     """
     with employee_session(runtime.context) as session:
         return configuration_service.get_integration(
-            session, integration_id
+            session=session, integration_id=integration_id
         ).model_dump(mode="json")
 
 

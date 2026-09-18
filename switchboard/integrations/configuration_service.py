@@ -7,9 +7,9 @@ from switchboard.models import Integration
 from .employee_directory import CONFIG_ROLES, EmployeeSession
 
 
-def get_integration(session: EmployeeSession, integration_id: str) -> Integration:
+def get_integration(*, session: EmployeeSession, integration_id: str) -> Integration:
     record = session.read_authorized_record(
-        "integrations", integration_id, CONFIG_ROLES
+        table="integrations", record_id=integration_id, allowed_roles=CONFIG_ROLES
     )
     record = {
         key: record[key]

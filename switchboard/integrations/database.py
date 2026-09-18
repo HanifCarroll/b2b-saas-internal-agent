@@ -41,7 +41,7 @@ def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> No
         )
 
 
-def seed_database(connection: sqlite3.Connection, data_dir: Path = FIXTURES) -> None:
+def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) -> None:
     """Initialize an empty database from fixtures; never reset existing records."""
     if connection.in_transaction:
         raise ValueError("Seed requires a connection without an active transaction")
