@@ -216,6 +216,7 @@ def test_blocked_investigation_is_saved_without_proposal(
         headers={"X-Employee-Id": "emp-alex"},
     )
     assert response.status_code == 200
+    assert response.json()["current_status"]["code"] == "blocked"
     assert response.json()["result"]["proposal"] is None
     assert not api.PROPOSALS_DATABASE.exists()
 
@@ -433,3 +434,71 @@ def test_older_next_step_loads_as_historical_recommendation(investigation_api):
         == findings["next_step"]
     )
     assert path.read_bytes() == before
+
+
+def test_current_status_tracks_approval_without_rewriting_investigation(
+    investigation_api,
+):
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    assert run["current_status"]["code"] == "awaiting_approval"
+    path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
+    original = path.read_bytes()
+    url = f"/api/runs/{run['run_id']}/proposals/{run['result']['proposal']['id']}"
+    assert (
+        client.post(
+            url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+        ).status_code
+        == 200
+    )
+    refreshed = client.get(
+        f"/api/investigations/{run['run_id']}", headers=headers
+    ).json()
+    assert refreshed["current_status"]["code"] == "approval_recorded"
+    assert refreshed["result"] == run["result"]
+    assert path.read_bytes() == original
+    assert (
+        client.get(url, headers=headers).json()["current_status"]
+        == refreshed["current_status"]
+    )
+    reused = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    assert reused["result"]["was_created"] is False
+    assert reused["current_status"]["code"] == "approval_recorded"
+
+
+def test_unavailable_approval_is_not_reported_as_awaiting_approval(
+    investigation_api, monkeypatch
+):
+    from switchboard import workflow_status
+
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+
+    def unavailable(**kwargs):
+        raise PermissionError("Record unavailable")
+
+    monkeypatch.setattr(workflow_status, "get_proposal_review", unavailable)
+    response = client.get(f"/api/investigations/{run['run_id']}", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["current_status"]["code"] == "unavailable"
+
+
+def test_sandbox_status_does_not_request_independent_approval(review_api):
+    from switchboard.models import Proposal
+    from switchboard.workflow_status import proposal_status
+
+    client, url, _ = review_api
+    record = client.get(url, headers={"X-Employee-Id": "emp-alex"}).json()["proposal"]
+    record["environment"] = "sandbox"
+    proposal = Proposal.model_validate_json(json.dumps(record))
+    status = proposal_status(proposal=proposal, approval=None)
+    assert status.code == "approval_not_required"
+    assert "Execution is not implemented" in status.next_action

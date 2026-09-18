@@ -29,6 +29,11 @@ from switchboard.runs import (
 )
 from switchboard.scenarios import load_scenarios
 from switchboard.tools import InvestigationContext, employee_session
+from switchboard.workflow_status import (
+    WorkflowStatus,
+    get_workflow_status,
+    proposal_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,7 @@ app = FastAPI(title="Switchboard local demo", lifespan=lifespan)
 class ProposalReview(BaseModel):
     proposal: Proposal
     approval: Approval | None
+    current_status: WorkflowStatus
 
 
 class InvestigationRequest(BaseModel):
@@ -102,7 +108,11 @@ def read_proposal(
     except PermissionError:
         raise HTTPException(status_code=404, detail="Proposal unavailable") from None
 
-    return ProposalReview(proposal=proposal, approval=approval)
+    return ProposalReview(
+        proposal=proposal,
+        approval=approval,
+        current_status=proposal_status(proposal=proposal, approval=approval),
+    )
 
 
 @app.post(
@@ -181,7 +191,17 @@ def start_investigation(
         ) from None
 
     return InvestigationRun(
-        run_id=UUID(run_id), scenario_id=request.scenario_id, result=result
+        run_id=UUID(run_id),
+        scenario_id=request.scenario_id,
+        result=result,
+        current_status=get_workflow_status(
+            result=result,
+            context=InvestigationContext(
+                database_path=RUNS_DIRECTORY / run_id / "business.db",
+                employee_id=x_employee_id,
+            ),
+            proposals_database_path=PROPOSALS_DATABASE,
+        ),
     )
 
 

@@ -10,12 +10,14 @@ from pydantic import BaseModel
 from switchboard.models import EndpointChangeResult
 from switchboard.policy_evaluation import PolicyReview
 from switchboard.tools import InvestigationContext, employee_session
+from switchboard.workflow_status import WorkflowStatus, get_workflow_status
 
 
 class InvestigationRun(BaseModel):
     run_id: UUID
     scenario_id: str
     result: EndpointChangeResult
+    current_status: WorkflowStatus
     policy_review: PolicyReview | None = None
 
 
@@ -91,6 +93,11 @@ def get_investigation_run(
         run_id=run_id,
         scenario_id=manifest["scenario_id"],
         result=result,
+        current_status=get_workflow_status(
+            result=result,
+            context=context,
+            proposals_database_path=Path(manifest["proposals_database_path"]),
+        ),
         policy_review=PolicyReview.model_validate_json(policy_path.read_text())
         if policy_path.exists()
         else None,
