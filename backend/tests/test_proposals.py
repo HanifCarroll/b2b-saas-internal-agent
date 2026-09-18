@@ -48,6 +48,7 @@ def test_save_is_durable_and_retries_return_existing_proposal(connection, tmp_pa
 
     # 2. Verify the expected result and any safety guarantees.
     assert proposal.requester_contact_id == "contact-jordan"
+    assert proposal.recovery_plan == "manual_intervention"
     assert proposal.expected_configuration_version == 7
     assert proposal.proposed_by_employee_id == "emp-alex"
     saved, created = save_proposal(

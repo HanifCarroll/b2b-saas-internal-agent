@@ -21,6 +21,7 @@ PROPOSAL = {
     "current_endpoint": "https://old.acme.example/deals",
     "proposed_endpoint": "https://events.acme.example/deals",
     "expected_configuration_version": 7,
+    "recovery_plan": "manual_intervention",
     "created_at": "2026-09-17T12:00:00Z",
 }
 
@@ -33,6 +34,8 @@ PROPOSAL = {
         ("expected_configuration_version", 0),
         ("created_at", "2026-09-17T12:00:00"),
         ("status", "approved"),
+        ("recovery_plan", "restore_previous_endpoint"),
+        ("recovery_plan", None),
     ],
 )
 def test_proposal_rejects_invalid_fields(field, value):
@@ -52,11 +55,11 @@ def test_proposal_survives_reopening_and_initialization(tmp_path):
             INSERT INTO proposals (
                 id, proposed_by_employee_id, ticket_id, requester_contact_id,
                 customer_id, integration_id, environment, current_endpoint,
-                proposed_endpoint, expected_configuration_version, created_at, status
+                proposed_endpoint, expected_configuration_version, recovery_plan, created_at, status
             ) VALUES (
                 :id, :proposed_by_employee_id, :ticket_id, :requester_contact_id,
                 :customer_id, :integration_id, :environment, :current_endpoint,
-                :proposed_endpoint, :expected_configuration_version, :created_at, :status
+                :proposed_endpoint, :expected_configuration_version, :recovery_plan, :created_at, :status
             )
             """,
             record,
@@ -71,3 +74,9 @@ def test_proposal_survives_reopening_and_initialization(tmp_path):
     assert len(rows) == 1
     assert Proposal.model_validate_json(json.dumps(dict(rows[0]))) == proposal
     assert proposal.status == "pending_approval"
+
+
+def test_proposal_requires_explicit_recovery_plan():
+    record = {key: value for key, value in PROPOSAL.items() if key != "recovery_plan"}
+    with pytest.raises(ValidationError, match="recovery_plan"):
+        Proposal.model_validate_json(json.dumps(record))

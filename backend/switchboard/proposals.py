@@ -49,6 +49,7 @@ def validate_proposal(
         environment=integration.environment,
         current_endpoint=integration.endpoint,
         proposed_endpoint=ticket.requested_endpoint,
+        recovery_plan="manual_intervention",
         expected_configuration_version=integration.version,
         created_at=datetime.now(timezone.utc),
     )

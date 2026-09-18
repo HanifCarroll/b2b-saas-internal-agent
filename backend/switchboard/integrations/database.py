@@ -37,6 +37,7 @@ def initialize_proposal_database(database_path: Path = PROPOSALS_DATABASE) -> No
                 current_endpoint TEXT NOT NULL,
                 proposed_endpoint TEXT NOT NULL,
                 expected_configuration_version INTEGER NOT NULL CHECK(expected_configuration_version >= 1),
+                recovery_plan TEXT NOT NULL CHECK(recovery_plan = 'manual_intervention'),
                 created_at TEXT NOT NULL,
                 status TEXT NOT NULL CHECK(status = 'pending_approval')
             )

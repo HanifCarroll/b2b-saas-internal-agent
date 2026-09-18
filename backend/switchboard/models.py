@@ -93,6 +93,7 @@ class Proposal(Record):
     environment: Environment
     current_endpoint: HttpUrl
     proposed_endpoint: HttpUrl
+    recovery_plan: Literal["manual_intervention"]
     expected_configuration_version: Annotated[int, Field(ge=1)]
     created_at: AwareDatetime
     status: Literal["pending_approval"] = "pending_approval"

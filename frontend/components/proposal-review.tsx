@@ -147,6 +147,13 @@ export function ProposalReview({
                 <dd className="mt-1 font-medium">{review.proposal.proposed_by_employee_id}</dd>
               </div>
             </dl>
+            <Alert>
+              <AlertTitle>Recovery plan: manual intervention</AlertTitle>
+              <AlertDescription>
+                If delivery verification fails, stop and request manual intervention. No automatic
+                rollback is authorized.
+              </AlertDescription>
+            </Alert>
             {review.approval && (
               <Alert>
                 <CheckCircle2 />
@@ -173,8 +180,8 @@ export function ProposalReview({
               Approve this proposal
             </Button>
             <p className="text-xs text-muted-foreground">
-              Records approval of this saved proposal. Does not execute the change. Execution and
-              recovery planning are not implemented.
+              Records approval of this saved proposal, including its recovery plan. Does not execute
+              the change. Execution and delivery verification are not implemented.
             </p>
           </CardFooter>
         </Card>

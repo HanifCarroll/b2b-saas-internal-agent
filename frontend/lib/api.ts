@@ -14,6 +14,7 @@ export type ProposalReviewResult = {
     current_endpoint: string;
     proposed_endpoint: string;
     expected_configuration_version: number;
+    recovery_plan: "manual_intervention";
     proposed_by_employee_id: string;
   };
   approval: Approval | null;

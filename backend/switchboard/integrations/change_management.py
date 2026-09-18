@@ -52,6 +52,7 @@ def save_proposal(
               AND current_endpoint = :current_endpoint
               AND proposed_endpoint = :proposed_endpoint
               AND expected_configuration_version = :expected_configuration_version
+              AND recovery_plan = :recovery_plan
               AND status = :status
             """,
             parameters,
@@ -65,11 +66,11 @@ def save_proposal(
             INSERT INTO proposals (
                 id, proposed_by_employee_id, ticket_id, requester_contact_id,
                 customer_id, integration_id, environment, current_endpoint,
-                proposed_endpoint, expected_configuration_version, created_at, status
+                proposed_endpoint, expected_configuration_version, recovery_plan, created_at, status
             ) VALUES (
                 :id, :proposed_by_employee_id, :ticket_id, :requester_contact_id,
                 :customer_id, :integration_id, :environment, :current_endpoint,
-                :proposed_endpoint, :expected_configuration_version, :created_at, :status
+                :proposed_endpoint, :expected_configuration_version, :recovery_plan, :created_at, :status
             )
             """,
             parameters,
