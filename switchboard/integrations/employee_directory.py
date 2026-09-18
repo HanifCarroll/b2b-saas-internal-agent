@@ -40,6 +40,10 @@ class EmployeeSession:
 
         return row[0]
 
+    def require_active_employee(self) -> None:
+        """Raise PermissionError unless the employee is active with a recognized role."""
+        self.get_active_employee_role()
+
     def require_customer_access(
         self, *, customer_id: str, allowed_roles: set[str]
     ) -> None:

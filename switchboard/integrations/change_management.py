@@ -115,7 +115,7 @@ def get_proposal(
     """
     try:
         # 1. Check the employee before looking up any proposal.
-        session.get_active_employee_role()
+        session.require_active_employee()
 
         # 2. Fetch from existing storage without creating or changing it.
         if not database_path.exists():
