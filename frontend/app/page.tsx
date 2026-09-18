@@ -12,6 +12,7 @@ import {
 import { Layers, LoaderCircle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProposalReview } from "@/components/proposal-review";
 import {
@@ -29,7 +30,11 @@ import {
   type RequestIdentity,
   type CurrentEmployee,
 } from "@/lib/api";
-import { AuthenticationGate, type AuthenticatedSession } from "@/components/authentication-gate";
+import {
+  AuthenticationGate,
+  type AuthenticatedSession,
+  type AccountActions,
+} from "@/components/authentication-gate";
 import { InvestigationForm } from "@/components/investigation-form";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
@@ -48,15 +53,25 @@ export default function Home() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthenticationGate>
-        {(session) => (
-          <WorkspaceSession key={JSON.stringify(identityKey(session.identity))} session={session} />
+        {(session, accountActions) => (
+          <WorkspaceSession
+            key={JSON.stringify(identityKey(session.identity))}
+            session={session}
+            accountActions={accountActions}
+          />
         )}
       </AuthenticationGate>
     </QueryClientProvider>
   );
 }
 
-function WorkspaceSession({ session }: { session: AuthenticatedSession }) {
+function WorkspaceSession({
+  session,
+  accountActions,
+}: {
+  session: AuthenticatedSession;
+  accountActions: AccountActions;
+}) {
   // A fresh cache per session prevents late responses from reaching another account.
   const [queryClient] = useState(
     () =>
@@ -78,6 +93,7 @@ function WorkspaceSession({ session }: { session: AuthenticatedSession }) {
         key={JSON.stringify(identityKey(identity))}
         identity={identity}
         currentEmployee={session.employee}
+        accountActions={accountActions}
         onEmployeeChange={setDemoEmployee}
       />
     </QueryClientProvider>
@@ -87,10 +103,12 @@ function WorkspaceSession({ session }: { session: AuthenticatedSession }) {
 function InvestigationWorkspace({
   identity,
   currentEmployee,
+  accountActions,
   onEmployeeChange,
 }: {
   identity: RequestIdentity;
   currentEmployee: CurrentEmployee | null;
+  accountActions: AccountActions;
   onEmployeeChange: (employee: string) => void;
 }) {
   const employee = identity.mode === "demo" ? identity.employeeId : currentEmployee!.employee_id;
@@ -214,14 +232,24 @@ function InvestigationWorkspace({
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
           <div className="flex items-center gap-3 font-semibold">
             <Layers className="size-5" />
             Switchboard
           </div>
-          <Badge variant="outline">
-            {identity.mode === "demo" ? "Local demo · Simulated identities" : "Microsoft sign-in"}
-          </Badge>
+          {identity.mode === "demo" ? (
+            <Badge variant="outline">Local demo · Simulated identities</Badge>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span>Signed in as {employee}</span>
+              <Button variant="outline" onClick={accountActions.onSwitchAccount}>
+                Switch account
+              </Button>
+              <Button variant="ghost" onClick={accountActions.onSignOut}>
+                Sign out
+              </Button>
+            </div>
+          )}
         </div>
       </header>
       <main className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10">

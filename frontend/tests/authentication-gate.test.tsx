@@ -11,6 +11,9 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Node: dom.window.Node,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
 });
 const { render, screen, cleanup, fireEvent, waitFor } = await import("@testing-library/react");
 let account: object | null = null;
@@ -47,7 +50,12 @@ function mount(t: TestContext) {
   render(
     <QueryClientProvider client={client}>
       <AuthenticationGate>
-        {({ employee }) => <p>Workspace {employee?.employee_id}</p>}
+        {({ employee }, { onSignOut }) => (
+          <>
+            <p>Workspace {employee?.employee_id}</p>
+            {employee && <button onClick={onSignOut}>Sign out</button>}
+          </>
+        )}
       </AuthenticationGate>
     </QueryClientProvider>,
   );
@@ -169,4 +177,24 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
   const button = await screen.findByRole("button", { name: "Approve this proposal" });
   assert.equal((button as HTMLButtonElement).disabled, true);
   assert.equal(screen.queryByText("Review or execute as"), null);
+});
+
+const { default: Home } = await import("../app/page");
+test("signed-in workspace has one header with account controls", async (t) => {
+  account = { tenantId: "tenant", homeAccountId: "alex" };
+  t.after(cleanup);
+  t.mock.method(globalThis, "fetch", async (path: string) => {
+    if (path === "/api/me")
+      return Response.json({ employee_id: "emp-alex", role: "implementation_engineer" });
+    if (path === "/api/demo-options") return Response.json({ employees: [], scenarios: [] });
+    if (path === "/api/demo") return Response.json({ scenario_id: "baseline" });
+    return Response.json([]);
+  });
+  render(<Home />);
+  const header = await screen.findByRole("banner");
+  await waitFor(() => assert.match(header.textContent!, /Signed in as emp-alex/));
+  assert.equal(screen.getAllByRole("banner").length, 1);
+  assert.ok(header.contains(screen.getByRole("button", { name: "Switch account" })));
+  assert.ok(header.contains(screen.getByRole("button", { name: "Sign out" })));
+  assert.equal(screen.queryByText("Microsoft sign-in"), null);
 });

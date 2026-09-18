@@ -12,10 +12,15 @@ export type AuthenticatedSession = {
   employee: CurrentEmployee | null;
 };
 
+export type AccountActions = {
+  onSwitchAccount: () => void;
+  onSignOut: () => void;
+};
+
 export function AuthenticationGate({
   children,
 }: {
-  children: (session: AuthenticatedSession) => ReactNode;
+  children: (session: AuthenticatedSession, accountActions: AccountActions) => ReactNode;
 }) {
   const [leaving, setLeaving] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
@@ -59,22 +64,10 @@ export function AuthenticationGate({
 
   // 3. Show the workspace only after authentication and employee access succeed.
   if (!leaving && !error && session.data) {
-    return (
-      <>
-        {session.data.identity.mode === "entra" && (
-          <div className="flex flex-wrap items-center justify-end gap-3 border-b px-6 py-3 text-sm">
-            <span>Signed in as {session.data.employee?.employee_id}</span>
-            <Button variant="outline" onClick={() => authentication.mutate("sign-in")}>
-              Switch account / sign in again
-            </Button>
-            <Button variant="ghost" onClick={() => authentication.mutate("sign-out")}>
-              Sign out
-            </Button>
-          </div>
-        )}
-        {children(session.data)}
-      </>
-    );
+    return children(session.data, {
+      onSwitchAccount: () => authentication.mutate("sign-in"),
+      onSignOut: () => authentication.mutate("sign-out"),
+    });
   }
 
   const busy = session.isPending || authentication.isPending;
