@@ -138,6 +138,14 @@ class Execution(Record):
         return self
 
 
+@dataclass(frozen=True)
+class ExecuteProposalResult:
+    """An execution receipt and whether this call created it."""
+
+    execution: Execution
+    was_created: bool
+
+
 class InvestigationFindings(Record):
     """Readable sections generated with the investigation, not a second model call."""
 

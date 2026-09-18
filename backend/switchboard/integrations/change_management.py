@@ -1,4 +1,4 @@
-"""Read and save proposals and approvals; never execute configuration changes."""
+"""Persist proposals, approvals, and atomic endpoint-change executions."""
 
 import json
 import sqlite3
@@ -9,14 +9,18 @@ from uuid import uuid4
 
 from switchboard.models import (
     Approval,
+    ChangeWindow,
+    ExecuteProposalResult,
+    Execution,
     Proposal,
     ProposalReviewResult,
     SaveProposalResult,
 )
 from switchboard.proposals import validate_endpoint_change_request
 
+from .customer_registry import get_customer
 from .database import DATABASE_PATH, initialize_proposal_database
-from .employee_directory import ROLES, EmployeeSession
+from .employee_directory import CONFIG_ROLES, ROLES, EmployeeSession
 
 
 def save_proposal(
@@ -240,3 +244,177 @@ def get_proposal_review(
 
     approval = Approval.model_validate_json(json.dumps(dict(row))) if row else None
     return ProposalReviewResult(proposal=proposal, approval=approval)
+
+
+def execute_proposal(
+    *,
+    proposal_id: str,
+    session: EmployeeSession,
+    executed_at: datetime,
+    database_path: Path = DATABASE_PATH,
+) -> ExecuteProposalResult:
+    """Execute a saved proposal; was_created is False when returning an existing receipt.
+
+    The caller supplies trusted, timezone-aware time, never model output.
+    Rebind the trusted employee identity to the write transaction so all checks
+    and writes observe the same database. A receipt does not verify delivery.
+    """
+    # 1. Open existing storage and serialize execution attempts.
+    if executed_at.utcoffset() is None:
+        raise ValueError("Execution time must be timezone-aware")
+
+    uri = database_path.resolve().as_uri() + "?mode=rw"
+    with closing(sqlite3.connect(uri, uri=True)) as connection, connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        executor = EmployeeSession(
+            db_connection=connection, employee_id=session.employee_id
+        )
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT * FROM proposals WHERE id = ?", (proposal_id,)
+        ).fetchone()
+        if row is None:
+            raise PermissionError("Record unavailable")
+
+        proposal = Proposal.model_validate_json(json.dumps(dict(row)))
+        executor.require_customer_access(
+            customer_id=proposal.customer_id, allowed_roles=CONFIG_ROLES
+        )
+
+        # 2. If already executed, return the receipt without repeating the change.
+        execuion_row = connection.execute(
+            "SELECT * FROM executions WHERE proposal_id = ?", (proposal_id,)
+        ).fetchone()
+        if execuion_row is not None:
+            return ExecuteProposalResult(
+                execution=Execution.model_validate_json(json.dumps(dict(execuion_row))),
+                was_created=False,
+            )
+
+        # 3. Recheck the proposing employee and the exact request snapshot.
+        proposer = EmployeeSession(
+            db_connection=connection, employee_id=proposal.proposed_by_employee_id
+        )
+        ensure_proposal_matches_current_records(proposal=proposal, session=proposer)
+
+        # 4. Require current independent approval and a production change window.
+        approval_id = None
+        if proposal.environment == "production":
+            approval = get_valid_production_approval(
+                proposal=proposal,
+                db_connection=connection,
+                executed_at=executed_at,
+            )
+            customer = get_customer(session=executor, customer_id=proposal.customer_id)
+            require_open_change_window(
+                window=customer.production_change_window,
+                executed_at=executed_at,
+            )
+
+            approval_id = approval.id
+
+        # 5. Change only the endpoint and version, preserving all other JSON fields.
+        execution = Execution(
+            id=str(uuid4()),
+            proposal_id=proposal.id,
+            executed_by_employee_id=executor.employee_id,
+            approval_id=approval_id,
+            executed_at=executed_at,
+            previous_configuration_version=proposal.expected_configuration_version,
+            resulting_configuration_version=proposal.expected_configuration_version + 1,
+        )
+        updated = connection.execute(
+            """
+            UPDATE integrations
+            SET body = json_set(body, '$.endpoint', ?, '$.version', ?)
+            WHERE id = ? AND customer_id = ?
+              AND json_extract(body, '$.version') = ?
+              AND json_extract(body, '$.endpoint') = ?
+            """,
+            (
+                str(proposal.proposed_endpoint),
+                execution.resulting_configuration_version,
+                proposal.integration_id,
+                proposal.customer_id,
+                proposal.expected_configuration_version,
+                str(proposal.current_endpoint),
+            ),
+        )
+        if updated.rowcount != 1:
+            raise ValueError("Configuration changed since the proposal was prepared")
+
+        # 6. Commit the receipt with the update; either both persist or neither does.
+        connection.execute(
+            """
+            INSERT INTO executions (
+                id, proposal_id, executed_by_employee_id, approval_id, executed_at,
+                previous_configuration_version, resulting_configuration_version
+            ) VALUES (
+                :id, :proposal_id, :executed_by_employee_id, :approval_id, :executed_at,
+                :previous_configuration_version, :resulting_configuration_version
+            )
+            """,
+            execution.model_dump(mode="json"),
+        )
+
+    return ExecuteProposalResult(execution=execution, was_created=True)
+
+
+def get_valid_production_approval(
+    *,
+    proposal: Proposal,
+    db_connection: sqlite3.Connection,
+    executed_at: datetime,
+) -> Approval:
+    """Return current independent approval using the caller's transaction."""
+    # 1. Retrieve the approval for this production proposal.
+    if proposal.environment != "production":
+        raise ValueError("Sandbox proposals do not require independent approval")
+
+    cursor = db_connection.cursor()
+    cursor.row_factory = sqlite3.Row
+    row = cursor.execute(
+        "SELECT * FROM approvals WHERE proposal_id = ?", (proposal.id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError("Production proposal requires approval")
+
+    approval = Approval.model_validate_json(json.dumps(dict(row)))
+
+    # 2. Require an independent technical lead with current customer access.
+    if approval.approved_by_employee_id == proposal.proposed_by_employee_id:
+        raise PermissionError(
+            "The proposing employee cannot approve their own proposal"
+        )
+
+    approver = EmployeeSession(
+        db_connection=db_connection, employee_id=approval.approved_by_employee_id
+    )
+    approver.require_customer_access(
+        customer_id=proposal.customer_id, allowed_roles={"technical_lead"}
+    )
+
+    # 3. Ensure approval existed at the supplied execution time.
+    if executed_at < approval.created_at:
+        raise ValueError("Execution time precedes approval")
+
+    return approval
+
+
+def require_open_change_window(*, window: ChangeWindow, executed_at: datetime) -> None:
+    """Raise when execution is outside the supported production change window."""
+    # 1. Convert the trusted execution time to the window's UTC timezone.
+    if executed_at.utcoffset() is None:
+        raise ValueError("Execution time must be timezone-aware")
+
+    utc_time = executed_at.astimezone(timezone.utc)
+
+    # 2. Include the start boundary and exclude the end boundary.
+    # ponytail: same-day UTC windows only; add overnight rules when needed.
+    if not (
+        window.start < window.end
+        and utc_time.strftime("%A") == window.weekday
+        and window.start <= utc_time.strftime("%H:%M") < window.end
+    ):
+        raise ValueError("Execution is outside the production change window")
