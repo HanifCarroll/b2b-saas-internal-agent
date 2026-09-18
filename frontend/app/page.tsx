@@ -72,9 +72,13 @@ function InvestigationWorkspace({
   // 2. Mutations run only on explicit user actions and never retry paid calls.
   const investigation = useMutation({
     mutationFn: (scenario: string) =>
-      requestApi<InvestigationRun>("/api/investigations", employee, {
-        method: "POST",
-        body: JSON.stringify({ scenario_id: scenario }),
+      requestApi<InvestigationRun>({
+        path: "/api/investigations",
+        identity: { mode: "demo", employeeId: employee },
+        options: {
+          method: "POST",
+          body: JSON.stringify({ scenario_id: scenario }),
+        },
       }),
     onSuccess: (savedRun) => {
       queryClient.setQueryData(investigationKeys.run(employee, savedRun.run_id), savedRun);
@@ -85,8 +89,12 @@ function InvestigationWorkspace({
   });
   const policyEvaluation = useMutation({
     mutationFn: (runId: string) =>
-      requestApi<PolicyReview>(`/api/investigations/${runId}/policy-review`, employee, {
-        method: "POST",
+      requestApi<PolicyReview>({
+        path: `/api/investigations/${runId}/policy-review`,
+        identity: { mode: "demo", employeeId: employee },
+        options: {
+          method: "POST",
+        },
       }),
     onSuccess: (policy_review, runId) => {
       queryClient.setQueryData<InvestigationRun>(
@@ -98,9 +106,13 @@ function InvestigationWorkspace({
 
   const reset = useMutation({
     mutationFn: (scenario: string) =>
-      requestApi<DemoState>("/api/demo/reset", employee, {
-        method: "POST",
-        body: JSON.stringify({ scenario_id: scenario, confirm: true }),
+      requestApi<DemoState>({
+        path: "/api/demo/reset",
+        identity: { mode: "demo", employeeId: employee },
+        options: {
+          method: "POST",
+          body: JSON.stringify({ scenario_id: scenario, confirm: true }),
+        },
       }),
     onMutate: async () => {
       setSelectedRunId(null);

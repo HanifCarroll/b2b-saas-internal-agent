@@ -51,7 +51,12 @@ export function ProposalReview({
 
   // 2. Refresh confirmed records after success or an uncertain failure; never retry approval automatically.
   const approval = useMutation({
-    mutationFn: () => requestApi<Approval>(`${url}/approval`, employee, { method: "POST" }),
+    mutationFn: () =>
+      requestApi<Approval>({
+        path: `${url}/approval`,
+        identity: { mode: "demo", employeeId: employee },
+        options: { method: "POST" },
+      }),
     retry: false,
     onSettled: () =>
       Promise.all([
@@ -61,7 +66,11 @@ export function ProposalReview({
   });
   const execution = useMutation({
     mutationFn: () =>
-      requestApi<ExecuteProposalResult>(`${url}/execution`, employee, { method: "POST" }),
+      requestApi<ExecuteProposalResult>({
+        path: `${url}/execution`,
+        identity: { mode: "demo", employeeId: employee },
+        options: { method: "POST" },
+      }),
     retry: false,
     onSettled: () =>
       Promise.all([

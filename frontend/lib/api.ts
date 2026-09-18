@@ -87,20 +87,40 @@ export type InvestigationRun = {
   };
 };
 
-/** Send the explicitly simulated identity to the local Python application. */
-export async function requestApi<T>(
-  path: string,
-  employee: string,
-  options: RequestInit = {},
-): Promise<T> {
+export type RequestIdentity =
+  | { mode: "demo"; employeeId: string }
+  | { mode: "entra"; accountId: string; getAccessToken: () => Promise<string> };
+
+/** Send an explicitly selected identity to the Python API. */
+export async function requestApi<T>({
+  path,
+  identity,
+  options = {},
+}: {
+  path: string;
+  identity: RequestIdentity;
+  options?: RequestInit;
+}): Promise<T> {
+  // 1. Keep identity headers under this helper's control.
+  const headers = new Headers(options.headers);
+  if (headers.has("Authorization") || headers.has("X-Employee-Id")) {
+    throw new Error("Do not supply identity headers through request options.");
+  }
+  headers.set("Content-Type", "application/json");
+
+  // 2. Resolve exactly one identity mechanism before sending the request.
+  if (identity.mode === "demo") {
+    headers.set("X-Employee-Id", identity.employeeId);
+  } else {
+    const accessToken = await identity.getAccessToken();
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  // 3. Send once and surface failures; never retry a business action here.
   const response = await fetch(path, {
     ...options,
     cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Employee-Id": employee,
-      ...options.headers,
-    },
+    headers,
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -122,14 +142,22 @@ export const investigationKeys = {
 export const demoOptionsQuery = {
   queryKey: ["demo-options"],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<DemoOptions>("/api/demo-options", "", { signal }),
+    requestApi<DemoOptions>({
+      path: "/api/demo-options",
+      identity: { mode: "demo", employeeId: "" },
+      options: { signal },
+    }),
 };
 
 export function historyQuery(employee: string) {
   return {
     queryKey: investigationKeys.history(employee),
     queryFn: ({ signal }: { signal: AbortSignal }) =>
-      requestApi<InvestigationHistoryItem[]>("/api/investigations", employee, { signal }),
+      requestApi<InvestigationHistoryItem[]>({
+        path: "/api/investigations",
+        identity: { mode: "demo", employeeId: employee },
+        options: { signal },
+      }),
   };
 }
 
@@ -139,7 +167,11 @@ export function investigationQuery(employee: string, runId: string | null) {
     enabled: runId !== null,
     queryFn: ({ signal }: { signal: AbortSignal }) => {
       if (!runId) throw new Error("Select an investigation first.");
-      return requestApi<InvestigationRun>(`/api/investigations/${runId}`, employee, { signal });
+      return requestApi<InvestigationRun>({
+        path: `/api/investigations/${runId}`,
+        identity: { mode: "demo", employeeId: employee },
+        options: { signal },
+      });
     },
   };
 }
@@ -160,8 +192,12 @@ export function proposalReviewQuery({
   return {
     queryKey: [...proposalReviewKeys.proposal(runId, proposalId), employee],
     queryFn: ({ signal }: { signal: AbortSignal }) =>
-      requestApi<ProposalReviewResult>(`/api/runs/${runId}/proposals/${proposalId}`, employee, {
-        signal,
+      requestApi<ProposalReviewResult>({
+        path: `/api/runs/${runId}/proposals/${proposalId}`,
+        identity: { mode: "demo", employeeId: employee },
+        options: {
+          signal,
+        },
       }),
     retry: false,
     staleTime: 0,
@@ -174,7 +210,11 @@ export type DemoState = { scenario_id: string | null };
 export const demoStateQuery = {
   queryKey: ["demo-state"],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<DemoState>("/api/demo", "", { signal }),
+    requestApi<DemoState>({
+      path: "/api/demo",
+      identity: { mode: "demo", employeeId: "" },
+      options: { signal },
+    }),
 };
 
 export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {

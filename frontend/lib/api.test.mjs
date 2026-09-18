@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { QueryClient } from "@tanstack/react-query";
 import {
+  requestApi,
   clearDemoQueries,
   historyQuery,
   investigationQuery,
@@ -13,7 +14,7 @@ import {
 test("employee-scoped history is fetched and invalidated independently", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (_url, options) => {
-    const employee = options.headers["X-Employee-Id"];
+    const employee = new Headers(options.headers).get("X-Employee-Id");
     calls.push(employee);
     return Response.json([{ run_id: employee, scenario_id: "baseline", outcome: "blocked" }]);
   });
@@ -70,7 +71,7 @@ test("unselected runs stay disabled; inaccessible runs surface errors", async (t
 test("proposal reviews isolate reviewers and invalidate together after approval", async (t) => {
   let approved = false;
   t.mock.method(globalThis, "fetch", async (_url, options) => {
-    if (options.headers["X-Employee-Id"] === "emp-ben") {
+    if (new Headers(options.headers).get("X-Employee-Id") === "emp-ben") {
       return Response.json({ detail: "Proposal unavailable" }, { status: 404 });
     }
     return Response.json({ approval: approved ? { id: "approval-1" } : null });
@@ -123,4 +124,101 @@ test("reset clears saved-work caches across investigators and reviewers", async 
   } finally {
     client.clear();
   }
+});
+
+test("demo requests send only the selected employee identity", async (t) => {
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    assert.equal(path, "/api/me");
+    const headers = new Headers(options.headers);
+    assert.equal(headers.get("X-Employee-Id"), "emp-alex");
+    assert.equal(headers.has("Authorization"), false);
+    return Response.json({ employee_id: "emp-alex" });
+  });
+  assert.deepEqual(
+    await requestApi({
+      path: "/api/me",
+      identity: { mode: "demo", employeeId: "emp-alex" },
+    }),
+    { employee_id: "emp-alex" },
+  );
+});
+
+test("Entra requests acquire a token and send no simulated identity", async (t) => {
+  let acquired = false;
+  t.mock.method(globalThis, "fetch", async (_path, options) => {
+    assert.equal(acquired, true);
+    const headers = new Headers(options.headers);
+    assert.equal(headers.get("Authorization"), "Bearer api-token");
+    assert.equal(headers.has("X-Employee-Id"), false);
+    return Response.json({ employee_id: "emp-alex" });
+  });
+  await requestApi({
+    path: "/api/me",
+    identity: {
+      mode: "entra",
+      accountId: "tenant:alex",
+      getAccessToken: async () => {
+        acquired = true;
+        return "api-token";
+      },
+    },
+  });
+});
+
+test("identity header overrides are rejected before acquiring tokens or fetching", async (t) => {
+  t.mock.method(globalThis, "fetch", () => assert.fail("Must not send a request"));
+  for (const identity of [
+    { mode: "demo", employeeId: "emp-alex" },
+    {
+      mode: "entra",
+      accountId: "tenant:alex",
+      getAccessToken: async () => assert.fail("Must not acquire a token"),
+    },
+  ]) {
+    for (const headers of [
+      { authorization: "Bearer override" },
+      new Headers({ "X-EMPLOYEE-ID": "emp-priya" }),
+      [["Authorization", "Bearer override"]],
+    ]) {
+      await assert.rejects(
+        requestApi({ path: "/api/me", identity, options: { headers } }),
+        /identity headers/i,
+      );
+    }
+  }
+});
+
+test("token acquisition failures never send the business request", async (t) => {
+  t.mock.method(globalThis, "fetch", () => assert.fail("Must not send a request"));
+  const signInError = new Error("Sign in again");
+  await assert.rejects(
+    requestApi({
+      path: "/api/me",
+      identity: {
+        mode: "entra",
+        accountId: "tenant:alex",
+        getAccessToken: async () => {
+          throw signInError;
+        },
+      },
+    }),
+    (error) => error === signInError,
+  );
+});
+
+test("a rejected write is surfaced without retrying", async (t) => {
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    requests++;
+    return Response.json({ detail: "Execution not permitted" }, { status: 403 });
+  });
+  await assert.rejects(
+    requestApi({
+      path: "/api/runs/run/proposals/proposal/execution",
+      identity: { mode: "demo", employeeId: "emp-alex" },
+      options: { method: "POST" },
+    }),
+    /Execution not permitted/,
+  );
+  assert.equal(requests, 1);
 });
