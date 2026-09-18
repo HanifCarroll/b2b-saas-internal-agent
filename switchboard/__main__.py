@@ -2,22 +2,20 @@
 
 import argparse
 import json
-import sqlite3
-from contextlib import closing
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from switchboard.agent import build_agent, create_model
+from switchboard.agent import create_model
 from switchboard.integrations.change_management import get_proposal
-from switchboard.integrations.database import PROPOSALS_DATABASE, seed_database
+from switchboard.integrations.database import PROPOSALS_DATABASE
+from switchboard.investigations import investigate_scenario
 from switchboard.models import EndpointChangeResult
 from switchboard.policy_evaluation import evaluate_policy
-from switchboard.scenarios import Scenario, apply_scenario, load_scenarios
+from switchboard.scenarios import Scenario, load_scenarios
 from switchboard.tools import InvestigationContext, employee_session
-from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
 RUNS_DIRECTORY = PROPOSALS_DATABASE.parent / "workflows"
 
@@ -88,49 +86,16 @@ def run_investigation(
     *, scenario_id: str, selected_scenario: Scenario, evaluate_policy_claims: bool
 ) -> None:
     """Run one investigation and display its result and optional policy review."""
-    # 1. Create isolated, durable records for this scenario run.
+    # 1. Run the shared investigation with the CLI's configured storage.
     model = create_model()
-    workflow_id = str(uuid4())
-    run_directory = RUNS_DIRECTORY / workflow_id
-    run_directory.mkdir(parents=True)
-    database_path = run_directory / "business.db"
-    with closing(sqlite3.connect(database_path)) as db_connection:
-        seed_database(connection=db_connection)
-        scenario = apply_scenario(
-            db_connection=db_connection, scenario=selected_scenario
-        )
-
-    (run_directory / "run.json").write_text(
-        json.dumps(
-            {
-                "scenario_id": scenario_id,
-                "requester_employee_id": scenario["requester_employee_id"],
-                "proposals_database_path": str(PROPOSALS_DATABASE.resolve()),
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-    print(f"Workflow ID: {workflow_id}")
-
-    # 2. Supply trusted dependencies and run the investigation to completion.
-    workflow_context = EndpointChangeContext(
-        agent=build_agent(model=model, now=scenario["now"]),
-        investigation_context=InvestigationContext(
-            database_path=database_path, employee_id=scenario["requester_employee_id"]
-        ),
-        proposals_database_path=PROPOSALS_DATABASE,
-    )
     try:
-        raw_result = endpoint_change_graph.invoke(
-            {"request": scenario["request"]},
-            context=workflow_context,
-            config={
-                "run_name": f"investigation-{scenario_id}",
-                "metadata": {"scenario_id": scenario_id, "workflow_id": workflow_id},
-            },
+        workflow_id, result = investigate_scenario(
+            scenario_id=scenario_id,
+            selected_scenario=selected_scenario,
+            model=model,
+            runs_directory=RUNS_DIRECTORY,
+            proposals_database_path=PROPOSALS_DATABASE,
         )
-        result = EndpointChangeResult.model_validate(raw_result)
     except ValidationError as error:
         raise SystemExit(
             "Workflow returned invalid or inconsistent data; no result accepted.\n"
@@ -139,10 +104,11 @@ def run_investigation(
     except (ValueError, PermissionError) as error:
         raise SystemExit(f"Workflow rejected: {error}") from None
 
-    # 3. Display the result and the separate proposal review command.
+    # 2. Display the result and the separate proposal review command.
+    print(f"Workflow ID: {workflow_id}")
     display_investigation_result(result=result, workflow_id=workflow_id)
 
-    # 4. Optionally evaluate policy accuracy, without authorizing a change.
+    # 3. Optionally evaluate policy accuracy, without authorizing a change.
     if evaluate_policy_claims:
         review = evaluate_policy(
             claims=result.investigation.model_dump_json(), model=model
