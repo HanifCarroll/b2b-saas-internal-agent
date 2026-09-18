@@ -15,7 +15,6 @@ from switchboard.integrations.change_management import (
     get_proposal_review,
 )
 from switchboard.integrations.database import FIXTURES, PROPOSALS_DATABASE
-from switchboard.integrations.employee_directory import ROLES
 from switchboard.investigations import investigate_scenario
 from switchboard.models import Approval, EndpointChangeResult, Proposal
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
@@ -178,12 +177,16 @@ def accessible_run(*, run_id: UUID, employee_id: str) -> InvestigationRun:
     result = EndpointChangeResult.model_validate_json(result_path.read_text())
     try:
         with employee_session(context) as session:
-            session.get_active_employee_role()
-            if result.investigation.ticket_id is not None:
-                session.read_authorized_record(
-                    table="tickets",
-                    record_id=result.investigation.ticket_id,
-                    allowed_roles=ROLES,
+            session.require_active_employee()
+            # Legacy results predate the access snapshot and cannot be safely replayed.
+            if "requester_role" not in manifest or "customer_ids" not in manifest:
+                raise PermissionError("Investigation unavailable")
+            if session.get_active_employee_role() != manifest["requester_role"]:
+                raise PermissionError("Investigation unavailable")
+            for customer_id in manifest["customer_ids"]:
+                session.require_customer_access(
+                    customer_id=customer_id,
+                    allowed_roles={manifest["requester_role"]},
                 )
     except PermissionError:
         raise HTTPException(

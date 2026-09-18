@@ -10,6 +10,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from switchboard.agent import build_agent
 from switchboard.integrations.database import seed_database
+from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import EndpointChangeResult
 from switchboard.scenarios import Scenario, apply_scenario
 from switchboard.tools import InvestigationContext
@@ -34,13 +35,24 @@ def investigate_scenario(
     with closing(sqlite3.connect(database_path)) as connection:
         seed_database(connection=connection)
         scenario = apply_scenario(db_connection=connection, scenario=selected_scenario)
+        requester = employee_id or scenario["requester_employee_id"]
+        session = EmployeeSession(db_connection=connection, employee_id=requester)
+        role = session.get_active_employee_role()
+        customer_ids = [
+            row[0]
+            for row in connection.execute(
+                "SELECT customer_id FROM assignments WHERE employee_id = ?",
+                (requester,),
+            )
+        ]
 
-    requester = employee_id or scenario["requester_employee_id"]
     (directory / "run.json").write_text(
         json.dumps(
             {
                 "scenario_id": scenario_id,
                 "requester_employee_id": requester,
+                "requester_role": role,
+                "customer_ids": customer_ids,
                 "proposals_database_path": str(proposals_database_path.resolve()),
             },
             indent=2,

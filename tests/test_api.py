@@ -244,3 +244,41 @@ def test_model_failure_returns_safe_error(investigation_api, monkeypatch):
     )
     assert response.status_code == 502
     assert "Private provider error" not in response.text
+
+
+def test_blocked_inaccessible_ticket_remains_in_own_history(
+    investigation_api, monkeypatch
+):
+    from langchain_core.messages import AIMessage
+    from test_agent import ScriptedModel
+
+    from switchboard.models import InvestigationResult
+
+    blocked = InvestigationResult(
+        outcome="blocked",
+        ticket_id="unavailable-ticket",
+        proposed_endpoint=None,
+        evidence_ids=[],
+        summary="Record unavailable.",
+        blockers=["Could not retrieve record"],
+    )
+    monkeypatch.setattr(
+        api,
+        "create_model",
+        lambda: ScriptedModel(
+            messages=iter([AIMessage(content=blocked.model_dump_json())])
+        ),
+    )
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = investigation_api.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    assert (
+        investigation_api.get(
+            f"/api/investigations/{run['run_id']}", headers=headers
+        ).status_code
+        == 200
+    )
+    assert (
+        len(investigation_api.get("/api/investigations", headers=headers).json()) == 1
+    )
