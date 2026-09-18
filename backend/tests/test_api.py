@@ -17,6 +17,11 @@ from switchboard.models import InvestigationFindings
 from switchboard.proposals import validate_proposal
 
 
+@pytest.fixture(autouse=True)
+def explicit_demo_mode(monkeypatch):
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
+
+
 @pytest.fixture
 def review_api(tmp_path, monkeypatch):
     run_id = str(uuid4())

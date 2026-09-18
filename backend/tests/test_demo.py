@@ -16,6 +16,7 @@ from switchboard.demo import demo_operation, read_demo_setup, reset_demo
 
 @pytest.fixture
 def demo(tmp_path, monkeypatch):
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
     path = tmp_path / "switchboard.db"
     runs = tmp_path / "workflows"
     for module in (api, cli):
