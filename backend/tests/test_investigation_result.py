@@ -5,7 +5,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from switchboard.models import InvestigationResult
+from switchboard.models import InvestigationFindings, InvestigationResult
 
 
 @pytest.fixture
@@ -15,7 +15,13 @@ def candidate():
         "ticket_id": "CHG-1042",
         "proposed_endpoint": "https://events.acme.example/deals",
         "evidence_ids": ["CHG-1042", "acme", "int-acme-prod", "endpoint-change-v2"],
-        "summary": "The request supports preparing a proposal; approval is unverified.",
+        "findings": {
+            "overview": "The request supports preparing a proposal; approval is unverified.",
+            "checks": [],
+            "policy_requirements": [],
+            "gaps": [],
+            "next_step": "Review the evidence before proceeding.",
+        },
         "blockers": [],
     }
 
@@ -50,7 +56,13 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
         ticket_id=None,
         proposed_endpoint=None,
         evidence_ids=[],
-        summary="The requested record is unavailable.",
+        findings=InvestigationFindings(
+            overview="The requested record is unavailable.",
+            checks=[],
+            policy_requirements=[],
+            gaps=[],
+            next_step="Review the evidence before proceeding.",
+        ),
         blockers=["Required evidence could not be retrieved."],
     )
 
@@ -70,7 +82,7 @@ def test_blocked_result_requires_a_reason(candidate):
     [
         ("ticket_id", " "),
         ("proposed_endpoint", "not-a-url"),
-        ("summary", " "),
+        ("findings", {"overview": " "}),
         ("evidence_ids", [" "]),
         ("outcome", "approved"),
     ],
@@ -78,5 +90,21 @@ def test_blocked_result_requires_a_reason(candidate):
 def test_invalid_field_values_are_rejected(candidate, field, value):
     candidate[field] = value
 
+    with pytest.raises(ValidationError):
+        InvestigationResult.model_validate_json(json.dumps(candidate))
+
+
+@pytest.mark.parametrize(
+    "field", ["overview", "checks", "policy_requirements", "gaps", "next_step"]
+)
+def test_findings_sections_are_required(candidate, field):
+    candidate["findings"].pop(field)
+    with pytest.raises(ValidationError):
+        InvestigationResult.model_validate_json(json.dumps(candidate))
+
+
+def test_new_model_output_does_not_accept_legacy_summary(candidate):
+    candidate.pop("findings")
+    candidate["summary"] = "An old unstructured report."
     with pytest.raises(ValidationError):
         InvestigationResult.model_validate_json(json.dumps(candidate))

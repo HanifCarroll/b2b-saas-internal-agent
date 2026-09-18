@@ -11,7 +11,7 @@ from pydantic import BaseModel, PrivateAttr
 
 from switchboard.agent import build_agent
 from switchboard.integrations.database import seed_database
-from switchboard.models import InvestigationResult
+from switchboard.models import InvestigationFindings, InvestigationResult
 from switchboard.tools import TOOLS, InvestigationContext, employee_session
 
 
@@ -29,10 +29,18 @@ def structured_result(**overrides):
         "ticket_id": "CHG-1042",
         "proposed_endpoint": "https://events.acme.example/deals",
         "evidence_ids": ["CHG-1042", "acme", "int-acme-prod", "endpoint-change-v2"],
-        "summary": "A proposal may be prepared; approval remains unverified.",
+        "findings": {
+            "overview": "A proposal may be prepared; approval remains unverified.",
+            "checks": [],
+            "policy_requirements": [],
+            "gaps": [],
+            "next_step": "Review the evidence before proceeding.",
+        },
         "blockers": [],
     }
     fields.update(overrides)
+    if isinstance(fields["findings"], InvestigationFindings):
+        fields["findings"] = fields["findings"].model_dump()
     return AIMessage(content=json.dumps(fields))
 
 
@@ -137,7 +145,13 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
                     ticket_id=None,
                     proposed_endpoint=None,
                     evidence_ids=[],
-                    summary=explanation,
+                    findings=InvestigationFindings(
+                        overview=explanation,
+                        checks=[],
+                        policy_requirements=[],
+                        gaps=[],
+                        next_step="Review the evidence before proceeding.",
+                    ),
                     blockers=[explanation],
                 ),
             ]
@@ -159,7 +173,7 @@ def test_unavailable_records_return_same_error_and_allow_final_response(
     investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
 
     assert investigation.outcome == "blocked"
-    assert investigation.summary == explanation
+    assert investigation.findings.overview == explanation
     assert "https://events.globex.example/deals" not in str(result["messages"])
     with closing(sqlite3.connect(database_path)) as db_connection:
         assert list(db_connection.iterdump()) == before

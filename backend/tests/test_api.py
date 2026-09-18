@@ -13,6 +13,7 @@ from switchboard import api
 from switchboard.integrations.change_management import save_proposal
 from switchboard.integrations.database import seed_database
 from switchboard.integrations.employee_directory import EmployeeSession
+from switchboard.models import InvestigationFindings
 from switchboard.proposals import validate_proposal
 
 
@@ -193,7 +194,13 @@ def test_blocked_investigation_is_saved_without_proposal(
         ticket_id="CHG-1042",
         proposed_endpoint=None,
         evidence_ids=["CHG-1042"],
-        summary="Destination is not registered.",
+        findings=InvestigationFindings(
+            overview="Destination is not registered.",
+            checks=[],
+            policy_requirements=[],
+            gaps=[],
+            next_step="Review the evidence before proceeding.",
+        ),
         blockers=["Unregistered destination"],
     )
     monkeypatch.setattr(
@@ -259,7 +266,13 @@ def test_blocked_inaccessible_ticket_remains_in_own_history(
         ticket_id="unavailable-ticket",
         proposed_endpoint=None,
         evidence_ids=[],
-        summary="Record unavailable.",
+        findings=InvestigationFindings(
+            overview="Record unavailable.",
+            checks=[],
+            policy_requirements=[],
+            gaps=[],
+            next_step="Review the evidence before proceeding.",
+        ),
         blockers=["Could not retrieve record"],
     )
     monkeypatch.setattr(
@@ -376,4 +389,27 @@ def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch)
         tool_result = next(m for m in result["messages"] if m["type"] == "tool")
         assert tool_result["tool_call_id"] == "ticket-call"
         assert tool_result["status"] == "success"
+        assert result["investigation"]["findings"]["next_step"]
 
+
+def test_legacy_summary_loads_without_rewriting_history(investigation_api):
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+    ).json()
+    path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
+    saved = json.loads(path.read_text())
+    saved["investigation"].pop("findings")
+    saved["investigation"]["summary"] = "Original report, preserved verbatim."
+    saved["messages"].append({"type": "tool", "content": "Old tool result"})
+    path.write_text(json.dumps(saved))
+    before = path.read_bytes()
+
+    response = client.get(f"/api/investigations/{run['run_id']}", headers=headers)
+    assert response.status_code == 200
+    findings = response.json()["result"]["investigation"]["findings"]
+    assert findings["overview"] == saved["investigation"]["summary"]
+    assert findings["checks"] == []
+    assert "older report" in findings["gaps"][0]
+    assert path.read_bytes() == before

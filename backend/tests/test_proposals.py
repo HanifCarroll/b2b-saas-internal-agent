@@ -10,7 +10,7 @@ from pydantic import HttpUrl
 from switchboard.integrations.change_management import get_proposal, save_proposal
 from switchboard.integrations.database import seed_database
 from switchboard.integrations.employee_directory import EmployeeSession
-from switchboard.models import InvestigationResult
+from switchboard.models import InvestigationFindings, InvestigationResult
 from switchboard.proposals import validate_proposal
 from switchboard.scenarios import apply_scenario, load_scenarios
 
@@ -28,7 +28,13 @@ def candidate(endpoint="https://events.acme.example/deals"):
         ticket_id="CHG-1042",
         proposed_endpoint=HttpUrl(endpoint),
         evidence_ids=["CHG-1042"],
-        summary="Candidate, not approval.",
+        findings=InvestigationFindings(
+            overview="Candidate, not approval.",
+            checks=[],
+            policy_requirements=[],
+            gaps=[],
+            next_step="Review the evidence before proceeding.",
+        ),
         blockers=[],
     )
 
@@ -90,7 +96,13 @@ def test_blocked_result_is_rejected(connection):
         ticket_id=None,
         proposed_endpoint=None,
         evidence_ids=[],
-        summary="Missing evidence",
+        findings=InvestigationFindings(
+            overview="Missing evidence",
+            checks=[],
+            policy_requirements=[],
+            gaps=[],
+            next_step="Review the evidence before proceeding.",
+        ),
         blockers=["Missing ticket"],
     )
 

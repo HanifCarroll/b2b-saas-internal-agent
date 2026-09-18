@@ -19,7 +19,13 @@ export type InvestigationRun = {
   result: {
     investigation: {
       outcome: string;
-      summary: string;
+      findings: {
+        overview: string;
+        checks: string[];
+        policy_requirements: string[];
+        gaps: string[];
+        next_step: string;
+      };
       blockers: string[];
       evidence_ids: string[];
     };

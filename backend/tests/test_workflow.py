@@ -11,7 +11,7 @@ from test_agent import ScriptedModel, structured_result
 
 from switchboard.agent import build_agent
 from switchboard.integrations.database import seed_database
-from switchboard.models import Proposal
+from switchboard.models import InvestigationFindings, Proposal
 from switchboard.tools import InvestigationContext
 from switchboard.workflow import (
     EndpointChangeContext,
@@ -109,7 +109,13 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
             ticket_id=None,
             proposed_endpoint=None,
             evidence_ids=[],
-            summary="Required evidence is unavailable.",
+            findings=InvestigationFindings(
+                overview="Required evidence is unavailable.",
+                checks=[],
+                policy_requirements=[],
+                gaps=[],
+                next_step="Review the evidence before proceeding.",
+            ),
             blockers=["Required evidence is unavailable."],
         )
     )

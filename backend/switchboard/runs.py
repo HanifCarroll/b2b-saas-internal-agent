@@ -71,7 +71,17 @@ def get_investigation_run(
 
     # 2. Recheck current access before returning any saved evidence.
     require_run_access(context=context, manifest=manifest)
-    result = EndpointChangeResult.model_validate_json(result_path.read_text())
+    saved = json.loads(result_path.read_text())
+    investigation = saved["investigation"]
+    if "findings" not in investigation and "summary" in investigation:
+        investigation["findings"] = {
+            "overview": investigation.pop("summary"),
+            "checks": [],
+            "policy_requirements": [],
+            "gaps": ["This older report did not store separate findings sections."],
+            "next_step": "See the original report above for its recommended next step.",
+        }
+    result = EndpointChangeResult.model_validate_json(json.dumps(saved))
 
     policy_path = directory / "policy-review.json"
     return InvestigationRun(

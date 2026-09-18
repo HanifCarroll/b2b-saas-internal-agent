@@ -16,6 +16,7 @@ export function InvestigationFindings({
   onEvaluatePolicy: () => void;
 }) {
   const { investigation, messages } = run.result;
+  const { findings } = investigation;
   const toolCalls = messages.flatMap((message) => message.tool_calls ?? []);
 
   return (
@@ -32,7 +33,29 @@ export function InvestigationFindings({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{investigation.summary}</p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          {findings.overview}
+        </p>
+        {[
+          { title: "Evidence checks", items: findings.checks },
+          { title: "Policy requirements", items: findings.policy_requirements },
+          { title: "Unknown or unverified", items: findings.gaps },
+        ].map(({ title, items }) =>
+          items.length > 0 ? (
+            <section key={title} className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">{title}</h3>
+              <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed break-words">
+                {items.map((item, index) => (
+                  <li key={index}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null,
+        )}
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold">Next step</h3>
+          <p className="text-sm leading-relaxed break-words">{findings.next_step}</p>
+        </section>
         {investigation.blockers.length > 0 && (
           <Alert variant="destructive">
             <AlertTitle>Blockers — no proposal saved</AlertTitle>
@@ -61,7 +84,15 @@ export function InvestigationFindings({
           </Alert>
         )}
         <details>
-          <summary className="cursor-pointer text-sm font-medium">Tool calls</summary>
+          <summary className="cursor-pointer text-sm font-medium">
+            Tool calls ({toolCalls.length})
+          </summary>
+          {toolCalls.length === 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No tool-call details were saved for this run. Older runs may be missing this
+              information.
+            </p>
+          )}
           <ul className="mt-3 flex flex-col gap-2 text-sm">
             {toolCalls.map((call) => (
               <li className="break-all" key={call.id}>

@@ -114,6 +114,20 @@ class Approval(Record):
     created_at: AwareDatetime
 
 
+class InvestigationFindings(Record):
+    """Readable sections generated with the investigation, not a second model call."""
+
+    overview: Text = Field(description="Brief conclusion and requested change.")
+    checks: list[Text] = Field(description="Evidence checks, one finding per item.")
+    policy_requirements: list[Text] = Field(
+        description="Applicable policy rules, including their conditions and exceptions."
+    )
+    gaps: list[Text] = Field(description="Unknown or unverified facts; empty if none.")
+    next_step: Text = Field(
+        description="The next action, without claiming it happened."
+    )
+
+
 class InvestigationResult(Record):
     """Investigator findings, not authorization to save or execute a change."""
 
@@ -121,7 +135,7 @@ class InvestigationResult(Record):
     ticket_id: Text | None
     proposed_endpoint: HttpUrl | None
     evidence_ids: list[Text]
-    summary: Text
+    findings: InvestigationFindings
     blockers: list[Text]
 
     @field_serializer("proposed_endpoint")
