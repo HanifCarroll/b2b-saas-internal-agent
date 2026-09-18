@@ -92,12 +92,14 @@ def run_investigation(
     # 1. Run the shared investigation with the CLI's configured storage.
     model = create_model()
     try:
-        workflow_id, result = investigate_scenario(
+        run = investigate_scenario(
             scenario_id=scenario_id,
             model=model,
             runs_directory=RUNS_DIRECTORY,
             database_path=DATABASE_PATH,
         )
+        workflow_id = run.workflow_id
+        result = run.result
     except ValidationError as error:
         raise SystemExit(
             "Workflow returned invalid or inconsistent data; no result accepted.\n"
@@ -230,7 +232,7 @@ def run_command(
     setup = read_demo_setup(DATABASE_PATH)
     if setup is None:
         parser.error("Reset the demo first: --reset-demo baseline --confirm-reset")
-    scenario_id = args.scenario or setup[0]
+    scenario_id = args.scenario or setup.scenario_id
     selected_scenario = scenarios[scenario_id]
 
     # 3. Run the selected investigation.

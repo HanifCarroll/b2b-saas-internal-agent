@@ -62,11 +62,13 @@ def get_workflow_status(
     if result.proposal is not None:
         try:
             with employee_session(context) as session:
-                proposal, approval = get_proposal_review(
+                proposal_review = get_proposal_review(
                     session=session,
                     proposal_id=result.proposal.id,
                     database_path=context.database_path,
                 )
+                proposal = proposal_review.proposal
+                approval = proposal_review.approval
         except PermissionError:
             pass  # Missing and inaccessible records must remain indistinguishable.
         else:

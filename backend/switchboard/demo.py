@@ -8,6 +8,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from switchboard.models import DemoSetup
 from switchboard.scenarios import initialize_demo_database, load_scenarios
 
 
@@ -35,7 +36,7 @@ def demo_operation(*, database_path: Path, reset: bool = False):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-def read_demo_setup(database_path: Path) -> tuple[str, dict] | None:
+def read_demo_setup(database_path: Path) -> DemoSetup | None:
     """Read the active scenario without creating or changing the database."""
     if not database_path.exists():
         return None
@@ -50,7 +51,7 @@ def read_demo_setup(database_path: Path) -> tuple[str, dict] | None:
     if row is None:
         raise ValueError("Demo setup is incomplete; reset the demo")
 
-    return row[0], json.loads(row[1])
+    return DemoSetup(scenario_id=row[0], inputs=json.loads(row[1]))
 
 
 def reset_demo(*, database_path: Path, runs_directory: Path, scenario_id: str) -> None:

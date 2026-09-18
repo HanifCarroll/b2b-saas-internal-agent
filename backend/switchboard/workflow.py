@@ -61,11 +61,13 @@ def prepare_proposal(
     # 2. Validate and save using the trusted employee session.
     with employee_session(runtime.context.investigation_context) as session:
         proposal = validate_proposal(investigation=investigation, session=session)
-        proposal, was_created = save_proposal(
+        saved_proposal = save_proposal(
             proposal=proposal,
             session=session,
             database_path=runtime.context.investigation_context.database_path,
         )
+        proposal = saved_proposal.proposal
+        was_created = saved_proposal.was_created
 
     # 3. Return the saved proposal and whether it was created.
     return {"proposal": proposal, "was_created": was_created}

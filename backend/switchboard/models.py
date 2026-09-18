@@ -1,5 +1,6 @@
 """Validated records and investigation results. Authorization lives elsewhere."""
 
+from dataclasses import dataclass
 from typing import Annotated, Literal, Self
 
 from langchain_core.messages import AnyMessage
@@ -190,3 +191,33 @@ class EndpointChangeResult(Record):
     messages: list[AnyMessage]
     proposal: Proposal | None = None
     was_created: bool | None = None
+
+
+@dataclass(frozen=True)
+class SaveProposalResult:
+    proposal: Proposal
+    was_created: bool
+
+
+@dataclass(frozen=True)
+class ProposalReviewResult:
+    proposal: Proposal
+    approval: Approval | None
+
+
+@dataclass(frozen=True)
+class EndpointChangeRecords:
+    ticket: Ticket
+    integration: Integration
+
+
+@dataclass(frozen=True)
+class InvestigationRunResult:
+    workflow_id: str
+    result: EndpointChangeResult
+
+
+@dataclass(frozen=True)
+class DemoSetup:
+    scenario_id: str
+    inputs: dict

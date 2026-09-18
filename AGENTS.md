@@ -19,3 +19,5 @@
 - Add a blank line after an early-return block before the next operation, and between validation checks and the work they protect.
 - Keep closely related statements together; do not add blank lines between every statement.
 - Give each function one clear responsibility. When callers need only part of a function’s behavior, consider extracting that responsibility into a shared function rather than calling the whole function and discarding its result.
+
+- Prefer named fields over positional tuples for business results containing multiple values, including boolean flags. Use a small dataclass for internal results and Pydantic when runtime validation or serialization is needed. Access results by field name; keep ordinary tuples for natural sequences and standard-library conventions.

@@ -11,7 +11,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from switchboard.agent import build_agent
 from switchboard.demo import read_demo_setup
 from switchboard.integrations.employee_directory import EmployeeSession
-from switchboard.models import EndpointChangeResult
+from switchboard.models import EndpointChangeResult, InvestigationRunResult
 from switchboard.tools import InvestigationContext
 from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
@@ -23,13 +23,14 @@ def investigate_scenario(
     runs_directory: Path,
     database_path: Path,
     employee_id: str | None = None,
-) -> tuple[str, EndpointChangeResult]:
+) -> InvestigationRunResult:
     """Investigate shared business records and retain a separate historical result."""
     # 1. Read the explicitly initialized demo; never seed or reapply a scenario here.
     setup = read_demo_setup(database_path)
     if setup is None:
         raise ValueError("Reset the demo to a scenario before investigating")
-    active_scenario, scenario = setup
+    active_scenario = setup.scenario_id
+    scenario = setup.inputs
     if active_scenario != scenario_id:
         raise ValueError("Selected scenario is not active; reset the demo first")
 
@@ -84,4 +85,4 @@ def investigate_scenario(
     temporary = directory / "result.tmp"
     temporary.write_text(result.model_dump_json(indent=2))
     temporary.replace(directory / "result.json")
-    return workflow_id, result
+    return InvestigationRunResult(workflow_id=workflow_id, result=result)

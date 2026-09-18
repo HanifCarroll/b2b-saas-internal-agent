@@ -182,4 +182,4 @@ def test_cli_reset_requires_confirmation_and_reports_active_scenario(
     assert "Saved demo work cleared" in capsys.readouterr().out
     setup = read_demo_setup(path)
     assert setup is not None
-    assert setup[0] == "baseline"
+    assert setup.scenario_id == "baseline"

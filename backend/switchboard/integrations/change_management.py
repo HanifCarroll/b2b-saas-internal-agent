@@ -7,7 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from switchboard.models import Approval, Proposal
+from switchboard.models import (
+    Approval,
+    Proposal,
+    ProposalReviewResult,
+    SaveProposalResult,
+)
 from switchboard.proposals import validate_endpoint_change_request
 
 from .database import DATABASE_PATH, initialize_proposal_database
@@ -19,10 +24,10 @@ def save_proposal(
     proposal: Proposal,
     session: EmployeeSession,
     database_path: Path = DATABASE_PATH,
-) -> tuple[Proposal, bool]:
+) -> SaveProposalResult:
     """Recheck authorization and records, then save or return an identical proposal.
 
-    Returns (proposal, created): created is False for an existing proposal.
+    Returns named fields: proposal and was_created (False for an existing proposal).
 
     Identity and the full configuration snapshot must still match. SQLite serializes
     duplicate detection and insertion so concurrent retries cannot create duplicates.
@@ -58,7 +63,10 @@ def save_proposal(
             parameters,
         ).fetchone()
         if existing is not None:
-            return Proposal.model_validate_json(json.dumps(dict(existing))), False
+            return SaveProposalResult(
+                proposal=Proposal.model_validate_json(json.dumps(dict(existing))),
+                was_created=False,
+            )
 
         # 3. Insert only when there is no identical proposal.
         connection.execute(
@@ -76,7 +84,7 @@ def save_proposal(
             parameters,
         )
 
-    return proposal, True
+    return SaveProposalResult(proposal=proposal, was_created=True)
 
 
 def ensure_proposal_matches_current_records(
@@ -84,11 +92,13 @@ def ensure_proposal_matches_current_records(
 ) -> None:
     """Raise if access, request validity, or the proposal snapshot has changed."""
     # 1. Recheck access and whether the request is still supported.
-    ticket, integration = validate_endpoint_change_request(
+    records = validate_endpoint_change_request(
         ticket_id=proposal.ticket_id,
         proposed_endpoint=proposal.proposed_endpoint,
         session=session,
     )
+    ticket = records.ticket
+    integration = records.integration
 
     # 2. Reject changes to the proposing identity or configuration snapshot.
     if (
@@ -207,7 +217,7 @@ def get_proposal_review(
     session: EmployeeSession,
     proposal_id: str,
     database_path: Path = DATABASE_PATH,
-) -> tuple[Proposal, Approval | None]:
+) -> ProposalReviewResult:
     """Return an accessible proposal together with its optional approval receipt."""
     # 1. Require current access before querying approval storage.
     proposal = get_proposal(
@@ -222,11 +232,11 @@ def get_proposal_review(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'approvals'"
         ).fetchone()
         if table is None:
-            return proposal, None
+            return ProposalReviewResult(proposal=proposal, approval=None)
 
         row = connection.execute(
             "SELECT * FROM approvals WHERE proposal_id = ?", (proposal_id,)
         ).fetchone()
 
     approval = Approval.model_validate_json(json.dumps(dict(row))) if row else None
-    return proposal, approval
+    return ProposalReviewResult(proposal=proposal, approval=approval)

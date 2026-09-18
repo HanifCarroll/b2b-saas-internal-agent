@@ -11,7 +11,7 @@ from switchboard.integrations import (
     support_desk,
 )
 from switchboard.integrations.employee_directory import EmployeeSession
-from switchboard.models import Integration, InvestigationResult, Proposal, Ticket
+from switchboard.models import EndpointChangeRecords, InvestigationResult, Proposal
 
 
 def validate_proposal(
@@ -32,11 +32,13 @@ def validate_proposal(
         raise ValueError("Investigation is not a proposal candidate")
 
     # 2. Check the request against current, access-controlled records.
-    ticket, integration = validate_endpoint_change_request(
+    records = validate_endpoint_change_request(
         ticket_id=investigation.ticket_id,
         proposed_endpoint=investigation.proposed_endpoint,
         session=session,
     )
+    ticket = records.ticket
+    integration = records.integration
 
     # 3. Build the snapshot with application-generated identity and time.
     return Proposal(
@@ -60,7 +62,7 @@ def validate_endpoint_change_request(
     ticket_id: str,
     proposed_endpoint: HttpUrl,
     session: EmployeeSession,
-) -> tuple[Ticket, Integration]:
+) -> EndpointChangeRecords:
     """Return checked records or raise if the endpoint-change request is unsupported.
 
     Checks access, customer ownership, requester authority, and destination.
@@ -97,4 +99,4 @@ def validate_endpoint_change_request(
     if ticket.requested_endpoint == integration.endpoint:
         raise ValueError("Requested endpoint is already configured")
 
-    return ticket, integration
+    return EndpointChangeRecords(ticket=ticket, integration=integration)

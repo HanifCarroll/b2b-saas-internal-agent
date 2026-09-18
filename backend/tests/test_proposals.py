@@ -51,14 +51,18 @@ def test_save_is_durable_and_retries_return_existing_proposal(connection, tmp_pa
     assert proposal.recovery_plan == "manual_intervention"
     assert proposal.expected_configuration_version == 7
     assert proposal.proposed_by_employee_id == "emp-alex"
-    saved, created = save_proposal(
+    saved_proposal = save_proposal(
         proposal=proposal, session=session, database_path=path
     )
-    retry, retry_created = save_proposal(
+    saved = saved_proposal.proposal
+    created = saved_proposal.was_created
+    saved_proposal = save_proposal(
         proposal=validate_proposal(investigation=candidate(), session=session),
         session=session,
         database_path=path,
     )
+    retry = saved_proposal.proposal
+    retry_created = saved_proposal.was_created
 
     assert created is True
     assert retry_created is False
@@ -178,11 +182,12 @@ def test_assigned_roles_can_read_proposal_after_configuration_changes(
 ):
     # 1. Set up inputs and exercise the behavior under test.
     session = EmployeeSession(db_connection=connection, employee_id="emp-alex")
-    proposal, _ = save_proposal(
+    saved_proposal = save_proposal(
         proposal=validate_proposal(investigation=candidate(), session=session),
         session=session,
         database_path=tmp_path / "proposals.db",
     )
+    proposal = saved_proposal.proposal
     connection.execute("UPDATE employees SET role = ? WHERE id = 'emp-priya'", (role,))
     connection.execute("DELETE FROM integrations")
     apply_scenario(
@@ -222,11 +227,12 @@ def test_proposal_reads_hide_missing_and_inaccessible_records(
     # 1. Set up inputs and exercise the behavior under test.
     path = tmp_path / "proposals.db"
     session = EmployeeSession(db_connection=connection, employee_id="emp-alex")
-    proposal, _ = save_proposal(
+    saved_proposal = save_proposal(
         proposal=validate_proposal(investigation=candidate(), session=session),
         session=session,
         database_path=path,
     )
+    proposal = saved_proposal.proposal
     proposal_id = proposal.id
     if denial == "missing":
         proposal_id = "missing"

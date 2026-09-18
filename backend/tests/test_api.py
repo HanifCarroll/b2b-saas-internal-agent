@@ -27,11 +27,12 @@ def review_api(tmp_path, monkeypatch):
     with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
         seed_database(connection=connection)
         session = EmployeeSession(db_connection=connection, employee_id="emp-alex")
-        proposal, _ = save_proposal(
+        saved_proposal = save_proposal(
             proposal=validate_proposal(investigation=candidate(), session=session),
             session=session,
             database_path=storage,
         )
+        proposal = saved_proposal.proposal
 
     (directory / "run.json").write_text(json.dumps({"database_path": str(storage)}))
     monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path)

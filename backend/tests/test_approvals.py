@@ -58,11 +58,12 @@ def test_approval_permissions_and_persistence(tmp_path, case):
     with closing(sqlite3.connect(":memory:")) as directory:
         seed_database(connection=directory)
         author = EmployeeSession(db_connection=directory, employee_id="emp-alex")
-        proposal, _ = save_proposal(
+        saved_proposal = save_proposal(
             proposal=validate_proposal(investigation=candidate(), session=author),
             session=author,
             database_path=path,
         )
+        proposal = saved_proposal.proposal
         employee_id = "emp-priya"
         if case in {"support", "engineer"}:
             role = (

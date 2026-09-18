@@ -78,7 +78,7 @@ class ResetRequest(BaseModel):
 @app.get("/api/demo", response_model=DemoState)
 def read_demo() -> DemoState:
     setup = read_demo_setup(DATABASE_PATH)
-    return DemoState(scenario_id=setup[0] if setup else None)
+    return DemoState(scenario_id=setup.scenario_id if setup else None)
 
 
 @app.post("/api/demo/reset", response_model=DemoState)
@@ -149,11 +149,13 @@ def read_proposal(
     # 2. Delegate authorization and storage to the business functions.
     try:
         with employee_session(context) as session:
-            proposal, approval = get_proposal_review(
+            proposal_review = get_proposal_review(
                 session=session,
                 proposal_id=proposal_id,
                 database_path=context.database_path,
             )
+            proposal = proposal_review.proposal
+            approval = proposal_review.approval
     except PermissionError:
         raise HTTPException(status_code=404, detail="Proposal unavailable") from None
 
@@ -221,7 +223,7 @@ def start_investigation(
         raise HTTPException(status_code=403, detail="Employee unavailable")
 
     setup = read_demo_setup(DATABASE_PATH)
-    if setup is None or setup[0] != request.scenario_id:
+    if setup is None or setup.scenario_id != request.scenario_id:
         raise HTTPException(
             status_code=409,
             detail="Reset the demo to the selected scenario before investigating",
@@ -229,13 +231,15 @@ def start_investigation(
 
     # 2. Run the existing workflow, including deterministic validation and saving.
     try:
-        run_id, result = investigate_scenario(
+        run = investigate_scenario(
             scenario_id=request.scenario_id,
             model=create_model(),
             runs_directory=RUNS_DIRECTORY,
             database_path=DATABASE_PATH,
             employee_id=x_employee_id,
         )
+        run_id = run.workflow_id
+        result = run.result
     except (ValueError, PermissionError):
         raise HTTPException(
             status_code=422, detail="Investigation result was rejected"

@@ -25,11 +25,12 @@ def test_review_scenario(scenario, tmp_path):
     with closing(sqlite3.connect(":memory:")) as connection:
         seed_database(connection=connection)
         author = EmployeeSession(db_connection=connection, employee_id="emp-alex")
-        proposal, _ = save_proposal(
+        saved_proposal = save_proposal(
             proposal=validate_proposal(investigation=candidate(), session=author),
             session=author,
             database_path=path,
         )
+        proposal = saved_proposal.proposal
         reviewer_id = scenario["reviewer_employee_id"]
         if "role_override" in scenario:
             connection.execute(
