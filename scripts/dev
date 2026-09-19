@@ -2,18 +2,34 @@
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
+storage_pid=""
 api_pid=""
 web_pid=""
+bridge_token="local-switchboard"
 
 cleanup() {
+  [[ -z "$storage_pid" ]] || kill "$storage_pid" 2>/dev/null || true
   [[ -z "$api_pid" ]] || kill "$api_pid" 2>/dev/null || true
   [[ -z "$web_pid" ]] || kill "$web_pid" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 (
+  cd "$repository/cloudflare"
+  npm run migrate:local
+  exec ./node_modules/.bin/wrangler dev \
+    --config wrangler.storage.jsonc \
+    --port 8787 \
+    --var "LOCAL_STORAGE_BRIDGE_TOKEN:$bridge_token"
+) &
+storage_pid=$!
+
+(
   cd "$repository/backend"
-  exec env SWITCHBOARD_AUTH_MODE=hybrid uv run uvicorn switchboard.api:app \
+  exec env SWITCHBOARD_AUTH_MODE=hybrid \
+    STORAGE_BRIDGE_URL=http://127.0.0.1:8787 \
+    LOCAL_STORAGE_BRIDGE_TOKEN="$bridge_token" \
+    uv run uvicorn switchboard.api:app \
     --reload --host 127.0.0.1 --port 8000
 ) &
 api_pid=$!
