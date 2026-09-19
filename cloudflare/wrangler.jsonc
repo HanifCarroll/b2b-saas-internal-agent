@@ -5,6 +5,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-19",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
   "containers": [
     {
       "class_name": "SwitchboardContainer",

@@ -1,5 +1,7 @@
 import { Container, getContainer } from "@cloudflare/containers";
 
+export { ContainerProxy } from "@cloudflare/containers";
+
 import { handleStorageRequest, type StorageEnvironment } from "./storage";
 
 interface Env extends StorageEnvironment {
