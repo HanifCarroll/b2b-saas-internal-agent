@@ -20,7 +20,7 @@ test("effect ban rejects aliases and property access with actionable guidance", 
       writeFileSync(file, source);
       const result = spawnSync(
         resolve("node_modules/.bin/oxlint"),
-        ["-c", resolve(".oxlintrc.json"), file],
+        ["--format=default", "-c", resolve(".oxlintrc.json"), file],
         { encoding: "utf8" },
       );
       assert.equal(result.status, 1, source);
