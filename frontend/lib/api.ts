@@ -44,10 +44,14 @@ export type WorkflowStatus = {
   next_action: string;
 };
 
-export type DemoOptions = {
-  scenarios: { id: string }[];
-  employees: { id: string; name: string; role: string }[];
+export type DemoPersona = { id: string; name: string; role: string };
+export type DemoCaseSummary = {
+  id: string;
+  title: string;
+  description: string;
+  recommended_persona_id: string;
 };
+export type PreparedDemoCase = { case_id: string; persona_id: string; path: string };
 export type PersonReference = { id: string; name: string };
 export type Ticket = {
   id: string;
@@ -125,14 +129,14 @@ export async function requestApi<T>({
 }): Promise<T> {
   // 1. Keep identity headers under this helper's control.
   const headers = new Headers(options.headers);
-  if (headers.has("Authorization") || headers.has("X-Employee-Id")) {
+  if (headers.has("Authorization") || headers.has("X-Demo-Persona-Id")) {
     throw new Error("Do not supply identity headers through request options.");
   }
   headers.set("Content-Type", "application/json");
 
   // 2. Resolve exactly one identity mechanism before sending the request.
   if (identity.mode === "demo") {
-    headers.set("X-Employee-Id", identity.employeeId);
+    headers.set("X-Demo-Persona-Id", identity.employeeId);
   } else {
     const accessToken = await identity.getAccessToken();
     headers.set("Authorization", `Bearer ${accessToken}`);
@@ -180,15 +184,39 @@ export const ticketsQuery = (identity: RequestIdentity) => ({
     }),
 });
 
-export const demoOptionsQuery = (identity: RequestIdentity) => ({
-  queryKey: ["demo-options", ...identityKey(identity)],
+export const demoPersonasQuery = (identity: RequestIdentity) => ({
+  queryKey: ["demo-personas", ...identityKey(identity)],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<DemoOptions>({
-      path: "/api/demo-options",
+    requestApi<DemoPersona[]>({
+      path: "/api/demo/personas",
       identity,
       options: { signal },
     }),
 });
+
+export const demoCasesQuery = (identity: RequestIdentity) => ({
+  queryKey: ["demo-cases"],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    requestApi<DemoCaseSummary[]>({
+      path: "/api/demo/cases",
+      identity,
+      options: { signal },
+    }),
+});
+
+export function prepareDemoCase({
+  identity,
+  caseId,
+}: {
+  identity: RequestIdentity;
+  caseId: string;
+}) {
+  return requestApi<PreparedDemoCase>({
+    path: `/api/demo/cases/${encodeURIComponent(caseId)}/prepare`,
+    identity,
+    options: { method: "POST" },
+  });
+}
 
 export function historyQuery(identity: RequestIdentity, ticketId: string | null) {
   return {
@@ -264,18 +292,6 @@ export function proposalReviewQuery({
     gcTime: 0,
   };
 }
-
-export type DemoState = { scenario_id: string | null };
-
-export const demoStateQuery = (identity: RequestIdentity) => ({
-  queryKey: ["demo-state", ...identityKey(identity)],
-  queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<DemoState>({
-      path: "/api/demo",
-      identity,
-      options: { signal },
-    }),
-});
 
 export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
   await client.cancelQueries();

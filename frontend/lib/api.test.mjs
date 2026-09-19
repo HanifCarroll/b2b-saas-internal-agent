@@ -4,18 +4,21 @@ import { QueryClient } from "@tanstack/react-query";
 import {
   requestApi,
   clearDemoQueries,
+  demoCasesQuery,
+  demoPersonasQuery,
   historyQuery,
   investigationQuery,
   investigationKeys,
   ticketsQuery,
   proposalReviewQuery,
   proposalReviewKeys,
+  prepareDemoCase,
 } from "./api.ts";
 
 test("ticket history is fetched and cached by employee and ticket", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
-    const employee = new Headers(options.headers).get("X-Employee-Id");
+    const employee = new Headers(options.headers).get("X-Demo-Persona-Id");
     calls.push([url, employee]);
     return Response.json([{ run_id: employee, ticket_id: "CHG-1042", outcome: "blocked" }]);
   });
@@ -54,7 +57,7 @@ test("ticket history is fetched and cached by employee and ticket", async (t) =>
 test("accessible tickets use the selected employee identity", async (t) => {
   t.mock.method(globalThis, "fetch", async (path, options) => {
     assert.equal(path, "/api/tickets");
-    assert.equal(new Headers(options.headers).get("X-Employee-Id"), "emp-alex");
+    assert.equal(new Headers(options.headers).get("X-Demo-Persona-Id"), "emp-alex");
     return Response.json([{ id: "CHG-1042" }]);
   });
 
@@ -104,7 +107,7 @@ test("unselected runs stay disabled; inaccessible runs surface errors", async (t
 test("proposal reviews isolate reviewers and invalidate together after approval", async (t) => {
   let approved = false;
   t.mock.method(globalThis, "fetch", async (_url, options) => {
-    if (new Headers(options.headers).get("X-Employee-Id") === "emp-ben") {
+    if (new Headers(options.headers).get("X-Demo-Persona-Id") === "emp-ben") {
       return Response.json({ detail: "Proposal unavailable" }, { status: 404 });
     }
     return Response.json({ approval: approved ? { id: "approval-1" } : null });
@@ -138,7 +141,7 @@ test("proposal reviews isolate reviewers and invalidate together after approval"
   assert.equal((await client.fetchQuery(priya)).approval.id, "approval-1");
 });
 
-test("reset clears saved-work caches across investigators and reviewers", async () => {
+test("preparing a case clears saved-work caches but keeps demo choices", async () => {
   const client = new QueryClient();
   try {
     for (const employee of ["emp-alex", "emp-priya"]) {
@@ -154,22 +157,58 @@ test("reset clears saved-work caches across investigators and reviewers", async 
         approval: "old",
       });
     }
-    client.setQueryData(["demo-options"], { scenarios: ["baseline"] });
+    client.setQueryData(["demo-cases"], [{ id: "valid-request" }]);
+    client.setQueryData(["demo-personas", "demo", "emp-alex"], [{ id: "emp-alex" }]);
     await clearDemoQueries(client);
     assert.equal(client.getQueriesData({ queryKey: ["investigations"] }).length, 0);
     assert.equal(client.getQueriesData({ queryKey: ["investigation"] }).length, 0);
     assert.equal(client.getQueriesData({ queryKey: ["proposal-review"] }).length, 0);
-    assert.deepEqual(client.getQueryData(["demo-options"]), { scenarios: ["baseline"] });
+    assert.deepEqual(client.getQueryData(["demo-cases"]), [{ id: "valid-request" }]);
+    assert.deepEqual(client.getQueryData(["demo-personas", "demo", "emp-alex"]), [
+      { id: "emp-alex" },
+    ]);
   } finally {
     client.clear();
   }
+});
+
+test("demo choices and case preparation use the public demo API", async (t) => {
+  const paths = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    paths.push([path, options.method ?? "GET"]);
+    if (path === "/api/demo/personas") return Response.json([{ id: "emp-alex" }]);
+    if (path === "/api/demo/cases") return Response.json([{ id: "valid-request" }]);
+    return Response.json({
+      case_id: "valid-request",
+      persona_id: "emp-alex",
+      path: "/requests/CHG-1042",
+    });
+  });
+  const identity = { mode: "demo", employeeId: "emp-alex" };
+
+  assert.deepEqual(
+    await demoPersonasQuery(identity).queryFn({ signal: AbortSignal.timeout(1000) }),
+    [{ id: "emp-alex" }],
+  );
+  assert.deepEqual(await demoCasesQuery(identity).queryFn({ signal: AbortSignal.timeout(1000) }), [
+    { id: "valid-request" },
+  ]);
+  assert.equal(
+    (await prepareDemoCase({ identity, caseId: "valid-request" })).persona_id,
+    "emp-alex",
+  );
+  assert.deepEqual(paths, [
+    ["/api/demo/personas", "GET"],
+    ["/api/demo/cases", "GET"],
+    ["/api/demo/cases/valid-request/prepare", "POST"],
+  ]);
 });
 
 test("demo requests send only the selected employee identity", async (t) => {
   t.mock.method(globalThis, "fetch", async (path, options) => {
     assert.equal(path, "/api/me");
     const headers = new Headers(options.headers);
-    assert.equal(headers.get("X-Employee-Id"), "emp-alex");
+    assert.equal(headers.get("X-Demo-Persona-Id"), "emp-alex");
     assert.equal(headers.has("Authorization"), false);
     return Response.json({ employee_id: "emp-alex" });
   });
@@ -188,7 +227,7 @@ test("Entra requests acquire a token and send no simulated identity", async (t) 
     assert.equal(acquired, true);
     const headers = new Headers(options.headers);
     assert.equal(headers.get("Authorization"), "Bearer api-token");
-    assert.equal(headers.has("X-Employee-Id"), false);
+    assert.equal(headers.has("X-Demo-Persona-Id"), false);
     return Response.json({ employee_id: "emp-alex" });
   });
   await requestApi({
@@ -216,7 +255,7 @@ test("identity header overrides are rejected before acquiring tokens or fetching
   ]) {
     for (const headers of [
       { authorization: "Bearer override" },
-      new Headers({ "X-EMPLOYEE-ID": "emp-priya" }),
+      new Headers({ "X-DEMO-PERSONA-ID": "emp-priya" }),
       [["Authorization", "Bearer override"]],
     ]) {
       await assert.rejects(

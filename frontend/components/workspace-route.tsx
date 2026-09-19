@@ -19,20 +19,21 @@ import { ApprovalInbox } from "@/components/approval-inbox";
 import { ProposalReview } from "@/components/proposal-review";
 import {
   approvalInboxQuery,
-  requestApi,
-  demoOptionsQuery,
-  demoStateQuery,
   clearDemoQueries,
-  type DemoState,
+  demoCasesQuery,
+  demoPersonasQuery,
   historyQuery,
   investigationQuery,
   investigationKeys,
   type InvestigationRun,
   type PolicyReview,
+  prepareDemoCase,
+  requestApi,
   ticketsQuery,
   proposalReviewKeys,
 } from "@/lib/api";
-import { DemoControls } from "@/components/demo-controls";
+import { DemoCaseLauncher } from "@/components/demo-case-launcher";
+import { DemoPersonaSwitcher } from "@/components/demo-persona";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
 import { TicketDetail } from "@/components/ticket-detail";
@@ -58,11 +59,14 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const [ticketSearch, setTicketSearch] = useState("");
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
-  const optionsQuery = useQuery({
-    ...demoOptionsQuery(identity),
+  const personasQuery = useQuery({
+    ...demoPersonasQuery(identity),
     enabled: identity.mode === "demo",
   });
-  const demo = useQuery({ ...demoStateQuery(identity), enabled: identity.mode === "demo" });
+  const casesQuery = useQuery({
+    ...demoCasesQuery(identity),
+    enabled: identity.mode === "demo",
+  });
   const ticketsQueryResult = useQuery(ticketsQuery(identity));
   const approvalsQueryResult = useQuery({
     ...approvalInboxQuery(identity),
@@ -71,7 +75,8 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const mutationsInProgress = useIsMutating();
   const historyQueryResult = useQuery(historyQuery(identity, selectedTicketId));
   const selectedRun = useQuery(investigationQuery(identity, selectedRunId));
-  const options = optionsQuery.data ?? null;
+  const personas = personasQuery.data ?? [];
+  const cases = casesQuery.data ?? [];
   const tickets = ticketsQueryResult.data ?? [];
   const approvals = approvalsQueryResult.data ?? [];
   const selectedProposalId = route.kind === "approvals" ? (route.proposalId ?? null) : null;
@@ -90,7 +95,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
   const history = historyQueryResult.data ?? [];
   const run = selectedRun.isError ? null : (selectedRun.data ?? null);
-  const employeeRecord = options?.employees.find((item) => item.id === employee);
+  const employeeRecord = personas.find((item) => item.id === employee);
   const employeeName = employeeRecord?.name ?? currentEmployee?.name ?? employee;
   const employeeRole = employeeRecord?.role ?? currentEmployee?.role ?? null;
 
@@ -127,30 +132,22 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
       );
     },
   });
-  const reset = useMutation({
-    mutationFn: (scenario: string) =>
-      requestApi<DemoState>({
-        path: "/api/demo/reset",
-        identity,
-        options: {
-          method: "POST",
-          body: JSON.stringify({ scenario_id: scenario, confirm: true }),
-        },
-      }),
-    onMutate: async () => {
-      clearSelection();
+  const casePreparation = useMutation({
+    mutationFn: (caseId: string) => prepareDemoCase({ identity, caseId }),
+    onMutate: () => {
+      setSelectedRunId(null);
       investigation.reset();
       policyEvaluation.reset();
-      await queryClient.cancelQueries();
     },
-    onSettled: async () => {
+    onSuccess: async (prepared) => {
       await clearDemoQueries(queryClient);
-      await queryClient.invalidateQueries();
+      onEmployeeChange(prepared.persona_id);
+      router.push(prepared.path);
     },
   });
 
   function startTicketInvestigation(ticketId: string) {
-    reset.reset();
+    casePreparation.reset();
     policyEvaluation.reset();
     setSelectedRunId(null);
     investigation.mutate(ticketId);
@@ -161,6 +158,14 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     policyEvaluation.reset();
     setSelectedRunId(null);
     router.push(requestPath(ticketId));
+  }
+
+  function changePersona(personaId: string) {
+    setSelectedRunId(null);
+    investigation.reset();
+    policyEvaluation.reset();
+    onEmployeeChange(personaId);
+    router.push(workspacePaths.work);
   }
 
   function clearSelection() {
@@ -190,8 +195,8 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   }
 
   // 3. Derive presentation from query and mutation state, rather than copying it.
-  const pendingMessage = reset.isPending
-    ? "Resetting demo records…"
+  const pendingMessage = casePreparation.isPending
+    ? "Preparing the demo case…"
     : investigation.isPending
       ? "Investigating records and validating the result…"
       : policyEvaluation.isPending
@@ -201,33 +206,32 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
           : "";
   const isPending = pendingMessage !== "";
   const error = (
-    reset.error ??
-    demo.error ??
+    casePreparation.error ??
     investigation.error ??
     policyEvaluation.error ??
     selectedRun.error ??
     ticketsQueryResult.error ??
     approvalsQueryResult.error ??
-    optionsQuery.error ??
+    personasQuery.error ??
+    casesQuery.error ??
     historyQueryResult.error
   )?.message;
   const sidebarDemoControls =
     identity.mode === "demo" ? (
-      <details className="rounded-lg border border-white/10 bg-white/5 p-2">
-        <summary className="cursor-pointer px-1 text-xs font-medium text-slate-300">
-          Demo controls
-        </summary>
-        <div className="mt-2 overflow-hidden rounded-lg bg-white text-slate-950">
-          <DemoControls
-            options={options}
-            employee={employee}
-            busy={isPending || mutationsInProgress > 0 || demo.isFetching}
-            activeScenario={demo.isError ? null : (demo.data?.scenario_id ?? null)}
-            onReset={(scenario) => reset.mutate(scenario)}
-            onEmployeeChange={onEmployeeChange}
-          />
-        </div>
-      </details>
+      <DemoCaseLauncher
+        cases={cases}
+        busy={isPending || mutationsInProgress > 0 || casesQuery.isFetching}
+        onPrepare={(caseId) => casePreparation.mutate(caseId)}
+      />
+    ) : undefined;
+  const demoPersonaSwitcher =
+    identity.mode === "demo" ? (
+      <DemoPersonaSwitcher
+        personas={personas}
+        selectedPersonaId={employee}
+        busy={isPending || mutationsInProgress > 0}
+        onChange={changePersona}
+      />
     ) : undefined;
 
   return (
@@ -238,6 +242,8 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
         role={employeeRole}
         accountControls={identity.mode === "entra" ? accountActions : null}
         demoControls={sidebarDemoControls}
+        demoPersona={identity.mode === "demo" ? (employeeRecord ?? null) : undefined}
+        demoPersonaSwitcher={demoPersonaSwitcher}
         onOpenWork={clearSelection}
         onOpenApprovals={openApprovals}
       />
@@ -287,7 +293,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                   proposalId={selectedProposalId}
                   identity={identity}
                   currentEmployee={currentEmployee}
-                  employees={options?.employees ?? []}
+                  employees={personas}
                   onStatusRefresh={async () => {
                     await queryClient.invalidateQueries({
                       queryKey: proposalReviewKeys.inbox(identity),
@@ -420,7 +426,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                         proposalId={run.result.proposal.id}
                         identity={identity}
                         currentEmployee={currentEmployee}
-                        employees={options?.employees ?? []}
+                        employees={personas}
                         onStatusRefresh={() =>
                           queryClient.invalidateQueries({
                             queryKey: investigationKeys.run(identity, run.run_id),

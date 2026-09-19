@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { CheckSquare2, ChevronRight, Inbox, Layers3, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DemoPersonaIndicator } from "@/components/demo-persona";
+import type { DemoPersona } from "@/lib/api";
 
 export function WorkspaceSidebar({
   activeView,
@@ -8,6 +10,8 @@ export function WorkspaceSidebar({
   role,
   accountControls,
   demoControls,
+  demoPersona,
+  demoPersonaSwitcher,
   onOpenWork,
   onOpenApprovals,
 }: {
@@ -16,6 +20,8 @@ export function WorkspaceSidebar({
   role: string | null;
   accountControls: { onSwitchAccount: () => void; onSignOut: () => void } | null;
   demoControls?: ReactNode;
+  demoPersona?: DemoPersona | null;
+  demoPersonaSwitcher?: ReactNode;
   onOpenWork: () => void;
   onOpenApprovals: () => void;
 }) {
@@ -65,13 +71,20 @@ export function WorkspaceSidebar({
               {initials(employee)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-white">{employee}</span>
-              <span className="block truncate text-xs capitalize text-slate-400">
-                {role?.replaceAll("_", " ") ?? "Employee"}
-              </span>
+              {demoPersona !== undefined ? (
+                <DemoPersonaIndicator persona={demoPersona} />
+              ) : (
+                <>
+                  <span className="block truncate text-sm font-medium text-white">{employee}</span>
+                  <span className="block truncate text-xs capitalize text-slate-400">
+                    {role?.replaceAll("_", " ") ?? "Employee"}
+                  </span>
+                </>
+              )}
             </span>
             <ChevronRight className="size-4 text-slate-500" aria-hidden="true" />
           </div>
+          {demoPersonaSwitcher}
           {accountControls && (
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Button

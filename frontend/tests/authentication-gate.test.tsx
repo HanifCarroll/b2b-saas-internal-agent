@@ -139,7 +139,7 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
   });
   t.mock.method(globalThis, "fetch", async (_path: string, options: RequestInit) => {
     assert.equal(new Headers(options.headers).get("Authorization"), "Bearer token");
-    assert.equal(new Headers(options.headers).has("X-Employee-Id"), false);
+    assert.equal(new Headers(options.headers).has("X-Demo-Persona-Id"), false);
     return Response.json({
       proposal: {
         id: "proposal",
@@ -188,8 +188,6 @@ test("signed-in workspace puts account controls in the application sidebar", asy
         name: "Alex Rivera",
         role: "implementation_engineer",
       });
-    if (path === "/api/demo-options") return Response.json({ employees: [], scenarios: [] });
-    if (path === "/api/demo") return Response.json({ scenario_id: "baseline" });
     if (path === "/api/tickets")
       return Response.json([
         {
@@ -223,4 +221,54 @@ test("signed-in workspace puts account controls in the application sidebar", asy
   assert.equal(pushedPath, "/requests/CHG-1042");
   fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
   assert.equal(pushedPath, "/approvals");
+});
+
+test("public demo shows fictional personas and prepares a selected case", async (t) => {
+  process.env.NEXT_PUBLIC_AUTH_MODE = "demo";
+  pushedPath = "";
+  t.after(() => {
+    cleanup();
+    process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
+  });
+  t.mock.method(window, "confirm", () => true);
+  t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit = {}) => {
+    if (path === "/api/demo/personas") {
+      return Response.json([
+        { id: "emp-alex", name: "Alex Rivera", role: "implementation_engineer" },
+        { id: "emp-priya", name: "Priya Shah", role: "technical_lead" },
+      ]);
+    }
+    if (path === "/api/demo/cases") {
+      return Response.json([
+        {
+          id: "pending-approval",
+          title: "Review a pending proposal",
+          description: "Review a valid proposal as an independent technical lead.",
+          recommended_persona_id: "emp-priya",
+        },
+      ]);
+    }
+    if (path === "/api/demo/cases/pending-approval/prepare") {
+      assert.equal(options.method, "POST");
+      return Response.json({
+        case_id: "pending-approval",
+        persona_id: "emp-priya",
+        path: "/approvals/proposal-1?run=run-1",
+      });
+    }
+    return Response.json([]);
+  });
+
+  render(
+    <WorkspaceProvider>
+      <WorkspaceRoute route={{ kind: "work" }} />
+    </WorkspaceProvider>,
+  );
+
+  const sidebar = await screen.findByRole("complementary");
+  await waitFor(() => assert.match(sidebar.textContent!, /Demo persona/));
+  assert.match(sidebar.textContent!, /Alex Rivera/);
+  fireEvent.click(screen.getByText("Try a demo case"));
+  fireEvent.click(await screen.findByRole("button", { name: /Review a pending proposal/ }));
+  await waitFor(() => assert.equal(pushedPath, "/approvals/proposal-1?run=run-1"));
 });
