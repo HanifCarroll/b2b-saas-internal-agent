@@ -19,6 +19,7 @@ const { render, screen, cleanup, fireEvent, waitFor } = await import("@testing-l
 let account: object | null = null;
 let loginCalls = 0;
 let logoutCalls = 0;
+let pushedPath = "";
 mock.module("@azure/msal-browser", {
   namedExports: {
     CacheLookupPolicy: { AccessTokenAndRefreshToken: 3 },
@@ -32,6 +33,16 @@ mock.module("@azure/msal-browser", {
       logoutRedirect: async () => {
         logoutCalls++;
       },
+    }),
+  },
+});
+mock.module("next/navigation", {
+  namedExports: {
+    useRouter: () => ({
+      push: (path: string) => {
+        pushedPath = path;
+      },
+      replace: () => {},
     }),
   },
 });
@@ -160,23 +171,46 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
   assert.equal(screen.queryByText("Review or execute as"), null);
 });
 
-const { default: Home } = await import("../app/page");
+const { WorkspaceProvider } = await import("../components/workspace-provider");
+const { WorkspaceRoute } = await import("../components/workspace-route");
 test("signed-in workspace puts account controls in the application sidebar", async (t) => {
   account = { tenantId: "tenant", homeAccountId: "alex" };
+  pushedPath = "";
   t.after(cleanup);
   t.mock.method(globalThis, "fetch", async (path: string) => {
     if (path === "/api/me")
       return Response.json({ employee_id: "emp-alex", role: "implementation_engineer" });
     if (path === "/api/demo-options") return Response.json({ employees: [], scenarios: [] });
     if (path === "/api/demo") return Response.json({ scenario_id: "baseline" });
+    if (path === "/api/tickets")
+      return Response.json([
+        {
+          id: "CHG-1042",
+          customer_id: "acme",
+          integration_id: "int-acme-prod",
+          requester_contact_id: "contact-jordan",
+          assigned_employee_id: "emp-alex",
+          requested_endpoint: "https://events.acme.example/deals",
+          created_at: "2026-09-22T13:30:00Z",
+          status: "open",
+          subject: "Update production CRM event delivery endpoint",
+          body: "Please move the production CRM sync.",
+        },
+      ]);
     return Response.json([]);
   });
-  render(<Home />);
+  render(
+    <WorkspaceProvider>
+      <WorkspaceRoute route={{ kind: "work" }} />
+    </WorkspaceProvider>,
+  );
   const sidebar = await screen.findByRole("complementary");
   await waitFor(() => assert.match(sidebar.textContent!, /emp-alex/));
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Switch" })));
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Sign out" })));
   assert.ok(screen.getByRole("heading", { name: "My work" }));
+  fireEvent.click(await screen.findByRole("button", { name: /CHG-1042/ }));
+  assert.equal(pushedPath, "/requests/CHG-1042");
   fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
-  assert.ok(screen.getByRole("heading", { name: "Approvals" }));
+  assert.equal(pushedPath, "/approvals");
 });
