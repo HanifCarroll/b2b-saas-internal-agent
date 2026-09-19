@@ -1,7 +1,13 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from switchboard import api
 from switchboard.api import RequestContext
+
+
+@pytest.fixture(autouse=True)
+def demo_auth_mode(monkeypatch):
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
 
 
 def client_for(storage, *, employee_id: str = "emp-alex") -> TestClient:
