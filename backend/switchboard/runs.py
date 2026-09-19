@@ -29,6 +29,16 @@ class InvestigationSummary(BaseModel):
     outcome: Literal["proposal_candidate", "blocked"]
 
 
+def find_proposal_run_id(*, runs_directory: Path, proposal_id: str) -> UUID | None:
+    """Find the completed application run that saved a proposal."""
+    for result_path in runs_directory.glob("*/result.json"):
+        result = EndpointChangeResult.model_validate_json(result_path.read_text())
+        if result.proposal and result.proposal.id == proposal_id:
+            return UUID(result_path.parent.name)
+
+    return None
+
+
 def load_run_manifest(*, runs_directory: Path, run_id: UUID) -> dict:
     """Resolve application-created run IDs, never client filesystem paths."""
     directory = runs_directory / str(run_id)

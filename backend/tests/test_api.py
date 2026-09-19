@@ -189,6 +189,41 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     )
 
 
+def test_approval_inbox_shows_only_independent_pending_reviews(investigation_api):
+    client = investigation_api
+    run = client.post(
+        "/api/investigations",
+        json={"ticket_id": "CHG-1042"},
+        headers={"X-Employee-Id": "emp-alex"},
+    ).json()
+    proposal_id = run["result"]["proposal"]["id"]
+
+    inbox = client.get("/api/approvals", headers={"X-Employee-Id": "emp-priya"})
+    assert inbox.status_code == 200
+    assert len(inbox.json()) == 1
+    item = inbox.json()[0]
+    assert item["run_id"] == run["run_id"]
+    assert item["proposal"]["id"] == proposal_id
+    assert item["proposal"]["ticket_id"] == "CHG-1042"
+    assert item["proposal"]["customer_id"] == "acme"
+    assert item["proposal"]["proposed_by_employee_id"] == "emp-alex"
+    assert (
+        client.get("/api/approvals", headers={"X-Employee-Id": "emp-alex"}).json() == []
+    )
+    assert (
+        client.get("/api/approvals", headers={"X-Employee-Id": "emp-ben"}).json() == []
+    )
+
+    client.post(
+        f"/api/runs/{run['run_id']}/proposals/{proposal_id}/approval",
+        headers={"X-Employee-Id": "emp-priya"},
+    )
+    assert (
+        client.get("/api/approvals", headers={"X-Employee-Id": "emp-priya"}).json()
+        == []
+    )
+
+
 def test_unavailable_tickets_do_not_call_model(investigation_api, monkeypatch):
     def unexpected_model():
         raise AssertionError("Must reject before model creation")

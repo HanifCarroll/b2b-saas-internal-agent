@@ -23,6 +23,48 @@ from .database import DATABASE_PATH, initialize_proposal_database
 from .employee_directory import CONFIG_ROLES, ROLES, EmployeeSession
 
 
+def list_proposals_awaiting_approval(
+    *,
+    session: EmployeeSession,
+    database_path: Path = DATABASE_PATH,
+) -> list[Proposal]:
+    """Return pending proposals this employee may independently approve."""
+    # 1. Reject an inactive or unknown employee even when the inbox is empty.
+    session.require_active_employee()
+    if not database_path.exists():
+        return []
+
+    # 2. Read proposals that have no approval or execution receipt.
+    uri = database_path.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT proposal.*
+            FROM proposals AS proposal
+            LEFT JOIN approvals AS approval
+              ON approval.proposal_id = proposal.id
+            LEFT JOIN executions AS execution
+              ON execution.proposal_id = proposal.id
+            WHERE approval.id IS NULL
+              AND execution.id IS NULL
+            ORDER BY proposal.created_at DESC
+            """
+        ).fetchall()
+
+    # 3. Apply the same independent-review rule used by the approval write.
+    proposals = []
+    for row in rows:
+        proposal = Proposal.model_validate_json(json.dumps(dict(row)))
+        try:
+            require_independent_proposal_reviewer(proposal=proposal, session=session)
+        except (PermissionError, ValueError):
+            continue
+        proposals.append(proposal)
+
+    return proposals
+
+
 def save_proposal(
     *,
     proposal: Proposal,
@@ -175,16 +217,7 @@ def approve_proposal(
     )
 
     # 2. Require an independent technical lead for a production proposal.
-    session.require_customer_access(
-        customer_id=proposal.customer_id,
-        allowed_roles={"technical_lead"},
-    )
-    if session.employee_id == proposal.proposed_by_employee_id:
-        raise PermissionError(
-            "The proposing employee cannot approve their own proposal"
-        )
-    if proposal.environment != "production":
-        raise ValueError("Sandbox proposals do not require independent approval")
+    require_independent_proposal_reviewer(proposal=proposal, session=session)
 
     # 3. Serialize retries so only one approval can be stored for this proposal.
     initialize_proposal_database(database_path)
@@ -214,6 +247,22 @@ def approve_proposal(
         )
 
     return approval
+
+
+def require_independent_proposal_reviewer(
+    *, proposal: Proposal, session: EmployeeSession
+) -> None:
+    """Require the reviewer used by both the inbox and approval write."""
+    session.require_customer_access(
+        customer_id=proposal.customer_id,
+        allowed_roles={"technical_lead"},
+    )
+    if session.employee_id == proposal.proposed_by_employee_id:
+        raise PermissionError(
+            "The proposing employee cannot approve their own proposal"
+        )
+    if proposal.environment != "production":
+        raise ValueError("Sandbox proposals do not require independent approval")
 
 
 def get_proposal_review(

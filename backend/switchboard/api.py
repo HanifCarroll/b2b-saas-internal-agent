@@ -23,6 +23,7 @@ from switchboard.integrations.change_management import (
     approve_proposal,
     execute_proposal,
     get_proposal_review,
+    list_proposals_awaiting_approval,
 )
 from switchboard.integrations.database import DATABASE_PATH, FIXTURES
 from switchboard.integrations.support_desk import get_ticket, list_tickets
@@ -39,6 +40,7 @@ from switchboard.policy_evaluation import PolicyReview, evaluate_policy
 from switchboard.runs import (
     InvestigationRun,
     InvestigationSummary,
+    find_proposal_run_id,
     get_investigation_run,
     list_investigation_runs,
     load_run_manifest,
@@ -153,6 +155,11 @@ class ProposalReview(BaseModel):
     current_status: WorkflowStatus
 
 
+class ApprovalInboxItem(BaseModel):
+    run_id: UUID
+    proposal: Proposal
+
+
 class InvestigationRequest(BaseModel):
     ticket_id: str
 
@@ -183,6 +190,33 @@ def review_context(*, run_id: UUID, employee_id: str) -> InvestigationContext:
 
     database_path = Path(manifest["database_path"])
     return InvestigationContext(database_path=database_path, employee_id=employee_id)
+
+
+@app.get("/api/approvals", response_model=list[ApprovalInboxItem])
+def list_pending_approvals(
+    employee_id: str = Depends(get_request_employee_id),
+) -> list[ApprovalInboxItem]:
+    """List completed proposals this employee may independently approve."""
+    context = InvestigationContext(database_path=DATABASE_PATH, employee_id=employee_id)
+    try:
+        with employee_session(context) as session:
+            proposals = list_proposals_awaiting_approval(
+                session=session,
+                database_path=DATABASE_PATH,
+            )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Employee unavailable") from None
+
+    items = []
+    for proposal in proposals:
+        run_id = find_proposal_run_id(
+            runs_directory=RUNS_DIRECTORY,
+            proposal_id=proposal.id,
+        )
+        if run_id is not None:
+            items.append(ApprovalInboxItem(run_id=run_id, proposal=proposal))
+
+    return items
 
 
 @app.get("/api/runs/{run_id}/proposals/{proposal_id}", response_model=ProposalReview)

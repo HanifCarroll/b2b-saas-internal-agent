@@ -127,7 +127,8 @@ def test_missing_claim_and_bad_signature_rejected(identity):
 
 
 @pytest.mark.parametrize(
-    "path", ["/api/demo", "/api/demo-options", "/api/investigations"]
+    "path",
+    ["/api/demo", "/api/demo-options", "/api/approvals", "/api/investigations"],
 )
 def test_every_read_requires_authentication(identity, path):
     client = TestClient(api.app)
