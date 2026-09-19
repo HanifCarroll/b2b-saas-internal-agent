@@ -16,6 +16,7 @@ const { render, screen, cleanup, fireEvent } = await import("@testing-library/re
 const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
+const { ApprovalInbox } = await import("../components/approval-inbox");
 
 const ticket = {
   id: "CHG-1042",
@@ -84,4 +85,40 @@ test("workflow keeps human review separate from execution", (t) => {
   const lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
   assert.match(lifecycle.textContent!, /ReviewIn progress/);
   assert.match(lifecycle.textContent!, /ExecuteLocked/);
+});
+
+test("approval inbox opens a proposal awaiting independent review", (t) => {
+  t.after(cleanup);
+  let selected = "";
+  render(
+    <ApprovalInbox
+      items={[
+        {
+          run_id: "run-1",
+          proposal: {
+            id: "proposal-1",
+            ticket_id: "CHG-1042",
+            customer_id: "acme",
+            integration_id: "int-acme-prod",
+            environment: "production",
+            current_endpoint: "https://old.example/deals",
+            proposed_endpoint: "https://new.example/deals",
+            expected_configuration_version: 7,
+            recovery_plan: "manual_intervention",
+            proposed_by_employee_id: "emp-alex",
+            created_at: "2026-09-22T13:30:00Z",
+          },
+        },
+      ]}
+      selectedProposalId={null}
+      busy={false}
+      onSelect={(item) => {
+        selected = item.proposal.id;
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /CHG-1042/ }));
+  assert.equal(selected, "proposal-1");
+  assert.ok(screen.getAllByText("Awaiting review").length > 0);
 });

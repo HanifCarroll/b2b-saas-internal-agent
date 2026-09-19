@@ -136,6 +136,7 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
         proposed_endpoint: "https://new.example",
         expected_configuration_version: 1,
         proposed_by_employee_id: "emp-alex",
+        created_at: "2026-09-22T13:30:00Z",
       },
       approval: null,
       execution: null,
@@ -176,4 +177,6 @@ test("signed-in workspace puts account controls in the application sidebar", asy
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Switch" })));
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Sign out" })));
   assert.ok(screen.getByRole("heading", { name: "My work" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
+  assert.ok(screen.getByRole("heading", { name: "Approvals" }));
 });

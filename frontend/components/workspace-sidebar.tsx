@@ -1,17 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  Activity,
-  CheckSquare2,
-  ChevronRight,
-  CircleHelp,
-  FileText,
-  Inbox,
-  Layers3,
-  LogOut,
-  Play,
-  Settings,
-  UserRound,
-} from "lucide-react";
+import { CheckSquare2, ChevronRight, Inbox, Layers3, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function WorkspaceSidebar({
@@ -21,20 +9,24 @@ export function WorkspaceSidebar({
   accountControls,
   demoControls,
   onOpenWork,
+  onOpenApprovals,
 }: {
-  activeView: "work" | "request";
+  activeView: "work" | "approvals";
   employee: string;
   role: string | null;
   accountControls: { onSwitchAccount: () => void; onSignOut: () => void } | null;
   demoControls?: ReactNode;
   onOpenWork: () => void;
+  onOpenApprovals: () => void;
 }) {
   const navigation = [
     { label: "My work", icon: Inbox, active: activeView === "work", onClick: onOpenWork },
-    { label: "Requests", icon: FileText, active: activeView === "request" },
-    { label: "Approvals", icon: CheckSquare2 },
-    { label: "Executions", icon: Play },
-    { label: "Audit log", icon: Activity },
+    {
+      label: "Approvals",
+      icon: CheckSquare2,
+      active: activeView === "approvals",
+      onClick: onOpenApprovals,
+    },
   ];
 
   return (
@@ -102,24 +94,6 @@ export function WorkspaceSidebar({
               </Button>
             </div>
           )}
-          <div className="mt-2 flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex-1 justify-start text-slate-400 hover:bg-white/10 hover:text-white"
-            >
-              <Settings className="size-4" />
-              Settings
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-slate-400 hover:bg-white/10 hover:text-white"
-              aria-label="Help"
-            >
-              <CircleHelp className="size-4" />
-            </Button>
-          </div>
         </div>
       </div>
     </aside>

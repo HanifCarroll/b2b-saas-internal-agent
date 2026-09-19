@@ -27,6 +27,7 @@ export type ProposalReviewResult = {
     expected_configuration_version: number;
     recovery_plan: "manual_intervention";
     proposed_by_employee_id: string;
+    created_at: string;
   };
   approval: Approval | null;
 };
@@ -217,8 +218,24 @@ export function investigationQuery(identity: RequestIdentity, runId: string | nu
 }
 
 export const proposalReviewKeys = {
+  inbox: (identity: RequestIdentity) => ["approval-inbox", ...identityKey(identity)] as const,
   proposal: (runId: string, proposalId: string) => ["proposal-review", runId, proposalId] as const,
 };
+
+export type ApprovalInboxItem = {
+  run_id: string;
+  proposal: ProposalReviewResult["proposal"];
+};
+
+export const approvalInboxQuery = (identity: RequestIdentity) => ({
+  queryKey: proposalReviewKeys.inbox(identity),
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    requestApi<ApprovalInboxItem[]>({
+      path: "/api/approvals",
+      identity,
+      options: { signal },
+    }),
+});
 
 export function proposalReviewQuery({
   identity,
@@ -259,7 +276,13 @@ export const demoStateQuery = (identity: RequestIdentity) => ({
 
 export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
   await client.cancelQueries();
-  for (const key of ["tickets", "investigations", "investigation", "proposal-review"]) {
+  for (const key of [
+    "tickets",
+    "investigations",
+    "investigation",
+    "approval-inbox",
+    "proposal-review",
+  ]) {
     client.removeQueries({ queryKey: [key] });
   }
 }

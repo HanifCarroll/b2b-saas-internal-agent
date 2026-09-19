@@ -21,8 +21,10 @@ import {
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ApprovalInbox } from "@/components/approval-inbox";
 import { ProposalReview } from "@/components/proposal-review";
 import {
+  approvalInboxQuery,
   requestApi,
   demoOptionsQuery,
   demoStateQuery,
@@ -37,6 +39,8 @@ import {
   identityKey,
   type RequestIdentity,
   type CurrentEmployee,
+  type ApprovalInboxItem,
+  proposalReviewKeys,
 } from "@/lib/api";
 import {
   AuthenticationGate,
@@ -127,6 +131,8 @@ function TicketWorkspace({
   const queryClient = useQueryClient();
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<"work" | "approvals">("work");
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalInboxItem | null>(null);
   const [ticketSearch, setTicketSearch] = useState("");
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
@@ -136,11 +142,16 @@ function TicketWorkspace({
   });
   const demo = useQuery({ ...demoStateQuery(identity), enabled: identity.mode === "demo" });
   const ticketsQueryResult = useQuery(ticketsQuery(identity));
+  const approvalsQueryResult = useQuery({
+    ...approvalInboxQuery(identity),
+    enabled: activeView === "approvals",
+  });
   const mutationsInProgress = useIsMutating();
   const historyQueryResult = useQuery(historyQuery(identity, selectedTicketId));
   const selectedRun = useQuery(investigationQuery(identity, selectedRunId));
   const options = optionsQuery.data ?? null;
   const tickets = ticketsQueryResult.data ?? [];
+  const approvals = approvalsQueryResult.data ?? [];
   const normalizedTicketSearch = ticketSearch.trim().toLowerCase();
   const visibleTickets = normalizedTicketSearch
     ? tickets.filter((ticket) =>
@@ -219,6 +230,8 @@ function TicketWorkspace({
   }
 
   function selectTicket(ticketId: string) {
+    setActiveView("work");
+    setSelectedApproval(null);
     investigation.reset();
     policyEvaluation.reset();
     setSelectedRunId(null);
@@ -226,8 +239,18 @@ function TicketWorkspace({
   }
 
   function clearSelection() {
+    setActiveView("work");
+    setSelectedApproval(null);
     setSelectedTicketId(null);
     setSelectedRunId(null);
+  }
+
+  function openApprovals() {
+    setActiveView("approvals");
+    setSelectedTicketId(null);
+    setSelectedRunId(null);
+    investigation.reset();
+    policyEvaluation.reset();
   }
 
   function openRun(id: string) {
@@ -262,6 +285,7 @@ function TicketWorkspace({
     policyEvaluation.error ??
     selectedRun.error ??
     ticketsQueryResult.error ??
+    approvalsQueryResult.error ??
     optionsQuery.error ??
     historyQueryResult.error
   )?.message;
@@ -287,15 +311,65 @@ function TicketWorkspace({
   return (
     <div className="min-h-screen bg-[#f7f8fa] lg:pl-60">
       <WorkspaceSidebar
-        activeView={selectedTicket ? "request" : "work"}
+        activeView={activeView}
         employee={employeeName}
         role={employeeRole}
         accountControls={identity.mode === "entra" ? accountActions : null}
         demoControls={sidebarDemoControls}
         onOpenWork={clearSelection}
+        onOpenApprovals={openApprovals}
       />
 
-      {!selectedTicket ? (
+      {activeView === "approvals" ? (
+        <main className="min-h-screen">
+          <div className="border-b bg-white px-5 py-7 sm:px-8">
+            <div className="mx-auto max-w-6xl">
+              <h1 className="text-3xl font-semibold tracking-tight">Approvals</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Production changes waiting for your independent review.
+              </p>
+            </div>
+          </div>
+          <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+            {error && <WorkspaceError message={error} />}
+            <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 px-5 py-4">
+                <div>
+                  <h2 className="font-semibold">Awaiting review</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Only proposals you are currently authorized to approve appear here.
+                  </p>
+                </div>
+                <Badge variant="secondary">{approvals.length} pending</Badge>
+              </div>
+              <ApprovalInbox
+                items={approvals}
+                selectedProposalId={selectedApproval?.proposal.id ?? null}
+                busy={approvalsQueryResult.isFetching}
+                onSelect={setSelectedApproval}
+              />
+            </section>
+
+            {selectedApproval && (
+              <section className="mt-8 rounded-xl border bg-white px-6 shadow-sm">
+                <ProposalReview
+                  key={selectedApproval.proposal.id}
+                  runId={selectedApproval.run_id}
+                  proposalId={selectedApproval.proposal.id}
+                  identity={identity}
+                  currentEmployee={currentEmployee}
+                  employees={options?.employees ?? []}
+                  onStatusRefresh={async () => {
+                    await queryClient.invalidateQueries({
+                      queryKey: proposalReviewKeys.inbox(identity),
+                    });
+                  }}
+                />
+              </section>
+            )}
+          </div>
+        </main>
+      ) : !selectedTicket ? (
         <main className="min-h-screen">
           <div className="border-b bg-white px-5 py-7 sm:px-8">
             <div className="mx-auto max-w-6xl">

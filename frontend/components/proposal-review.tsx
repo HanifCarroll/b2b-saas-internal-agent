@@ -68,6 +68,7 @@ export function ProposalReview({
     onSettled: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: proposalReviewKeys.proposal(runId, proposalId) }),
+        queryClient.invalidateQueries({ queryKey: proposalReviewKeys.inbox(reviewerIdentity) }),
         onStatusRefresh(),
       ]),
   });
