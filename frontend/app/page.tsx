@@ -26,6 +26,7 @@ import {
   investigationKeys,
   type InvestigationRun,
   type PolicyReview,
+  ticketsQuery,
   identityKey,
   type RequestIdentity,
   type CurrentEmployee,
@@ -35,9 +36,11 @@ import {
   type AuthenticatedSession,
   type AccountActions,
 } from "@/components/authentication-gate";
-import { InvestigationForm } from "@/components/investigation-form";
+import { DemoControls } from "@/components/demo-controls";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
+import { TicketDetail } from "@/components/ticket-detail";
+import { TicketList } from "@/components/ticket-list";
 
 export default function Home() {
   const [queryClient] = useState(
@@ -54,7 +57,7 @@ export default function Home() {
     <QueryClientProvider client={queryClient}>
       <AuthenticationGate>
         {(session, accountActions) => (
-          <WorkspaceSession
+          <TicketWorkspaceSession
             key={JSON.stringify(identityKey(session.identity))}
             session={session}
             accountActions={accountActions}
@@ -65,7 +68,7 @@ export default function Home() {
   );
 }
 
-function WorkspaceSession({
+function TicketWorkspaceSession({
   session,
   accountActions,
 }: {
@@ -89,7 +92,7 @@ function WorkspaceSession({
       : session.identity;
   return (
     <QueryClientProvider client={queryClient}>
-      <InvestigationWorkspace
+      <TicketWorkspace
         key={JSON.stringify(identityKey(identity))}
         identity={identity}
         currentEmployee={session.employee}
@@ -100,7 +103,7 @@ function WorkspaceSession({
   );
 }
 
-function InvestigationWorkspace({
+function TicketWorkspace({
   identity,
   currentEmployee,
   accountActions,
@@ -113,35 +116,43 @@ function InvestigationWorkspace({
 }) {
   const employee = identity.mode === "demo" ? identity.employeeId : currentEmployee!.employee_id;
   const queryClient = useQueryClient();
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
-  const optionsQuery = useQuery(demoOptionsQuery(identity));
-  const demo = useQuery(demoStateQuery(identity));
+  const optionsQuery = useQuery({
+    ...demoOptionsQuery(identity),
+    enabled: identity.mode === "demo",
+  });
+  const demo = useQuery({ ...demoStateQuery(identity), enabled: identity.mode === "demo" });
+  const ticketsQueryResult = useQuery(ticketsQuery(identity));
   const mutationsInProgress = useIsMutating();
-  const histories = useQuery(historyQuery(identity));
+  const historyQueryResult = useQuery(historyQuery(identity, selectedTicketId));
   const selectedRun = useQuery(investigationQuery(identity, selectedRunId));
   const options = optionsQuery.data ?? null;
-  const history = histories.data ?? [];
+  const tickets = ticketsQueryResult.data ?? [];
+  const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
+  const history = historyQueryResult.data ?? [];
   const run = selectedRun.isError ? null : (selectedRun.data ?? null);
 
   // 2. Mutations run only on explicit user actions and never retry paid calls.
   const investigation = useMutation({
-    mutationFn: (scenario: string) =>
+    mutationFn: (ticketId: string) =>
       requestApi<InvestigationRun>({
         path: "/api/investigations",
         identity,
         options: {
           method: "POST",
-          body: JSON.stringify({ scenario_id: scenario }),
+          body: JSON.stringify({ ticket_id: ticketId }),
         },
       }),
     onSuccess: (savedRun) => {
       queryClient.setQueryData(investigationKeys.run(identity, savedRun.run_id), savedRun);
+      setSelectedTicketId(savedRun.ticket_id);
       setSelectedRunId(savedRun.run_id);
     },
-    onSettled: () =>
-      queryClient.invalidateQueries({ queryKey: investigationKeys.history(identity) }),
+    onSettled: (_data, _error, ticketId) =>
+      queryClient.invalidateQueries({ queryKey: investigationKeys.history(identity, ticketId) }),
   });
   const policyEvaluation = useMutation({
     mutationFn: (runId: string) =>
@@ -171,6 +182,7 @@ function InvestigationWorkspace({
         },
       }),
     onMutate: async () => {
+      setSelectedTicketId(null);
       setSelectedRunId(null);
       investigation.reset();
       policyEvaluation.reset();
@@ -182,13 +194,18 @@ function InvestigationWorkspace({
     },
   });
 
-  function investigate() {
-    const scenario = demo.data?.scenario_id;
-    if (!scenario) return;
+  function startTicketInvestigation(ticketId: string) {
     reset.reset();
     policyEvaluation.reset();
     setSelectedRunId(null);
-    investigation.mutate(scenario);
+    investigation.mutate(ticketId);
+  }
+
+  function selectTicket(ticketId: string) {
+    investigation.reset();
+    policyEvaluation.reset();
+    setSelectedRunId(null);
+    setSelectedTicketId(ticketId);
   }
 
   function openRun(id: string) {
@@ -198,8 +215,7 @@ function InvestigationWorkspace({
   }
 
   function refreshHistory() {
-    void histories.refetch();
-    void demo.refetch();
+    void historyQueryResult.refetch();
   }
 
   function evaluatePolicy() {
@@ -223,8 +239,9 @@ function InvestigationWorkspace({
     investigation.error ??
     policyEvaluation.error ??
     selectedRun.error ??
+    ticketsQueryResult.error ??
     optionsQuery.error ??
-    histories.error
+    historyQueryResult.error
   )?.message;
   return (
     <div className="min-h-screen bg-muted/30">
@@ -265,23 +282,31 @@ function InvestigationWorkspace({
         </div>
         <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
           <aside className="flex flex-col gap-5">
-            <InvestigationForm
-              authMode={identity.mode}
-              options={options}
-              employee={employee}
-              busy={isPending || mutationsInProgress > 0 || demo.isFetching}
-              activeScenario={demo.isError ? null : (demo.data?.scenario_id ?? null)}
-              onReset={(scenario) => reset.mutate(scenario)}
-              onEmployeeChange={onEmployeeChange}
-              onInvestigate={investigate}
+            {identity.mode === "demo" && (
+              <DemoControls
+                options={options}
+                employee={employee}
+                busy={isPending || mutationsInProgress > 0 || demo.isFetching}
+                activeScenario={demo.isError ? null : (demo.data?.scenario_id ?? null)}
+                onReset={(scenario) => reset.mutate(scenario)}
+                onEmployeeChange={onEmployeeChange}
+              />
+            )}
+            <TicketList
+              tickets={tickets}
+              selectedTicketId={selectedTicketId}
+              busy={ticketsQueryResult.isFetching}
+              onSelect={selectTicket}
             />
-            <InvestigationHistory
-              history={history}
-              selectedRunId={selectedRunId}
-              busy={isPending || histories.isFetching}
-              onOpenRun={openRun}
-              onRefresh={refreshHistory}
-            />
+            {selectedTicketId && (
+              <InvestigationHistory
+                history={history}
+                selectedRunId={selectedRunId}
+                busy={isPending || historyQueryResult.isFetching}
+                onOpenRun={openRun}
+                onRefresh={refreshHistory}
+              />
+            )}
           </aside>
           <section className="flex min-w-0 flex-col gap-5" aria-live="polite" aria-busy={isPending}>
             {error && (
@@ -297,22 +322,22 @@ function InvestigationWorkspace({
                 <AlertDescription>Results appear when the operation completes.</AlertDescription>
               </Alert>
             )}
-            {!run && !isPending && (
+            {!selectedTicket && !isPending && (
               <Card>
                 <CardHeader>
-                  <CardTitle>
-                    {identity.mode === "demo"
-                      ? "Initialize the demo, then investigate"
-                      : "Investigate the active scenario"}
-                  </CardTitle>
+                  <CardTitle>Select a ticket</CardTitle>
                   <CardDescription>
-                    {identity.mode === "demo"
-                      ? "Reset to baseline for a valid proposal. Reset explicitly to try another starting state."
-                      : "If no scenario is active, prepare the synthetic data through the local CLI."}{" "}
-                    Starting an investigation never resets business records.
+                    Open an assigned customer request to inspect it and start an investigation.
                   </CardDescription>
                 </CardHeader>
               </Card>
+            )}
+            {selectedTicket && (
+              <TicketDetail
+                ticket={selectedTicket}
+                busy={investigation.isPending}
+                onInvestigate={startTicketInvestigation}
+              />
             )}
             {run && (
               <>
@@ -335,14 +360,14 @@ function InvestigationWorkspace({
                   busy={isPending}
                   onEvaluatePolicy={evaluatePolicy}
                 />
-                {run.result.proposal && options && (
+                {run.result.proposal && (
                   <ProposalReview
                     key={run.run_id}
                     runId={run.run_id}
                     proposalId={run.result.proposal.id}
                     identity={identity}
                     currentEmployee={currentEmployee}
-                    employees={options.employees}
+                    employees={options?.employees ?? []}
                     onStatusRefresh={() =>
                       queryClient.invalidateQueries({
                         queryKey: investigationKeys.run(identity, run.run_id),

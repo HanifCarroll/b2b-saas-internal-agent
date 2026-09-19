@@ -27,7 +27,7 @@ export function InvestigationFindings({
           </Badge>
         </div>
         <CardDescription>
-          {run.scenario_id.replaceAll("-", " ")} · Run {run.run_id.slice(0, 8)}
+          Ticket {run.ticket_id} · Run {run.run_id.slice(0, 8)}
           <span className="mt-1 block">
             Findings reflect what was known at investigation time. Current status is shown above.
           </span>

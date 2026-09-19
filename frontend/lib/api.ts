@@ -47,7 +47,24 @@ export type DemoOptions = {
   scenarios: { id: string }[];
   employees: { id: string; name: string; role: string }[];
 };
-export type InvestigationHistoryItem = { run_id: string; scenario_id: string; outcome: string };
+export type Ticket = {
+  id: string;
+  customer_id: string;
+  integration_id: string;
+  requester_contact_id: string;
+  assigned_employee_id: string;
+  requested_endpoint: string;
+  created_at: string;
+  status: string;
+  subject: string;
+  body: string;
+};
+export type InvestigationHistoryItem = {
+  run_id: string;
+  ticket_id: string;
+  scenario_id: string | null;
+  outcome: string;
+};
 export type PolicyReview = {
   issues: {
     claim: string;
@@ -60,7 +77,8 @@ export type PolicyReview = {
 export type InvestigationRun = {
   current_status: WorkflowStatus;
   run_id: string;
-  scenario_id: string;
+  ticket_id: string;
+  scenario_id: string | null;
   policy_review: PolicyReview | null;
   result: {
     investigation: {
@@ -141,10 +159,22 @@ export function identityKey(identity: RequestIdentity) {
 
 // Keep business caches separate for every mode and account.
 export const investigationKeys = {
-  history: (identity: RequestIdentity) => ["investigations", ...identityKey(identity)] as const,
+  tickets: (identity: RequestIdentity) => ["tickets", ...identityKey(identity)] as const,
+  history: (identity: RequestIdentity, ticketId: string | null) =>
+    ["investigations", ...identityKey(identity), ticketId] as const,
   run: (identity: RequestIdentity, runId: string | null) =>
     ["investigation", ...identityKey(identity), runId] as const,
 };
+
+export const ticketsQuery = (identity: RequestIdentity) => ({
+  queryKey: investigationKeys.tickets(identity),
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    requestApi<Ticket[]>({
+      path: "/api/tickets",
+      identity,
+      options: { signal },
+    }),
+});
 
 export const demoOptionsQuery = (identity: RequestIdentity) => ({
   queryKey: ["demo-options", ...identityKey(identity)],
@@ -156,15 +186,18 @@ export const demoOptionsQuery = (identity: RequestIdentity) => ({
     }),
 });
 
-export function historyQuery(identity: RequestIdentity) {
+export function historyQuery(identity: RequestIdentity, ticketId: string | null) {
   return {
-    queryKey: investigationKeys.history(identity),
-    queryFn: ({ signal }: { signal: AbortSignal }) =>
-      requestApi<InvestigationHistoryItem[]>({
-        path: "/api/investigations",
+    queryKey: investigationKeys.history(identity, ticketId),
+    enabled: ticketId !== null,
+    queryFn: ({ signal }: { signal: AbortSignal }) => {
+      if (!ticketId) throw new Error("Select a ticket first.");
+      return requestApi<InvestigationHistoryItem[]>({
+        path: `/api/investigations?ticket_id=${encodeURIComponent(ticketId)}`,
         identity,
         options: { signal },
-      }),
+      });
+    },
   };
 }
 
@@ -226,7 +259,7 @@ export const demoStateQuery = (identity: RequestIdentity) => ({
 
 export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
   await client.cancelQueries();
-  for (const key of ["investigations", "investigation", "proposal-review"]) {
+  for (const key of ["tickets", "investigations", "investigation", "proposal-review"]) {
     client.removeQueries({ queryKey: [key] });
   }
 }

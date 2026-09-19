@@ -107,26 +107,6 @@ test("demo mode opens the workspace without Microsoft or employee API calls", as
   assert.equal(screen.queryByRole("button", { name: "Sign out" }), null);
 });
 
-const { InvestigationForm } = await import("../components/investigation-form");
-test("Entra investigation hides identity switching and demo reset", (t) => {
-  t.after(cleanup);
-  render(
-    <InvestigationForm
-      authMode="entra"
-      employee="emp-alex"
-      options={{ scenarios: [], employees: [] }}
-      busy={false}
-      activeScenario="baseline"
-      onEmployeeChange={() => assert.fail()}
-      onReset={() => assert.fail()}
-      onInvestigate={() => {}}
-    />,
-  );
-  assert.equal(screen.queryByText("Investigate as"), null);
-  assert.equal(screen.queryByRole("button", { name: "Reset demo to scenario" }), null);
-  assert.ok(screen.getByRole("button", { name: "Start investigation" }));
-});
-
 test("sign-in screen gives a clear purpose and hides sign-out without an account", async (t) => {
   account = null;
   mount(t);

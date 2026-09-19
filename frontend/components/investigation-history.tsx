@@ -28,7 +28,7 @@ export function InvestigationHistory({
     <Card>
       <CardHeader>
         <CardTitle>Saved investigations</CardTitle>
-        <CardDescription>Completed runs for the selected investigator.</CardDescription>
+        <CardDescription>Completed runs for this ticket and employee.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <Field>
@@ -36,7 +36,7 @@ export function InvestigationHistory({
           <Select
             items={history.map((item) => ({
               value: item.run_id,
-              label: `${item.scenario_id.replaceAll("-", " ")} · ${item.outcome === "blocked" ? "Blocked" : "Proposal"} · ${item.run_id.slice(0, 8)}`,
+              label: `${item.outcome === "blocked" ? "Blocked" : "Proposal"} · ${item.run_id.slice(0, 8)}`,
             }))}
             disabled={busy}
             value={selectedRunId}
@@ -51,7 +51,6 @@ export function InvestigationHistory({
               <SelectGroup>
                 {history.map((item) => (
                   <SelectItem key={item.run_id} value={item.run_id}>
-                    {item.scenario_id.replaceAll("-", " ")} ·{" "}
                     {item.outcome === "blocked" ? "Blocked" : "Proposal"} ·{" "}
                     {item.run_id.slice(0, 8)}
                   </SelectItem>

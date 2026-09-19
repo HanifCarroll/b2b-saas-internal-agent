@@ -7,38 +7,61 @@ import {
   historyQuery,
   investigationQuery,
   investigationKeys,
+  ticketsQuery,
   proposalReviewQuery,
   proposalReviewKeys,
 } from "./api.ts";
 
-test("employee-scoped history is fetched and invalidated independently", async (t) => {
+test("ticket history is fetched and cached by employee and ticket", async (t) => {
   const calls = [];
-  t.mock.method(globalThis, "fetch", async (_url, options) => {
+  t.mock.method(globalThis, "fetch", async (url, options) => {
     const employee = new Headers(options.headers).get("X-Employee-Id");
-    calls.push(employee);
-    return Response.json([{ run_id: employee, scenario_id: "baseline", outcome: "blocked" }]);
+    calls.push([url, employee]);
+    return Response.json([{ run_id: employee, ticket_id: "CHG-1042", outcome: "blocked" }]);
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   t.after(() => client.clear());
 
-  const alex = await client.fetchQuery(historyQuery({ mode: "demo", employeeId: "emp-alex" }));
-  const priya = await client.fetchQuery(historyQuery({ mode: "demo", employeeId: "emp-priya" }));
+  const alex = await client.fetchQuery(
+    historyQuery({ mode: "demo", employeeId: "emp-alex" }, "CHG-1042"),
+  );
+  const priya = await client.fetchQuery(
+    historyQuery({ mode: "demo", employeeId: "emp-priya" }, "CHG-1042"),
+  );
   assert.notDeepEqual(alex, priya);
-  assert.deepEqual(calls, ["emp-alex", "emp-priya"]);
+  assert.deepEqual(calls, [
+    ["/api/investigations?ticket_id=CHG-1042", "emp-alex"],
+    ["/api/investigations?ticket_id=CHG-1042", "emp-priya"],
+  ]);
 
   await client.invalidateQueries({
-    queryKey: investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }),
+    queryKey: investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }, "CHG-1042"),
   });
   assert.equal(
-    client.getQueryState(investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }))
-      .isInvalidated,
+    client.getQueryState(
+      investigationKeys.history({ mode: "demo", employeeId: "emp-alex" }, "CHG-1042"),
+    ).isInvalidated,
     true,
   );
   assert.equal(
-    client.getQueryState(investigationKeys.history({ mode: "demo", employeeId: "emp-priya" }))
-      .isInvalidated,
+    client.getQueryState(
+      investigationKeys.history({ mode: "demo", employeeId: "emp-priya" }, "CHG-1042"),
+    ).isInvalidated,
     false,
   );
+});
+
+test("accessible tickets use the selected employee identity", async (t) => {
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    assert.equal(path, "/api/tickets");
+    assert.equal(new Headers(options.headers).get("X-Employee-Id"), "emp-alex");
+    return Response.json([{ id: "CHG-1042" }]);
+  });
+
+  const tickets = await ticketsQuery({ mode: "demo", employeeId: "emp-alex" }).queryFn({
+    signal: AbortSignal.timeout(1000),
+  });
+  assert.deepEqual(tickets, [{ id: "CHG-1042" }]);
 });
 
 test("canceling a run query aborts its network request", async (t) => {
@@ -119,9 +142,10 @@ test("reset clears saved-work caches across investigators and reviewers", async 
   const client = new QueryClient();
   try {
     for (const employee of ["emp-alex", "emp-priya"]) {
-      client.setQueryData(investigationKeys.history({ mode: "demo", employeeId: employee }), [
-        { run_id: "old-run" },
-      ]);
+      client.setQueryData(
+        investigationKeys.history({ mode: "demo", employeeId: employee }, "CHG-1042"),
+        [{ run_id: "old-run" }],
+      );
       client.setQueryData(
         investigationKeys.run({ mode: "demo", employeeId: employee }, "old-run"),
         { result: "old" },
@@ -246,12 +270,14 @@ test("Entra history is account-scoped and cannot reuse demo data", async (t) => 
   t.after(() => client.clear());
   const alex = { mode: "entra", accountId: "alex", getAccessToken: async () => "alex-token" };
   const priya = { mode: "entra", accountId: "priya", getAccessToken: async () => "priya-token" };
-  assert.deepEqual(await client.fetchQuery(historyQuery(alex)), { identity: "Bearer alex-token" });
-  assert.deepEqual(await client.fetchQuery(historyQuery(priya)), {
+  assert.deepEqual(await client.fetchQuery(historyQuery(alex, "CHG-1042")), {
+    identity: "Bearer alex-token",
+  });
+  assert.deepEqual(await client.fetchQuery(historyQuery(priya, "CHG-1042")), {
     identity: "Bearer priya-token",
   });
   assert.notDeepEqual(
-    historyQuery(alex).queryKey,
-    historyQuery({ mode: "demo", employeeId: "alex" }).queryKey,
+    historyQuery(alex, "CHG-1042").queryKey,
+    historyQuery({ mode: "demo", employeeId: "alex" }, "CHG-1042").queryKey,
   );
 });
