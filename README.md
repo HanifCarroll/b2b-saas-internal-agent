@@ -121,7 +121,7 @@ After deployment, verify the Worker URL, prepare two browser sessions and confir
 Configure these GitHub Actions repository secrets before pushing the workflow:
 
 - `CLOUDFLARE_ACCOUNT_ID`: the account ID from `cloudflare/wrangler.jsonc`.
-- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token created with the **Edit Cloudflare Workers** template.
+- `CLOUDFLARE_API_TOKEN`: the token value from a Cloudflare API token with account-level **D1 Edit**, **Containers Edit**, and **Workers Scripts Edit** permissions. Copy only the token value, not Cloudflare's example verification command.
 
 The existing `DEEPSEEK_API_KEY` remains a Worker secret in Cloudflare. It is not copied into GitHub.
 
