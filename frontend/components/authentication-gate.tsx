@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getAuthMode, restoreSignedInAccount, getAccessToken, signIn, signOut } from "../lib/auth";
 import { requestApi, type RequestIdentity, type CurrentEmployee } from "../lib/api";
@@ -29,9 +29,13 @@ export function AuthenticationGate({
   children: (session: AuthenticatedSession, accountActions: AccountActions) => ReactNode;
 }) {
   const authMode = getAuthMode();
-  const [sessionMode, setSessionMode] = useState<SessionMode>(() =>
-    getInitialSessionMode(authMode),
+  const storedSessionMode = useSyncExternalStore(
+    ignoreSessionStorageChanges,
+    getStoredSessionMode,
+    getServerSessionMode,
   );
+  const [selectedSessionMode, setSelectedSessionMode] = useState<SessionMode | null>(null);
+  const sessionMode = authMode === "hybrid" ? (selectedSessionMode ?? storedSessionMode) : authMode;
   const [leaving, setLeaving] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
 
@@ -85,13 +89,13 @@ export function AuthenticationGate({
 
   function storeSessionMode(mode: Exclude<SessionMode, "unselected">) {
     if (authMode === "hybrid") window.sessionStorage.setItem(SESSION_MODE_KEY, mode);
-    setSessionMode(mode);
+    setSelectedSessionMode(mode);
   }
 
   function clearSessionMode() {
     if (authMode === "hybrid") {
       window.sessionStorage.removeItem(SESSION_MODE_KEY);
-      setSessionMode("unselected");
+      setSelectedSessionMode("unselected");
     }
   }
 
@@ -190,9 +194,15 @@ export function AuthenticationGate({
   );
 }
 
-function getInitialSessionMode(authMode: ReturnType<typeof getAuthMode>): SessionMode {
-  if (authMode !== "hybrid") return authMode;
-  if (typeof window === "undefined") return "unselected";
+function getStoredSessionMode(): SessionMode {
   const stored = window.sessionStorage.getItem(SESSION_MODE_KEY);
   return stored === "demo" || stored === "entra" ? stored : "unselected";
+}
+
+function getServerSessionMode(): SessionMode {
+  return "unselected";
+}
+
+function ignoreSessionStorageChanges() {
+  return () => {};
 }
