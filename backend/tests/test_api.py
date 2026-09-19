@@ -24,11 +24,16 @@ def explicit_demo_mode(monkeypatch):
 
 @pytest.fixture
 def review_api(tmp_path, monkeypatch):
+    workspace_id = uuid4()
+    workspace = tmp_path / "workspaces" / str(workspace_id)
+    workspace.mkdir(parents=True)
     run_id = str(uuid4())
-    directory = tmp_path / run_id
-    directory.mkdir()
-    storage = tmp_path / "switchboard.db"
+    directory = workspace / "workflows" / run_id
+    directory.mkdir(parents=True)
+    storage = workspace / "switchboard.db"
     monkeypatch.setattr(api, "DATABASE_PATH", storage)
+    monkeypatch.setattr(api, "RUNS_DIRECTORY", workspace / "workflows")
+    monkeypatch.setattr(api, "DEMO_WORKSPACES_DIRECTORY", tmp_path / "workspaces")
     with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
         seed_database(connection=connection)
         session = EmployeeSession(db_connection=connection, employee_id="emp-alex")
@@ -40,13 +45,14 @@ def review_api(tmp_path, monkeypatch):
         proposal = saved_proposal.proposal
 
     (directory / "run.json").write_text(json.dumps({"database_path": str(storage)}))
-    monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path)
-    return TestClient(api.app), f"/api/runs/{run_id}/proposals/{proposal.id}", directory
+    client = TestClient(api.app)
+    client.cookies.set(api.DEMO_WORKSPACE_COOKIE, str(workspace_id))
+    return client, f"/api/runs/{run_id}/proposals/{proposal.id}", directory
 
 
 def test_review_approve_refresh_and_retry(review_api):
     client, url, _ = review_api
-    headers = {"X-Employee-Id": "emp-priya"}
+    headers = {"X-Demo-Persona-Id": "emp-priya"}
     response = client.get(url, headers=headers)
     assert response.status_code == 200
     assert response.json()["approval"] is None
@@ -58,10 +64,9 @@ def test_review_approve_refresh_and_retry(review_api):
     assert client.post(url + "/approval", headers=headers).json() == approval.json()
 
 
-@pytest.mark.parametrize("employee", ["emp-ben", "missing"])
-def test_inaccessible_and_missing_proposals_have_same_response(review_api, employee):
+def test_inaccessible_and_missing_proposals_have_same_response(review_api):
     client, url, _ = review_api
-    headers = {"X-Employee-Id": employee}
+    headers = {"X-Demo-Persona-Id": "emp-ben"}
     response = client.get(url, headers=headers)
     missing = client.get(url.rsplit("/", 1)[0] + "/missing", headers=headers)
     assert response.status_code == missing.status_code == 404
@@ -73,52 +78,60 @@ def test_self_approval_and_revoked_access_are_rejected(review_api):
     client, url, directory = review_api
     assert (
         client.post(
-            url + "/approval", headers={"X-Employee-Id": "emp-alex"}
+            url + "/approval", headers={"X-Demo-Persona-Id": "emp-alex"}
         ).status_code
         == 403
     )
     with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
         connection.execute("DELETE FROM assignments WHERE employee_id = 'emp-priya'")
 
-    assert client.get(url, headers={"X-Employee-Id": "emp-priya"}).status_code == 404
+    assert (
+        client.get(url, headers={"X-Demo-Persona-Id": "emp-priya"}).status_code == 404
+    )
     assert (
         client.post(
-            url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+            url + "/approval", headers={"X-Demo-Persona-Id": "emp-priya"}
         ).status_code
         == 403
     )
 
 
-def test_identity_header_is_required(review_api):
+def test_default_demo_persona_is_alex(review_api):
     client, url, _ = review_api
-    assert client.get(url).status_code == 422
-    assert client.post(url + "/approval").status_code == 422
+    assert client.get(url).status_code == 200
+    assert client.post(url + "/approval").status_code == 403
 
 
 @pytest.fixture
 def investigation_api(tmp_path, monkeypatch):
     from test_agent import ScriptedModel, structured_result
 
-    monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path / "runs")
-    monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "switchboard.db")
+    workspace_id = uuid4()
+    workspace = tmp_path / "workspaces" / str(workspace_id)
+    workspace.mkdir(parents=True)
+    monkeypatch.setattr(api, "RUNS_DIRECTORY", workspace / "workflows")
+    monkeypatch.setattr(api, "DATABASE_PATH", workspace / "switchboard.db")
+    monkeypatch.setattr(api, "DEMO_WORKSPACES_DIRECTORY", tmp_path / "workspaces")
     monkeypatch.setattr(api, "load_dotenv", lambda *args: None)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setattr(
         api, "create_model", lambda: ScriptedModel(messages=iter([structured_result()]))
     )
     client = TestClient(api.app)
-    assert (
-        client.post(
-            "/api/demo/reset", json={"scenario_id": "baseline", "confirm": True}
-        ).status_code
-        == 200
+    client.cookies.set(api.DEMO_WORKSPACE_COOKIE, str(workspace_id))
+    from switchboard.demo import reset_demo
+
+    reset_demo(
+        database_path=api.DATABASE_PATH,
+        runs_directory=api.RUNS_DIRECTORY,
+        scenario_id="baseline",
     )
     return client
 
 
 def test_ticket_list_and_detail_use_employee_access(investigation_api):
-    alex = {"X-Employee-Id": "emp-alex"}
-    ben = {"X-Employee-Id": "emp-ben"}
+    alex = {"X-Demo-Persona-Id": "emp-alex"}
+    ben = {"X-Demo-Persona-Id": "emp-ben"}
 
     tickets = investigation_api.get("/api/tickets", headers=alex)
     assert tickets.status_code == 200
@@ -143,7 +156,7 @@ def test_ticket_list_and_detail_use_employee_access(investigation_api):
 
 def test_investigation_history_and_approval_handoff(investigation_api):
     client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     response = client.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
@@ -163,14 +176,14 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     assert (
         client.get(
             "/api/investigations?ticket_id=CHG-1042",
-            headers={"X-Employee-Id": "emp-ben"},
+            headers={"X-Demo-Persona-Id": "emp-ben"},
         ).status_code
         == 404
     )
     assert (
         client.get(
             f"/api/investigations/{run['run_id']}",
-            headers={"X-Employee-Id": "emp-priya"},
+            headers={"X-Demo-Persona-Id": "emp-priya"},
         ).status_code
         == 404
     )
@@ -180,7 +193,7 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     )
     assert (
         client.post(
-            proposal_url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+            proposal_url + "/approval", headers={"X-Demo-Persona-Id": "emp-priya"}
         ).status_code
         == 200
     )
@@ -202,11 +215,11 @@ def test_approval_inbox_shows_only_independent_pending_reviews(investigation_api
     run = client.post(
         "/api/investigations",
         json={"ticket_id": "CHG-1042"},
-        headers={"X-Employee-Id": "emp-alex"},
+        headers={"X-Demo-Persona-Id": "emp-alex"},
     ).json()
     proposal_id = run["result"]["proposal"]["id"]
 
-    inbox = client.get("/api/approvals", headers={"X-Employee-Id": "emp-priya"})
+    inbox = client.get("/api/approvals", headers={"X-Demo-Persona-Id": "emp-priya"})
     assert inbox.status_code == 200
     assert len(inbox.json()) == 1
     item = inbox.json()[0]
@@ -216,18 +229,20 @@ def test_approval_inbox_shows_only_independent_pending_reviews(investigation_api
     assert item["proposal"]["customer_id"] == "acme"
     assert item["proposal"]["proposed_by_employee_id"] == "emp-alex"
     assert (
-        client.get("/api/approvals", headers={"X-Employee-Id": "emp-alex"}).json() == []
+        client.get("/api/approvals", headers={"X-Demo-Persona-Id": "emp-alex"}).json()
+        == []
     )
     assert (
-        client.get("/api/approvals", headers={"X-Employee-Id": "emp-ben"}).json() == []
+        client.get("/api/approvals", headers={"X-Demo-Persona-Id": "emp-ben"}).json()
+        == []
     )
 
     client.post(
         f"/api/runs/{run['run_id']}/proposals/{proposal_id}/approval",
-        headers={"X-Employee-Id": "emp-priya"},
+        headers={"X-Demo-Persona-Id": "emp-priya"},
     )
     assert (
-        client.get("/api/approvals", headers={"X-Employee-Id": "emp-priya"}).json()
+        client.get("/api/approvals", headers={"X-Demo-Persona-Id": "emp-priya"}).json()
         == []
     )
 
@@ -242,7 +257,7 @@ def test_unavailable_tickets_do_not_call_model(investigation_api, monkeypatch):
         client.post(
             "/api/investigations",
             json={"ticket_id": "missing"},
-            headers={"X-Employee-Id": "emp-alex"},
+            headers={"X-Demo-Persona-Id": "emp-alex"},
         ).status_code
         == 404
     )
@@ -250,7 +265,7 @@ def test_unavailable_tickets_do_not_call_model(investigation_api, monkeypatch):
         client.post(
             "/api/investigations",
             json={"ticket_id": "CHG-1042"},
-            headers={"X-Employee-Id": "emp-ben"},
+            headers={"X-Demo-Persona-Id": "emp-ben"},
         ).status_code
         == 404
     )
@@ -288,7 +303,7 @@ def test_blocked_investigation_is_saved_without_proposal(
     response = investigation_api.post(
         "/api/investigations",
         json={"ticket_id": "CHG-1042"},
-        headers={"X-Employee-Id": "emp-alex"},
+        headers={"X-Demo-Persona-Id": "emp-alex"},
     )
     assert response.status_code == 200
     assert response.json()["current_status"]["code"] == "blocked"
@@ -301,7 +316,7 @@ def test_policy_review_is_separate_and_persisted(investigation_api, monkeypatch)
     from switchboard.policy_evaluation import PolicyReview
 
     client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     run = client.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
@@ -324,7 +339,7 @@ def test_model_failure_returns_safe_error(investigation_api, monkeypatch):
     response = investigation_api.post(
         "/api/investigations",
         json={"ticket_id": "CHG-1042"},
-        headers={"X-Employee-Id": "emp-alex"},
+        headers={"X-Demo-Persona-Id": "emp-alex"},
     )
     assert response.status_code == 502
     assert "Private provider error" not in response.text
@@ -357,7 +372,7 @@ def test_blocked_result_cannot_switch_to_another_ticket(investigation_api, monke
             messages=iter([AIMessage(content=blocked.model_dump_json())])
         ),
     )
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     response = investigation_api.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
@@ -376,9 +391,9 @@ def test_environment_loads_once_at_startup(monkeypatch):
     with TestClient(api.app) as client:
         assert len(calls) == 1
         for _ in range(2):
-            response = client.get("/api/demo-options")
+            response = client.get("/api/demo/personas")
             assert response.status_code == 200
-            assert response.json()["employees"]
+            assert response.json()
         assert len(calls) == 1
 
 
@@ -386,7 +401,7 @@ def test_policy_review_rechecks_access_before_saving(investigation_api, monkeypa
     from switchboard.policy_evaluation import PolicyReview
 
     client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     run = client.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
@@ -411,7 +426,7 @@ def test_policy_review_rechecks_access_before_saving(investigation_api, monkeypa
 def test_missing_runs_have_safe_http_errors(investigation_api):
     client = investigation_api
     run_id = uuid4()
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     for path in (
         f"/api/investigations/{run_id}",
         f"/api/runs/{run_id}/proposals/missing",
@@ -441,7 +456,7 @@ def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch)
             )
         ),
     )
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     response = investigation_api.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
@@ -469,7 +484,7 @@ def test_current_status_tracks_approval_without_rewriting_investigation(
     investigation_api,
 ):
     client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     run = client.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
@@ -479,7 +494,7 @@ def test_current_status_tracks_approval_without_rewriting_investigation(
     url = f"/api/runs/{run['run_id']}/proposals/{run['result']['proposal']['id']}"
     assert (
         client.post(
-            url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+            url + "/approval", headers={"X-Demo-Persona-Id": "emp-priya"}
         ).status_code
         == 200
     )
@@ -506,7 +521,7 @@ def test_unavailable_approval_is_not_reported_as_awaiting_approval(
     from switchboard import workflow_status
 
     client = investigation_api
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     run = client.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
@@ -525,7 +540,9 @@ def test_sandbox_status_does_not_request_independent_approval(review_api):
     from switchboard.workflow_status import proposal_status
 
     client, url, _ = review_api
-    record = client.get(url, headers={"X-Employee-Id": "emp-alex"}).json()["proposal"]
+    record = client.get(url, headers={"X-Demo-Persona-Id": "emp-alex"}).json()[
+        "proposal"
+    ]
     record["environment"] = "sandbox"
     proposal = Proposal.model_validate_json(json.dumps(record))
     status = proposal_status(proposal=proposal, approval=None)
@@ -539,7 +556,7 @@ def test_later_investigation_observes_shared_configuration(
     from langchain_core.messages import AIMessage
     from test_agent import ScriptedModel, structured_result
 
-    headers = {"X-Employee-Id": "emp-alex"}
+    headers = {"X-Demo-Persona-Id": "emp-alex"}
     first = investigation_api.post(
         "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
@@ -615,7 +632,9 @@ def test_execution_uses_server_time_and_returns_retry_receipt(review_api, monkey
 
     # 1. Approve the saved proposal and set a trusted server clock inside the window.
     client, url, _ = review_api
-    approval = client.post(url + "/approval", headers={"X-Employee-Id": "emp-priya"})
+    approval = client.post(
+        url + "/approval", headers={"X-Demo-Persona-Id": "emp-priya"}
+    )
     assert approval.status_code == 200
     with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
         connection.execute("UPDATE approvals SET created_at = '2026-09-22T13:00:00Z'")
@@ -630,7 +649,7 @@ def test_execution_uses_server_time_and_returns_retry_receipt(review_api, monkey
     # 2. Client-supplied identity/time fields cannot replace server-bound values.
     response = client.post(
         url + "/execution",
-        headers={"X-Employee-Id": "emp-alex"},
+        headers={"X-Demo-Persona-Id": "emp-alex"},
         json={"executed_at": "2000-01-01T00:00:00Z", "employee_id": "emp-priya"},
     )
     assert response.status_code == 200
@@ -641,15 +660,15 @@ def test_execution_uses_server_time_and_returns_retry_receipt(review_api, monkey
     assert result["execution"]["approval_id"] == approval.json()["id"]
 
     # 3. A repeated HTTP request returns the receipt without another version increment.
-    retry = client.post(url + "/execution", headers={"X-Employee-Id": "emp-alex"})
+    retry = client.post(url + "/execution", headers={"X-Demo-Persona-Id": "emp-alex"})
     assert retry.status_code == 200
     assert retry.json() == result | {"was_created": False}
-    refreshed = client.get(url, headers={"X-Employee-Id": "emp-alex"})
+    refreshed = client.get(url, headers={"X-Demo-Persona-Id": "emp-alex"})
     assert refreshed.status_code == 200
     assert refreshed.json()["execution"] == result["execution"]
     assert refreshed.json()["current_status"]["code"] == "configuration_updated"
     assert "not yet verified" in refreshed.json()["current_status"]["title"]
-    assert client.get(url, headers={"X-Employee-Id": "emp-ben"}).status_code == 404
+    assert client.get(url, headers={"X-Demo-Persona-Id": "emp-ben"}).status_code == 404
 
     from switchboard.models import EndpointChangeResult, Proposal
     from switchboard.tools import InvestigationContext
@@ -681,7 +700,7 @@ def test_execution_uses_server_time_and_returns_retry_receipt(review_api, monkey
 @pytest.mark.parametrize(
     "case",
     [
-        "missing_identity",
+        "invalid_persona",
         "other_customer",
         "missing_proposal",
         "missing_approval",
@@ -697,7 +716,7 @@ def test_execution_api_rejects_without_writes(review_api, monkeypatch, case):
     if case in {"outside_window", "stale"}:
         assert (
             client.post(
-                url + "/approval", headers={"X-Employee-Id": "emp-priya"}
+                url + "/approval", headers={"X-Demo-Persona-Id": "emp-priya"}
             ).status_code
             == 200
         )
@@ -723,9 +742,11 @@ def test_execution_api_rejects_without_writes(review_api, monkeypatch, case):
             )
 
     monkeypatch.setattr(api, "datetime", ServerClock)
-    headers = {"X-Employee-Id": "emp-ben" if case == "other_customer" else "emp-alex"}
-    if case == "missing_identity":
-        headers = {}
+    headers = {
+        "X-Demo-Persona-Id": "emp-ben" if case == "other_customer" else "emp-alex"
+    }
+    if case == "invalid_persona":
+        headers = {"X-Demo-Persona-Id": "missing"}
     if case == "missing_proposal":
         url = url.rsplit("/", 1)[0] + "/missing"
     with closing(sqlite3.connect(api.DATABASE_PATH)) as connection:
@@ -734,8 +755,8 @@ def test_execution_api_rejects_without_writes(review_api, monkeypatch, case):
     # 2. Reject at the HTTP boundary and preserve every database record.
     response = client.post(url + "/execution", headers=headers)
     expected = (
-        422
-        if case == "missing_identity"
+        403
+        if case == "invalid_persona"
         else 403
         if case in {"other_customer", "missing_proposal"}
         else 409

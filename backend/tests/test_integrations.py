@@ -225,12 +225,11 @@ def test_sql_in_record_id_cannot_bypass_access_checks(database):
         get_integration(session=alex, integration_id="int-acme-prod' OR 1=1 --")
 
 
-def test_ben_can_read_globex_configuration(database):
+def test_support_specialist_cannot_read_configuration(database):
     ben = EmployeeSession(db_connection=database, employee_id="emp-ben")
 
-    integration = get_integration(session=ben, integration_id="int-globex-prod")
-
-    assert integration.customer_id == "globex"
+    with pytest.raises(PermissionError):
+        get_integration(session=ben, integration_id="int-globex-prod")
 
 
 def test_ben_cannot_read_acme_ticket(database):

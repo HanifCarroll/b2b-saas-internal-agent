@@ -75,15 +75,14 @@ def test_verified_identity_reaches_business_routes(identity, monkeypatch, tmp_pa
     assert (
         client.get(
             "/api/investigations?ticket_id=CHG-1042",
-            headers=headers | {"X-Employee-Id": "emp-priya"},
+            headers=headers | {"X-Demo-Persona-Id": "emp-priya"},
         ).status_code
         == 400
     )
     assert (
         client.post(
-            "/api/demo/reset",
+            "/api/demo/cases/valid-request/prepare",
             headers=headers,
-            json={"scenario_id": "baseline", "confirm": True},
         ).status_code
         == 403
     )
@@ -128,12 +127,19 @@ def test_missing_claim_and_bad_signature_rejected(identity):
 
 @pytest.mark.parametrize(
     "path",
-    ["/api/demo", "/api/demo-options", "/api/approvals", "/api/investigations"],
+    [
+        "/api/demo/personas",
+        "/api/demo/cases",
+        "/api/approvals",
+        "/api/investigations",
+    ],
 )
 def test_every_read_requires_authentication(identity, path):
     client = TestClient(api.app)
     assert client.get(path).status_code == 401
-    assert client.get(path, headers={"X-Employee-Id": "emp-alex"}).status_code == 400
+    assert (
+        client.get(path, headers={"X-Demo-Persona-Id": "emp-alex"}).status_code == 400
+    )
 
 
 def test_mode_fails_closed(monkeypatch):
@@ -240,7 +246,7 @@ def test_current_employee_rejects_unavailable_identity(
     if case == "missing_token":
         headers = {}
     elif case == "identity_override":
-        headers["X-Employee-Id"] = "emp-priya"
+        headers["X-Demo-Persona-Id"] = "emp-priya"
 
     response = client.get("/api/me", headers=headers)
 
@@ -279,7 +285,7 @@ def test_current_employee_supports_explicit_demo_identity(review_api, monkeypatc
     monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
     client, _, _ = review_api
 
-    response = client.get("/api/me", headers={"X-Employee-Id": "emp-priya"})
+    response = client.get("/api/me", headers={"X-Demo-Persona-Id": "emp-priya"})
 
     assert response.status_code == 200
     assert response.json() == {

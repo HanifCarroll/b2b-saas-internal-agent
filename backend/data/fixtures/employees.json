@@ -21,7 +21,7 @@
     "id": "emp-ben",
     "name": "Ben Okafor",
     "active": true,
-    "role": "implementation_engineer",
+    "role": "support_specialist",
     "customer_ids": [
       "globex"
     ]

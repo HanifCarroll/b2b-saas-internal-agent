@@ -111,18 +111,18 @@ def authenticate_access_token(access_token: str) -> str:
 def get_request_employee_id(request: Request) -> str:
     """Return the employee ID from verified Entra identity or explicit demo mode."""
     if get_auth_mode() == "demo":
-        employee_id = request.headers.get("X-Employee-Id")
+        employee_id = request.headers.get("X-Demo-Persona-Id")
         if not employee_id:
             raise HTTPException(
-                status_code=422, detail="X-Employee-Id required in demo mode"
+                status_code=422, detail="X-Demo-Persona-Id required in demo mode"
             )
         return employee_id
 
     if hasattr(request.state, "employee_id"):
         return request.state.employee_id
 
-    # Entra mode never accepts a caller-selected employee, even with a valid token.
-    if "X-Employee-Id" in request.headers:
+    # Entra mode never accepts a caller-selected persona, even with a valid token.
+    if "X-Demo-Persona-Id" in request.headers or "X-Employee-Id" in request.headers:
         raise HTTPException(status_code=400, detail="Simulated identity is disabled")
 
     scheme, _, access_token = request.headers.get("Authorization", "").partition(" ")
