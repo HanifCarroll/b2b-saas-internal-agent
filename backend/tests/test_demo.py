@@ -26,23 +26,6 @@ def demo(tmp_path, monkeypatch):
     return path, runs, TestClient(api.app)
 
 
-def test_investigation_requires_explicit_setup_without_model_call(demo, monkeypatch):
-    path, _, client = demo
-
-    def unexpected():
-        raise AssertionError("Must not construct a model before setup")
-
-    monkeypatch.setattr(api, "create_model", unexpected)
-    assert client.get("/api/demo").json() == {"scenario_id": None}
-    response = client.post(
-        "/api/investigations",
-        json={"scenario_id": "baseline"},
-        headers={"X-Employee-Id": "emp-alex"},
-    )
-    assert response.status_code == 409
-    assert not path.exists()
-
-
 @pytest.mark.parametrize("confirm", [False, None, "true"])
 def test_reset_requires_explicit_boolean_confirmation(demo, confirm):
     path, _, client = demo

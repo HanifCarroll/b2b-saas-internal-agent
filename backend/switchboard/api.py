@@ -25,13 +25,15 @@ from switchboard.integrations.change_management import (
     get_proposal_review,
 )
 from switchboard.integrations.database import DATABASE_PATH, FIXTURES
-from switchboard.investigations import investigate_scenario
+from switchboard.integrations.support_desk import get_ticket, list_tickets
+from switchboard.investigations import investigate_ticket
 from switchboard.models import (
     Approval,
     ExecuteProposalResult,
     Execution,
     Proposal,
     Role,
+    Ticket,
 )
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
 from switchboard.runs import (
@@ -152,7 +154,7 @@ class ProposalReview(BaseModel):
 
 
 class InvestigationRequest(BaseModel):
-    scenario_id: str
+    ticket_id: str
 
 
 class ScenarioOption(BaseModel):
@@ -285,33 +287,52 @@ def demo_options() -> DemoOptions:
     )
 
 
+def _ticket_context(*, employee_id: str) -> InvestigationContext:
+    return InvestigationContext(database_path=DATABASE_PATH, employee_id=employee_id)
+
+
+def _get_accessible_ticket(*, ticket_id: str, employee_id: str) -> Ticket:
+    try:
+        with employee_session(_ticket_context(employee_id=employee_id)) as session:
+            return get_ticket(session=session, ticket_id=ticket_id)
+    except PermissionError:
+        raise HTTPException(status_code=404, detail="Ticket unavailable") from None
+
+
+@app.get("/api/tickets", response_model=list[Ticket])
+def read_tickets(
+    employee_id: str = Depends(get_request_employee_id),
+) -> list[Ticket]:
+    try:
+        with employee_session(_ticket_context(employee_id=employee_id)) as session:
+            return list_tickets(session=session)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Employee unavailable") from None
+
+
+@app.get("/api/tickets/{ticket_id}", response_model=Ticket)
+def read_ticket(
+    ticket_id: str, employee_id: str = Depends(get_request_employee_id)
+) -> Ticket:
+    return _get_accessible_ticket(ticket_id=ticket_id, employee_id=employee_id)
+
+
 @app.post("/api/investigations", response_model=InvestigationRun)
 def start_investigation(
     request: InvestigationRequest, employee_id: str = Depends(get_request_employee_id)
 ) -> InvestigationRun:
-    # 1. Validate demo choices before spending any model tokens.
-    scenarios = load_scenarios()
-    if request.scenario_id not in scenarios:
-        raise HTTPException(status_code=422, detail="Unknown scenario")
-    employees = json.loads((FIXTURES / "employees.json").read_text())
-    if not any(e["id"] == employee_id and e["active"] for e in employees):
-        raise HTTPException(status_code=403, detail="Employee unavailable")
+    # 1. Reject unavailable tickets before creating a model client or spending tokens.
+    _get_accessible_ticket(ticket_id=request.ticket_id, employee_id=employee_id)
 
-    setup = read_demo_setup(DATABASE_PATH)
-    if setup is None or setup.scenario_id != request.scenario_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Reset the demo to the selected scenario before investigating",
-        )
-
-    # 2. Run the existing workflow, including deterministic validation and saving.
+    # 2. Run the workflow with server time and the authenticated employee identity.
     try:
-        run = investigate_scenario(
-            scenario_id=request.scenario_id,
+        run = investigate_ticket(
+            ticket_id=request.ticket_id,
+            employee_id=employee_id,
             model=create_model(),
             runs_directory=RUNS_DIRECTORY,
             database_path=DATABASE_PATH,
-            employee_id=employee_id,
+            now=datetime.now(timezone.utc),
         )
         run_id = run.workflow_id
         result = run.result
@@ -328,7 +349,7 @@ def start_investigation(
 
     return InvestigationRun(
         run_id=UUID(run_id),
-        scenario_id=request.scenario_id,
+        ticket_id=request.ticket_id,
         result=result,
         current_status=get_workflow_status(
             result=result,
@@ -342,10 +363,14 @@ def start_investigation(
 
 @app.get("/api/investigations", response_model=list[InvestigationSummary])
 def list_investigations(
+    ticket_id: str,
     employee_id: str = Depends(get_request_employee_id),
 ) -> list[InvestigationSummary]:
+    _get_accessible_ticket(ticket_id=ticket_id, employee_id=employee_id)
     return list_investigation_runs(
-        runs_directory=RUNS_DIRECTORY, employee_id=employee_id
+        runs_directory=RUNS_DIRECTORY,
+        employee_id=employee_id,
+        ticket_id=ticket_id,
     )
 
 

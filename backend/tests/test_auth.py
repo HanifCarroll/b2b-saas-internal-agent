@@ -57,18 +57,25 @@ def test_verified_identity_reaches_business_routes(identity, monkeypatch, tmp_pa
     monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "demo.db")
     seen = []
 
-    def history(*, runs_directory, employee_id):
+    def history(*, runs_directory, employee_id, ticket_id):
         seen.append(employee_id)
         return []
 
     monkeypatch.setattr(api, "list_investigation_runs", history)
+    monkeypatch.setattr(api, "_get_accessible_ticket", lambda **kwargs: None)
     client = TestClient(api.app)
     headers = {"Authorization": f"Bearer {token}"}
-    assert client.get("/api/investigations", headers=headers).status_code == 200
+    assert (
+        client.get(
+            "/api/investigations?ticket_id=CHG-1042", headers=headers
+        ).status_code
+        == 200
+    )
     assert seen == ["emp-alex"]
     assert (
         client.get(
-            "/api/investigations", headers=headers | {"X-Employee-Id": "emp-priya"}
+            "/api/investigations?ticket_id=CHG-1042",
+            headers=headers | {"X-Employee-Id": "emp-priya"},
         ).status_code
         == 400
     )

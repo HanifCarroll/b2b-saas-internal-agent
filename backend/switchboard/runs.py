@@ -15,7 +15,8 @@ from switchboard.workflow_status import WorkflowStatus, get_workflow_status
 
 class InvestigationRun(BaseModel):
     run_id: UUID
-    scenario_id: str
+    ticket_id: str
+    scenario_id: str | None = None
     result: EndpointChangeResult
     current_status: WorkflowStatus
     policy_review: PolicyReview | None = None
@@ -23,7 +24,8 @@ class InvestigationRun(BaseModel):
 
 class InvestigationSummary(BaseModel):
     run_id: UUID
-    scenario_id: str
+    ticket_id: str
+    scenario_id: str | None = None
     outcome: Literal["proposal_candidate", "blocked"]
 
 
@@ -81,7 +83,8 @@ def get_investigation_run(
     policy_path = directory / "policy-review.json"
     return InvestigationRun(
         run_id=run_id,
-        scenario_id=manifest["scenario_id"],
+        ticket_id=manifest["ticket_id"],
+        scenario_id=manifest.get("scenario_id"),
         result=result,
         current_status=get_workflow_status(
             result=result,
@@ -94,7 +97,7 @@ def get_investigation_run(
 
 
 def list_investigation_runs(
-    *, runs_directory: Path, employee_id: str
+    *, runs_directory: Path, employee_id: str, ticket_id: str
 ) -> list[InvestigationSummary]:
     # 1. Read only completed runs accessible to this employee.
     runs = []
@@ -112,10 +115,14 @@ def list_investigation_runs(
         except (FileNotFoundError, PermissionError):
             continue
 
+        if run.ticket_id != ticket_id:
+            continue
+
         # 2. Return a compact index; detailed evidence is loaded separately.
         runs.append(
             InvestigationSummary(
                 run_id=run.run_id,
+                ticket_id=run.ticket_id,
                 scenario_id=run.scenario_id,
                 outcome=run.result.investigation.outcome,
             )

@@ -32,7 +32,9 @@ def test_investigation_propagates_agent_failure(tmp_path):
         )
     )
     with pytest.raises(ValueError, match="Agent failed"):
-        investigate_request({"request": "Investigate CHG-1042"}, runtime)
+        investigate_request(
+            {"request": "Investigate CHG-1042", "ticket_id": "CHG-1042"}, runtime
+        )
 
 
 @pytest.fixture
@@ -77,7 +79,8 @@ def test_candidate_routes_to_proposal_and_persists_it(workflow_context):
     response = structured_result()
     context = workflow_context(response)
     result = endpoint_change_graph.invoke(
-        {"request": "Investigate CHG-1042"}, context=context
+        {"request": "Investigate CHG-1042", "ticket_id": "CHG-1042"},
+        context=context,
     )
 
     # 2. Verify the expected result and any safety guarantees.
@@ -119,7 +122,8 @@ def test_blocked_routes_to_end_without_saving(workflow_context):
         )
     )
     result = endpoint_change_graph.invoke(
-        {"request": "Investigate CHG-1042"}, context=context
+        {"request": "Investigate CHG-1042", "ticket_id": "CHG-1042"},
+        context=context,
     )
 
     # 2. Verify the expected result and any safety guarantees.
@@ -143,10 +147,26 @@ def test_unsupported_candidate_fails_business_validation_without_saving(
 
     with pytest.raises(ValueError, match="does not match the ticket request"):
         endpoint_change_graph.invoke(
-            {"request": "Investigate CHG-1042"}, context=context
+            {"request": "Investigate CHG-1042", "ticket_id": "CHG-1042"},
+            context=context,
         )
 
     # 2. Verify the expected result and any safety guarantees.
+    with closing(
+        sqlite3.connect(context.investigation_context.database_path)
+    ) as connection:
+        assert connection.execute("SELECT count(*) FROM proposals").fetchone()[0] == 0
+
+
+def test_investigation_cannot_switch_to_another_ticket(workflow_context):
+    context = workflow_context(structured_result(ticket_id="CHG-9999"))
+
+    with pytest.raises(ValueError, match="different ticket"):
+        endpoint_change_graph.invoke(
+            {"request": "Investigate CHG-1042", "ticket_id": "CHG-1042"},
+            context=context,
+        )
+
     with closing(
         sqlite3.connect(context.investigation_context.database_path)
     ) as connection:

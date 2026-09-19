@@ -116,11 +116,28 @@ def investigation_api(tmp_path, monkeypatch):
     return client
 
 
+def test_ticket_list_and_detail_use_employee_access(investigation_api):
+    alex = {"X-Employee-Id": "emp-alex"}
+    ben = {"X-Employee-Id": "emp-ben"}
+
+    tickets = investigation_api.get("/api/tickets", headers=alex)
+    assert tickets.status_code == 200
+    assert [ticket["id"] for ticket in tickets.json()] == ["CHG-1042"]
+    assert (
+        investigation_api.get("/api/tickets/CHG-1042", headers=alex).status_code == 200
+    )
+
+    unavailable = investigation_api.get("/api/tickets/CHG-1042", headers=ben)
+    missing = investigation_api.get("/api/tickets/missing", headers=alex)
+    assert unavailable.status_code == missing.status_code == 404
+    assert unavailable.json() == missing.json()
+
+
 def test_investigation_history_and_approval_handoff(investigation_api):
     client = investigation_api
     headers = {"X-Employee-Id": "emp-alex"}
     response = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
     assert response.status_code == 200
     run = response.json()
@@ -130,12 +147,17 @@ def test_investigation_history_and_approval_handoff(investigation_api):
         == run
     )
     assert (
-        client.get("/api/investigations", headers=headers).json()[0]["run_id"]
+        client.get("/api/investigations?ticket_id=CHG-1042", headers=headers).json()[0][
+            "run_id"
+        ]
         == run["run_id"]
     )
     assert (
-        client.get("/api/investigations", headers={"X-Employee-Id": "emp-ben"}).json()
-        == []
+        client.get(
+            "/api/investigations?ticket_id=CHG-1042",
+            headers={"X-Employee-Id": "emp-ben"},
+        ).status_code
+        == 404
     )
     assert (
         client.get(
@@ -167,7 +189,7 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     )
 
 
-def test_invalid_demo_choices_do_not_call_model(investigation_api, monkeypatch):
+def test_unavailable_tickets_do_not_call_model(investigation_api, monkeypatch):
     def unexpected_model():
         raise AssertionError("Must reject before model creation")
 
@@ -176,18 +198,18 @@ def test_invalid_demo_choices_do_not_call_model(investigation_api, monkeypatch):
     assert (
         client.post(
             "/api/investigations",
-            json={"scenario_id": "unknown"},
+            json={"ticket_id": "missing"},
             headers={"X-Employee-Id": "emp-alex"},
         ).status_code
-        == 422
+        == 404
     )
     assert (
         client.post(
             "/api/investigations",
-            json={"scenario_id": "baseline"},
-            headers={"X-Employee-Id": "unknown"},
+            json={"ticket_id": "CHG-1042"},
+            headers={"X-Employee-Id": "emp-ben"},
         ).status_code
-        == 403
+        == 404
     )
 
 
@@ -222,7 +244,7 @@ def test_blocked_investigation_is_saved_without_proposal(
     )
     response = investigation_api.post(
         "/api/investigations",
-        json={"scenario_id": "baseline"},
+        json={"ticket_id": "CHG-1042"},
         headers={"X-Employee-Id": "emp-alex"},
     )
     assert response.status_code == 200
@@ -238,7 +260,7 @@ def test_policy_review_is_separate_and_persisted(investigation_api, monkeypatch)
     client = investigation_api
     headers = {"X-Employee-Id": "emp-alex"}
     run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
     monkeypatch.setattr(
         api, "evaluate_policy", lambda **kwargs: PolicyReview(issues=[])
@@ -258,16 +280,14 @@ def test_model_failure_returns_safe_error(investigation_api, monkeypatch):
     monkeypatch.setattr(api, "create_model", fail)
     response = investigation_api.post(
         "/api/investigations",
-        json={"scenario_id": "baseline"},
+        json={"ticket_id": "CHG-1042"},
         headers={"X-Employee-Id": "emp-alex"},
     )
     assert response.status_code == 502
     assert "Private provider error" not in response.text
 
 
-def test_blocked_inaccessible_ticket_remains_in_own_history(
-    investigation_api, monkeypatch
-):
+def test_blocked_result_cannot_switch_to_another_ticket(investigation_api, monkeypatch):
     from langchain_core.messages import AIMessage
     from test_agent import ScriptedModel
 
@@ -295,17 +315,15 @@ def test_blocked_inaccessible_ticket_remains_in_own_history(
         ),
     )
     headers = {"X-Employee-Id": "emp-alex"}
-    run = investigation_api.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
-    ).json()
+    response = investigation_api.post(
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
+    )
+    assert response.status_code == 422
     assert (
         investigation_api.get(
-            f"/api/investigations/{run['run_id']}", headers=headers
-        ).status_code
-        == 200
-    )
-    assert (
-        len(investigation_api.get("/api/investigations", headers=headers).json()) == 1
+            "/api/investigations?ticket_id=CHG-1042", headers=headers
+        ).json()
+        == []
     )
 
 
@@ -327,7 +345,7 @@ def test_policy_review_rechecks_access_before_saving(investigation_api, monkeypa
     client = investigation_api
     headers = {"X-Employee-Id": "emp-alex"}
     run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
     directory = api.RUNS_DIRECTORY / run["run_id"]
 
@@ -382,7 +400,7 @@ def test_tool_calls_survive_save_reload_and_http(investigation_api, monkeypatch)
     )
     headers = {"X-Employee-Id": "emp-alex"}
     response = investigation_api.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
     assert response.status_code == 200
     run = response.json()
@@ -410,7 +428,7 @@ def test_current_status_tracks_approval_without_rewriting_investigation(
     client = investigation_api
     headers = {"X-Employee-Id": "emp-alex"}
     run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
     assert run["current_status"]["code"] == "awaiting_approval"
     path = api.RUNS_DIRECTORY / run["run_id"] / "result.json"
@@ -433,7 +451,7 @@ def test_current_status_tracks_approval_without_rewriting_investigation(
         == refreshed["current_status"]
     )
     reused = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
     assert reused["result"]["was_created"] is False
     assert reused["current_status"]["code"] == "approval_recorded"
@@ -447,7 +465,7 @@ def test_unavailable_approval_is_not_reported_as_awaiting_approval(
     client = investigation_api
     headers = {"X-Employee-Id": "emp-alex"}
     run = client.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
 
     def unavailable(**kwargs):
@@ -480,7 +498,7 @@ def test_later_investigation_observes_shared_configuration(
 
     headers = {"X-Employee-Id": "emp-alex"}
     first = investigation_api.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     ).json()
     history = api.RUNS_DIRECTORY / first["run_id"] / "result.json"
     original = history.read_bytes()
@@ -517,7 +535,7 @@ def test_later_investigation_observes_shared_configuration(
         ),
     )
     response = investigation_api.post(
-        "/api/investigations", json={"scenario_id": "baseline"}, headers=headers
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
     )
     assert response.status_code == 200
     second = response.json()

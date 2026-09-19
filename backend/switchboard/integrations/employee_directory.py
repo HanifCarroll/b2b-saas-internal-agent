@@ -101,3 +101,29 @@ class EmployeeSession:
             return json.loads(row[0])
         finally:
             self._db_connection.execute("RELEASE SAVEPOINT authorized_record_read")
+
+    def read_authorized_records(
+        self, *, table: str, allowed_roles: set[str]
+    ) -> list[dict]:
+        """Return every record the bound employee may read."""
+        # 1. Reject an inactive or unknown employee even when the table is empty.
+        self.require_active_employee()
+        record_ids = self._db_connection.execute(
+            f"SELECT id FROM {table} ORDER BY id"
+        ).fetchall()
+
+        # 2. Reuse the single-record access check for each candidate record.
+        records = []
+        for (record_id,) in record_ids:
+            try:
+                records.append(
+                    self.read_authorized_record(
+                        table=table,
+                        record_id=record_id,
+                        allowed_roles=allowed_roles,
+                    )
+                )
+            except PermissionError:
+                continue
+
+        return records

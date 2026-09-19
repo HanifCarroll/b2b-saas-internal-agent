@@ -17,7 +17,7 @@ from switchboard.integrations.customer_registry import get_customer
 from switchboard.integrations.database import FIXTURES, seed_database
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.policy_library import list_policies
-from switchboard.integrations.support_desk import get_ticket
+from switchboard.integrations.support_desk import get_ticket, list_tickets
 from switchboard.models import Customer, Integration, Ticket
 
 
@@ -145,6 +145,20 @@ def test_alex_can_read_acme_ticket(database):
 
     assert isinstance(ticket, Ticket)
     assert ticket.integration_id == "int-acme-prod"
+
+
+def test_alex_can_list_assigned_tickets(database):
+    alex = EmployeeSession(db_connection=database, employee_id="emp-alex")
+
+    tickets = list_tickets(session=alex)
+
+    assert [ticket.id for ticket in tickets] == ["CHG-1042"]
+
+
+def test_ben_cannot_list_acme_tickets(database):
+    ben = EmployeeSession(db_connection=database, employee_id="emp-ben")
+
+    assert list_tickets(session=ben) == []
 
 
 def test_alex_can_read_acme_customer(database):

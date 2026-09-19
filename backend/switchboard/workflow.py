@@ -28,6 +28,7 @@ class EndpointChangeContext:
 
 class EndpointChangeWorkflowState(TypedDict):
     request: str
+    ticket_id: str
     investigation: NotRequired[InvestigationResult]
     proposal: NotRequired[Proposal]
     was_created: NotRequired[bool]
@@ -44,8 +45,13 @@ def investigate_request(
         config={"recursion_limit": 12},
     )
 
-    # 2. Validate the answer and return the investigation with its messages.
+    # 2. Validate the answer and keep the selected ticket authoritative.
     investigation = InvestigationResult.model_validate_json(result["messages"][-1].text)
+    if (
+        investigation.ticket_id is not None
+        and investigation.ticket_id != state["ticket_id"]
+    ):
+        raise ValueError("Investigation returned a different ticket")
 
     return {"investigation": investigation, "messages": result["messages"]}
 
