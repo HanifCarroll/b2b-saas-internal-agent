@@ -114,6 +114,17 @@ The production configuration compiles the browser and runs the API in `demo` mod
 
 After deployment, verify the Worker URL, prepare two browser sessions and confirm they receive different workspace data, run a real investigation, and exercise an approved execution twice. The second execution must return the existing receipt rather than update configuration again.
 
+### Automatic production deployment
+
+`.github/workflows/deploy.yml` runs the full deterministic check suite on every push to `main`. If every check passes, it applies pending remote D1 migrations and deploys the Worker and Container. Production deployments are serialized so two pushes cannot update D1 or Cloudflare at the same time.
+
+Configure these GitHub Actions repository secrets before pushing the workflow:
+
+- `CLOUDFLARE_ACCOUNT_ID`: the account ID from `cloudflare/wrangler.jsonc`.
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token created with the **Edit Cloudflare Workers** template.
+
+The existing `DEEPSEEK_API_KEY` remains a Worker secret in Cloudflare. It is not copied into GitHub.
+
 ## Authentication
 
 The API supports `entra`, `demo`, and `hybrid` modes. `entra` validates tenant-specific RS256 access tokens, audience, `access_as_user` scope, authorized client, timestamps, and the mapped employee Object ID. `demo` uses an isolated fictional workspace. `hybrid` selects the mode per request based on the presence of a bearer token.
