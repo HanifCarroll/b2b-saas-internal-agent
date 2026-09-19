@@ -30,7 +30,7 @@ export function WorkflowProgress({
   ];
 
   return (
-    <ol className="grid grid-cols-5 border-y bg-white" aria-label="Change lifecycle">
+    <ol className="grid grid-cols-5 border-b bg-white" aria-label="Change lifecycle">
       {stages.map((stage, index) => (
         <li
           key={stage.label}
