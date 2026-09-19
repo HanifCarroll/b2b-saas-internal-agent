@@ -3,7 +3,7 @@
 import json
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 import jwt
@@ -18,11 +18,11 @@ class EntraSettings(BaseModel):
     employee_id_by_entra_object_id: dict[UUID, str] = Field(min_length=1)
 
 
-def get_auth_mode() -> Literal["demo", "entra"]:
+def get_auth_mode() -> Literal["demo", "entra", "hybrid"]:
     mode = os.getenv("SWITCHBOARD_AUTH_MODE", "entra")
-    if mode != "demo" and mode != "entra":
-        raise RuntimeError("SWITCHBOARD_AUTH_MODE must be demo or entra")
-    return mode
+    if mode not in {"demo", "entra", "hybrid"}:
+        raise RuntimeError("SWITCHBOARD_AUTH_MODE must be demo, entra, or hybrid")
+    return cast(Literal["demo", "entra", "hybrid"], mode)
 
 
 @lru_cache
@@ -108,20 +108,8 @@ def authenticate_access_token(access_token: str) -> str:
     return employee_id
 
 
-def get_request_employee_id(request: Request) -> str:
-    """Return the employee ID from verified Entra identity or explicit demo mode."""
-    if get_auth_mode() == "demo":
-        employee_id = request.headers.get("X-Demo-Persona-Id")
-        if not employee_id:
-            raise HTTPException(
-                status_code=422, detail="X-Demo-Persona-Id required in demo mode"
-            )
-        return employee_id
-
-    if hasattr(request.state, "employee_id"):
-        return request.state.employee_id
-
-    # Entra mode never accepts a caller-selected persona, even with a valid token.
+def get_entra_employee_id(request: Request) -> str:
+    """Return the employee ID from a verified Entra access token."""
     if "X-Demo-Persona-Id" in request.headers:
         raise HTTPException(status_code=400, detail="Simulated identity is disabled")
 
@@ -134,9 +122,3 @@ def get_request_employee_id(request: Request) -> str:
         )
 
     return authenticate_access_token(access_token)
-
-
-def require_api_authentication(request: Request) -> None:
-    """Protect every API route in Entra mode, including demo metadata."""
-    if get_auth_mode() == "entra":
-        request.state.employee_id = get_request_employee_id(request)

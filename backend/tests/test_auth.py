@@ -89,6 +89,48 @@ def test_verified_identity_reaches_business_routes(identity, monkeypatch, tmp_pa
     assert seen == ["emp-alex"]
 
 
+def test_hybrid_mode_routes_each_request_to_exactly_one_identity(
+    identity, monkeypatch, tmp_path
+):
+    import sqlite3
+    from contextlib import closing
+
+    from switchboard.integrations.database import seed_database
+
+    signing_key, claims = identity
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "hybrid")
+    authenticated_database = tmp_path / "authenticated.db"
+    with closing(sqlite3.connect(authenticated_database)) as connection:
+        seed_database(connection=connection)
+    monkeypatch.setattr(api, "DATABASE_PATH", authenticated_database)
+    monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path / "authenticated-runs")
+    monkeypatch.setattr(api, "DEMO_WORKSPACES_DIRECTORY", tmp_path / "workspaces")
+    client = TestClient(api.app)
+    token = jwt.encode(claims, signing_key, algorithm="RS256")
+
+    demo = client.get("/api/me", headers={"X-Demo-Persona-Id": "emp-priya"})
+    authenticated = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert demo.json()["employee_id"] == "emp-priya"
+    assert authenticated.json()["employee_id"] == "emp-alex"
+    assert (
+        client.get(
+            "/api/me",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Demo-Persona-Id": "emp-priya",
+            },
+        ).status_code
+        == 400
+    )
+    assert (
+        client.get(
+            "/api/demo/cases", headers={"Authorization": f"Bearer {token}"}
+        ).status_code
+        == 403
+    )
+
+
 @pytest.mark.parametrize(
     "claim,value",
     [
@@ -145,6 +187,8 @@ def test_every_read_requires_authentication(identity, path):
 def test_mode_fails_closed(monkeypatch):
     monkeypatch.delenv("SWITCHBOARD_AUTH_MODE", raising=False)
     assert auth.get_auth_mode() == "entra"
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "hybrid")
+    assert auth.get_auth_mode() == "hybrid"
     monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "typo")
     with pytest.raises(RuntimeError):
         auth.get_auth_mode()
@@ -181,8 +225,9 @@ def test_entra_identity_still_obeys_business_authorization(identity, review_api)
     assert client.post(url + "/execution", headers=headers).status_code == 403
 
 
-def test_missing_entra_configuration_prevents_startup(monkeypatch):
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "entra")
+@pytest.mark.parametrize("auth_mode", ["entra", "hybrid"])
+def test_missing_entra_configuration_prevents_startup(monkeypatch, auth_mode):
+    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", auth_mode)
     monkeypatch.delenv("ENTRA_TENANT_ID", raising=False)
     monkeypatch.setattr(api, "load_dotenv", lambda *args: None)
     auth.get_entra_settings.cache_clear()

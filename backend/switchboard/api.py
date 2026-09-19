@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from dotenv import load_dotenv
@@ -15,8 +16,8 @@ from pydantic import BaseModel
 from switchboard.agent import create_model
 from switchboard.auth import (
     get_auth_mode,
+    get_entra_employee_id,
     get_entra_settings,
-    get_request_employee_id,
 )
 from switchboard.demo import DemoBusyError, demo_operation
 from switchboard.demo_cases import (
@@ -76,13 +77,14 @@ DEMO_WORKSPACE_COOKIE = "switchboard-demo-workspace"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    if get_auth_mode() == "entra":
+    if get_auth_mode() in {"entra", "hybrid"}:
         get_entra_settings()
     yield
 
 
 @dataclass(frozen=True)
 class RequestContext:
+    identity_mode: Literal["demo", "entra"]
     employee_id: str
     database_path: Path
     runs_directory: Path
@@ -90,12 +92,19 @@ class RequestContext:
 
 def get_request_context(request: Request, response: Response) -> RequestContext:
     """Resolve trusted identity and storage once for every business request."""
-    if get_auth_mode() == "entra":
+    auth_mode = get_auth_mode()
+    has_authorization = "Authorization" in request.headers
+
+    if auth_mode == "entra" or (auth_mode == "hybrid" and has_authorization):
         return RequestContext(
-            employee_id=get_request_employee_id(request),
+            identity_mode="entra",
+            employee_id=get_entra_employee_id(request),
             database_path=DATABASE_PATH,
             runs_directory=RUNS_DIRECTORY,
         )
+
+    if has_authorization:
+        raise HTTPException(status_code=400, detail="Microsoft sign-in is disabled")
 
     try:
         workspace_id = UUID(request.cookies[DEMO_WORKSPACE_COOKIE])
@@ -127,10 +136,19 @@ def get_request_context(request: Request, response: Response) -> RequestContext:
         ) from None
 
     return RequestContext(
+        identity_mode="demo",
         employee_id=employee_id,
         database_path=opened.workspace.database_path,
         runs_directory=opened.workspace.runs_directory,
     )
+
+
+def require_demo_context(
+    context: RequestContext = Depends(get_request_context),
+) -> RequestContext:
+    if context.identity_mode != "demo":
+        raise HTTPException(status_code=403, detail="Demo features are disabled")
+    return context
 
 
 def protect_demo_operation(
@@ -187,7 +205,7 @@ class DemoPersona(BaseModel):
 
 @app.get("/api/demo/personas", response_model=list[DemoPersona])
 def read_demo_personas(
-    context: RequestContext = Depends(get_request_context),
+    context: RequestContext = Depends(require_demo_context),
 ) -> list[DemoPersona]:
     with sqlite3.connect(context.database_path) as connection:
         rows = connection.execute(
@@ -197,17 +215,17 @@ def read_demo_personas(
 
 
 @app.get("/api/demo/cases", response_model=list[DemoCaseSummary])
-def read_demo_cases() -> list[DemoCaseSummary]:
+def read_demo_cases(
+    _context: RequestContext = Depends(require_demo_context),
+) -> list[DemoCaseSummary]:
     return list_demo_cases()
 
 
 @app.post("/api/demo/cases/{case_id}/prepare", response_model=PreparedDemoCase)
 def prepare_case(
     case_id: str,
-    context: RequestContext = Depends(get_request_context),
+    context: RequestContext = Depends(require_demo_context),
 ) -> PreparedDemoCase:
-    if get_auth_mode() != "demo":
-        raise HTTPException(status_code=403, detail="Demo case preparation is disabled")
     try:
         return prepare_demo_case(
             case_id=case_id,
