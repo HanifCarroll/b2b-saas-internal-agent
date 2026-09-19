@@ -189,6 +189,29 @@ def test_investigation_history_and_approval_handoff(investigation_api):
     )
 
 
+def test_investigation_history_skips_legacy_runs(investigation_api):
+    client = investigation_api
+    headers = {"X-Employee-Id": "emp-alex"}
+    run = client.post(
+        "/api/investigations", json={"ticket_id": "CHG-1042"}, headers=headers
+    ).json()
+
+    valid_directory = api.RUNS_DIRECTORY / run["run_id"]
+    legacy_directory = api.RUNS_DIRECTORY / str(uuid4())
+    legacy_directory.mkdir()
+    (legacy_directory / "result.json").write_text(
+        (valid_directory / "result.json").read_text()
+    )
+    legacy_manifest = json.loads((valid_directory / "run.json").read_text())
+    del legacy_manifest["ticket_id"]
+    (legacy_directory / "run.json").write_text(json.dumps(legacy_manifest))
+
+    response = client.get("/api/investigations?ticket_id=CHG-1042", headers=headers)
+
+    assert response.status_code == 200
+    assert [item["run_id"] for item in response.json()] == [run["run_id"]]
+
+
 def test_approval_inbox_shows_only_independent_pending_reviews(investigation_api):
     client = investigation_api
     run = client.post(

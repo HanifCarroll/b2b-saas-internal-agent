@@ -79,6 +79,10 @@ def get_investigation_run(
     # 1. Locate the manifest and completed result.
     directory = runs_directory / str(run_id)
     manifest = load_run_manifest(runs_directory=runs_directory, run_id=run_id)
+    ticket_id = manifest.get("ticket_id")
+    if not isinstance(ticket_id, str):
+        raise FileNotFoundError("Investigation unavailable")
+
     context = InvestigationContext(
         database_path=Path(manifest["database_path"]), employee_id=employee_id
     )
@@ -93,7 +97,7 @@ def get_investigation_run(
     policy_path = directory / "policy-review.json"
     return InvestigationRun(
         run_id=run_id,
-        ticket_id=manifest["ticket_id"],
+        ticket_id=ticket_id,
         scenario_id=manifest.get("scenario_id"),
         result=result,
         current_status=get_workflow_status(
