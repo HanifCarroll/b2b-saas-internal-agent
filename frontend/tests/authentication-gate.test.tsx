@@ -96,7 +96,8 @@ test("recognized employee opens the workspace; sign-out immediately hides it", a
   mount(t);
   await screen.findByText("Workspace emp-alex");
   fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-  await waitFor(() => assert.equal(screen.queryByText(/Workspace/), null));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(screen.queryByText(/Workspace/), null);
   assert.equal(logoutCalls, 1);
 });
 
