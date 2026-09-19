@@ -28,7 +28,7 @@ This makes paid calls to DeepSeek using `deepseek-flash`, the API identifier cur
 
 LangChain's `create_agent` supplies the LangGraph model/tool loop. Application code supplies employee identity through `InvestigationContext`; identity and database access are excluded from model-facing tool arguments. Each tool opens its own read-only SQLite connection and uses the existing access checks. Expected permission failures become error tool results that the agent can explain; missing and inaccessible records remain indistinguishable. Unexpected failures still stop the run. Each investigation is limited to 12 graph steps, with a 60-second timeout and at most one retry per model request.
 
-The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Backend Entra token validation is implemented; browser sign-in is implemented but live Microsoft authentication remains unverified. Delivery verification and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
+The local FastAPI service supports investigation, retrieval, approvals, and explicit configuration execution. Backend Entra token validation and browser sign-in have been verified locally with the configured tenant. Delivery verification and Foundry resources are not implemented. LangSmith tracing can be enabled through the local environment. Runs are named by scenario so they can be found in the configured LangSmith project; tracing is optional.
 
 ## Checks
 
@@ -151,20 +151,17 @@ uv run pytest tests/test_proposal_review_cli.py tests/test_review_scenarios.py -
 
 ## Local investigation and approval UI
 
-The Next.js/shadcn UI uses FastAPI and the same investigation graph and business functions as the CLI. Start both services from the repository root in separate terminals:
+The Next.js/shadcn UI uses FastAPI and the same investigation graph and business functions as the CLI. After installing the backend and frontend dependencies, start both services from the repository root:
 
 ```sh
-cd backend
-SWITCHBOARD_AUTH_MODE=demo uv run uvicorn switchboard.api:app --host 127.0.0.1 --port 8000
+(cd backend && uv sync)
+(cd frontend && npm ci)
+./scripts/dev
 ```
 
-```sh
-cd frontend
-npm ci
-npm run dev -- --hostname 127.0.0.1
-```
+Open http://localhost:3000. The local hybrid screen lets you enter the demo or sign in with the configured Microsoft account. The choice lasts for the current browser tab. Switching to the demo does not sign out the Microsoft account, and identity changes clear the browser's business-data cache.
 
-Open http://localhost:3000. Demo mode requires no Microsoft account. Each visitor receives an isolated workspace that expires after 24 hours. Use **Try a demo case** to prepare one of four deterministic starting points: a valid request, an unsafe destination, a proposal awaiting approval, or an approved proposal ready to execute. Preparing a case replaces only that visitor's demo history and switches to the recommended fictional persona. You can also change personas explicitly to demonstrate role and customer-access boundaries.
+The demo requires no Microsoft account. Each visitor receives an isolated workspace that expires after 24 hours. Use **Try a demo case** to prepare one of four deterministic starting points: a valid request, an unsafe destination, a proposal awaiting approval, or an approved proposal ready to execute. Preparing a case replaces only that visitor's demo history and switches to the recommended fictional persona. You can also change personas explicitly to demonstrate role and customer-access boundaries.
 
 Open an accessible ticket and start the investigation from its detail page. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change to an independent assigned technical lead to approve explicitly. The current stored approval appears separately from the investigation report.
 
@@ -179,14 +176,14 @@ Checks: `uv run pytest -v` in `backend/`, and `npm run lint && npm run format:ch
 
 ## Entra authentication
 
-The API defaults to `entra` mode and requires configuration at startup. `SWITCHBOARD_AUTH_MODE=demo` enables anonymous isolated workspaces and fictional personas for the public portfolio demo. Never expose that mode against real business data. CLI commands remain trusted local operations, not Entra-authenticated HTTP requests.
+The API supports three explicit modes. `entra` requires Microsoft authentication, `demo` provides anonymous isolated fictional workspaces, and `hybrid` chooses per request based on the presence of a bearer token. The browser supports the same values through `NEXT_PUBLIC_AUTH_MODE`. Use `hybrid` for local development and `demo` for the hosted portfolio. Never expose demo mode against real business data. CLI commands remain trusted local operations, not Entra-authenticated HTTP requests.
 
 For Entra mode, set the variables shown in `backend/entra.example.env` in the server environment or merge them into your existing ignored `backend/.env`. Do not overwrite existing model credentials. The example maps Hanif's tenant user Object ID to `emp-alex`; these IDs are public identifiers, not credentials. The mapping is scoped to the configured tenant. Restart the server after changing configuration.
 
 In **Switchboard API → Manifest**, set `api.requestedAccessTokenVersion` to `2` and save. The API accepts only RS256-signed v2 access tokens issued by the configured tenant, for the API client ID, with `access_as_user` scope and the configured Web client as `azp`. It verifies expiry and not-before timestamps, then maps `oid` to an employee. Existing database role and customer-access checks still apply. Unmapped identities fail closed. Signing keys are fetched from Microsoft's fixed tenant endpoint and cached by PyJWT; a key-service connection failure returns 503 without allowing access.
 
-All API routes require a token in Entra mode. Supplying `X-Demo-Persona-Id` is rejected even alongside a valid token. HTTP case preparation is disabled; prepare synthetic data locally with the existing CLI reset command. The browser defaults to Entra mode; set `NEXT_PUBLIC_AUTH_MODE=demo` in `frontend/.env.local` to use the anonymous demo. Restart Next.js after changing browser environment variables.
+All API routes require a token in Entra mode. Hybrid mode sends bearer-token requests to the shared authenticated database and token-free requests to an isolated demo workspace. Supplying both a bearer token and `X-Demo-Persona-Id` is rejected, and authenticated users cannot call demo setup endpoints. The browser defaults to Entra mode. Restart both services after changing authentication environment variables.
 
-Tests use locally signed RSA tokens, without contacting Microsoft or an LLM. Live Microsoft sign-in remains unverified.
+Tests use locally signed RSA tokens, without contacting Microsoft or an LLM. Live Microsoft sign-in has also been verified manually in the local application.
 
 The browser authentication module is in `frontend/lib/auth.ts`. Copy the public settings from `frontend/entra.example.env` into `frontend/.env.local` and restart Next.js. The authentication gate requires Microsoft identity and a successful `/api/me` response before displaying the workspace. Each signed-in workspace has a separate query cache; sign-out and account switching unmount it. Entra mode hides demo cases and fictional persona selection. It uses redirect sign-in at the application's origin (register `http://localhost:3000` as a SPA redirect URI for local use), session-scoped token storage, and account-specific token acquisition. Silent acquisition uses cached access or refresh tokens; when interactive authentication is required, the error is returned to the caller so the UI can offer sign-in again. Run frontend tests with `npm test` (Node 24; Microsoft SDK calls are mocked).

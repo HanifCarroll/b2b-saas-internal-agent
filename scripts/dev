@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository="$(cd "$(dirname "$0")/.." && pwd)"
+api_pid=""
+web_pid=""
+
+cleanup() {
+  [[ -z "$api_pid" ]] || kill "$api_pid" 2>/dev/null || true
+  [[ -z "$web_pid" ]] || kill "$web_pid" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+(
+  cd "$repository/backend"
+  exec env SWITCHBOARD_AUTH_MODE=hybrid uv run uvicorn switchboard.api:app \
+    --reload --host 127.0.0.1 --port 8000
+) &
+api_pid=$!
+
+(
+  cd "$repository/frontend"
+  exec env NEXT_PUBLIC_AUTH_MODE=hybrid ./node_modules/.bin/next dev --hostname 127.0.0.1
+) &
+web_pid=$!
+
+wait
