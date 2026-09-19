@@ -82,6 +82,8 @@ test("authentication defaults to Entra and rejects unknown modes", () => {
   assert.equal(auth.getAuthMode(), "entra");
   process.env.NEXT_PUBLIC_AUTH_MODE = "demo";
   assert.equal(auth.getAuthMode(), "demo");
+  process.env.NEXT_PUBLIC_AUTH_MODE = "hybrid";
+  assert.equal(auth.getAuthMode(), "hybrid");
   process.env.NEXT_PUBLIC_AUTH_MODE = "typo";
   assert.throws(() => auth.getAuthMode(), /NEXT_PUBLIC_AUTH_MODE/);
   delete process.env.NEXT_PUBLIC_AUTH_MODE;

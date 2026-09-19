@@ -66,10 +66,10 @@ export async function getAccessToken({ account }: { account: AccountInfo }): Pro
   return response.accessToken;
 }
 
-export function getAuthMode(): "demo" | "entra" {
+export function getAuthMode(): "demo" | "entra" | "hybrid" {
   const mode = process.env.NEXT_PUBLIC_AUTH_MODE ?? "entra";
-  if (mode !== "demo" && mode !== "entra") {
-    throw new Error("NEXT_PUBLIC_AUTH_MODE must be demo or entra.");
+  if (mode !== "demo" && mode !== "entra" && mode !== "hybrid") {
+    throw new Error("NEXT_PUBLIC_AUTH_MODE must be demo, entra, or hybrid.");
   }
 
   return mode;

@@ -5,7 +5,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { getAuthMode, restoreSignedInAccount, getAccessToken, signIn, signOut } from "../lib/auth";
 import { requestApi, type RequestIdentity, type CurrentEmployee } from "../lib/api";
 import { Layers, LoaderCircle } from "lucide-react";
+import { HybridSessionChooser } from "./hybrid-session-chooser";
 import { Button } from "./ui/button";
+
+const SESSION_MODE_KEY = "switchboard-session-mode";
+type SessionMode = "demo" | "entra" | "unselected";
 
 export type AuthenticatedSession = {
   identity: RequestIdentity;
@@ -13,8 +17,10 @@ export type AuthenticatedSession = {
 };
 
 export type AccountActions = {
-  onSwitchAccount: () => void;
-  onSignOut: () => void;
+  onUseDemo: (() => void) | null;
+  onUseMicrosoft: (() => void) | null;
+  onSwitchAccount: (() => void) | null;
+  onSignOut: (() => void) | null;
 };
 
 export function AuthenticationGate({
@@ -22,18 +28,22 @@ export function AuthenticationGate({
 }: {
   children: (session: AuthenticatedSession, accountActions: AccountActions) => ReactNode;
 }) {
+  const authMode = getAuthMode();
+  const [sessionMode, setSessionMode] = useState<SessionMode>(() =>
+    getInitialSessionMode(authMode),
+  );
   const [leaving, setLeaving] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
 
   // 1. Restore identity, then require the API to recognize the employee.
   const session = useQuery({
-    queryKey: ["signed-in-session"],
-    enabled: typeof window !== "undefined",
+    queryKey: ["signed-in-session", sessionMode],
+    enabled: typeof window !== "undefined" && sessionMode !== "unselected",
     retry: false,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<AuthenticatedSession | null> => {
-      if (getAuthMode() === "demo") {
+      if (sessionMode === "demo") {
         return { identity: { mode: "demo", employeeId: "emp-alex" }, employee: null };
       }
 
@@ -55,18 +65,56 @@ export function AuthenticationGate({
   const authentication = useMutation({
     mutationFn: async (action: "sign-in" | "sign-out") => {
       setLeaving(true);
-      if (action === "sign-in") await signIn();
-      else await signOut();
+      if (action === "sign-in") {
+        storeSessionMode("entra");
+        await signIn();
+      } else {
+        clearSessionMode();
+        await signOut();
+      }
     },
     retry: false,
   });
   const error = authentication.error ?? session.error;
 
+  function chooseSessionMode(mode: Exclude<SessionMode, "unselected">) {
+    authentication.reset();
+    storeSessionMode(mode);
+    setLeaving(false);
+  }
+
+  function storeSessionMode(mode: Exclude<SessionMode, "unselected">) {
+    if (authMode === "hybrid") window.sessionStorage.setItem(SESSION_MODE_KEY, mode);
+    setSessionMode(mode);
+  }
+
+  function clearSessionMode() {
+    if (authMode === "hybrid") {
+      window.sessionStorage.removeItem(SESSION_MODE_KEY);
+      setSessionMode("unselected");
+    }
+  }
+
+  if (authMode === "hybrid" && sessionMode === "unselected" && !leaving && !authentication.error) {
+    return (
+      <HybridSessionChooser
+        onUseDemo={() => chooseSessionMode("demo")}
+        onUseMicrosoft={() => authentication.mutate("sign-in")}
+      />
+    );
+  }
+
   // 3. Show the workspace only after authentication and employee access succeed.
   if (!leaving && !error && session.data) {
     return children(session.data, {
-      onSwitchAccount: () => authentication.mutate("sign-in"),
-      onSignOut: () => authentication.mutate("sign-out"),
+      onUseDemo:
+        authMode === "hybrid" && sessionMode === "entra" ? () => chooseSessionMode("demo") : null,
+      onUseMicrosoft:
+        authMode === "hybrid" && sessionMode === "demo"
+          ? () => authentication.mutate("sign-in")
+          : null,
+      onSwitchAccount: sessionMode === "entra" ? () => authentication.mutate("sign-in") : null,
+      onSignOut: sessionMode === "entra" ? () => authentication.mutate("sign-out") : null,
     });
   }
 
@@ -124,10 +172,27 @@ export function AuthenticationGate({
             Sign out
           </Button>
         )}
+        {authMode === "hybrid" && sessionMode === "entra" && (
+          <Button
+            className="mt-3 w-full"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => chooseSessionMode("demo")}
+          >
+            Use demo instead
+          </Button>
+        )}
         <p className="mt-6 text-xs leading-5 text-muted-foreground">
           Access is limited to employees authorized for this workspace.
         </p>
       </section>
     </main>
   );
+}
+
+function getInitialSessionMode(authMode: ReturnType<typeof getAuthMode>): SessionMode {
+  if (authMode !== "hybrid") return authMode;
+  if (typeof window === "undefined") return "unselected";
+  const stored = window.sessionStorage.getItem(SESSION_MODE_KEY);
+  return stored === "demo" || stored === "entra" ? stored : "unselected";
 }

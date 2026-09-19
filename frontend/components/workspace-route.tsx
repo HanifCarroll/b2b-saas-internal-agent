@@ -240,7 +240,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
         activeView={activeView}
         employee={employeeName}
         role={employeeRole}
-        accountControls={identity.mode === "entra" ? accountActions : null}
+        accountControls={accountActions}
         demoControls={sidebarDemoControls}
         demoPersona={identity.mode === "demo" ? (employeeRecord ?? null) : undefined}
         demoPersonaSwitcher={demoPersonaSwitcher}

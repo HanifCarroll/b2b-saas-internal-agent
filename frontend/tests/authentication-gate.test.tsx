@@ -61,10 +61,11 @@ function mount(t: TestContext) {
   render(
     <QueryClientProvider client={client}>
       <AuthenticationGate>
-        {({ employee }, { onSignOut }) => (
+        {({ employee }, { onUseDemo, onSignOut }) => (
           <>
             <p>Workspace {employee?.employee_id}</p>
-            {employee && <button onClick={onSignOut}>Sign out</button>}
+            {onUseDemo && <button onClick={onUseDemo}>Use demo</button>}
+            {employee && onSignOut && <button onClick={onSignOut}>Sign out</button>}
           </>
         )}
       </AuthenticationGate>
@@ -120,6 +121,80 @@ test("demo mode opens the workspace without Microsoft or employee API calls", as
   mount(t);
   await screen.findByText("Workspace");
   assert.equal(screen.queryByRole("button", { name: "Sign out" }), null);
+});
+
+test("hybrid mode lets a visitor enter the demo without contacting Microsoft", async (t) => {
+  process.env.NEXT_PUBLIC_AUTH_MODE = "hybrid";
+  window.sessionStorage.clear();
+  t.after(() => {
+    process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
+    window.sessionStorage.clear();
+  });
+  t.mock.method(globalThis, "fetch", () => assert.fail("Demo gate needs no API request"));
+  const loginCallsBefore = loginCalls;
+
+  mount(t);
+  fireEvent.click(await screen.findByRole("button", { name: "Try the demo" }));
+
+  await screen.findByText("Workspace");
+  assert.equal(loginCalls, loginCallsBefore);
+  assert.equal(window.sessionStorage.getItem("switchboard-session-mode"), "demo");
+});
+
+test("hybrid mode starts Microsoft sign-in when selected", async (t) => {
+  process.env.NEXT_PUBLIC_AUTH_MODE = "hybrid";
+  window.sessionStorage.clear();
+  t.after(() => {
+    process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
+    window.sessionStorage.clear();
+  });
+  const loginCallsBefore = loginCalls;
+
+  mount(t);
+  fireEvent.click(await screen.findByRole("button", { name: "Sign in with Microsoft" }));
+
+  await waitFor(() => assert.equal(loginCalls, loginCallsBefore + 1));
+  assert.equal(window.sessionStorage.getItem("switchboard-session-mode"), "entra");
+});
+
+test("hybrid mode restores the selected demo for the browser tab", async (t) => {
+  process.env.NEXT_PUBLIC_AUTH_MODE = "hybrid";
+  window.sessionStorage.setItem("switchboard-session-mode", "demo");
+  t.after(() => {
+    process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
+    window.sessionStorage.clear();
+  });
+  t.mock.method(globalThis, "fetch", () => assert.fail("Demo gate needs no API request"));
+
+  mount(t);
+
+  await screen.findByText("Workspace");
+  assert.equal(screen.queryByRole("heading", { name: "Choose how to continue" }), null);
+});
+
+test("hybrid mode switches from Microsoft to demo without signing out", async (t) => {
+  process.env.NEXT_PUBLIC_AUTH_MODE = "hybrid";
+  window.sessionStorage.setItem("switchboard-session-mode", "entra");
+  account = { tenantId: "tenant", homeAccountId: "alex" };
+  const logoutCallsBefore = logoutCalls;
+  t.after(() => {
+    process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
+    window.sessionStorage.clear();
+  });
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      employee_id: "emp-alex",
+      name: "Alex Rivera",
+      role: "implementation_engineer",
+    }),
+  );
+
+  mount(t);
+  fireEvent.click(await screen.findByRole("button", { name: "Use demo" }));
+
+  await screen.findByText("Workspace");
+  assert.equal(logoutCalls, logoutCallsBefore);
+  assert.equal(window.sessionStorage.getItem("switchboard-session-mode"), "demo");
 });
 
 test("sign-in screen gives a clear purpose and hides sign-out without an account", async (t) => {

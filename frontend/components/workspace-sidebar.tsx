@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { CheckSquare2, ChevronRight, Inbox, Layers3, LogOut, UserRound } from "lucide-react";
+import { CheckSquare2, ChevronRight, Inbox, Layers3, LogIn, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DemoPersonaIndicator } from "@/components/demo-persona";
+import type { AccountActions } from "@/components/authentication-gate";
 import type { DemoPersona } from "@/lib/api";
 
 export function WorkspaceSidebar({
@@ -18,7 +19,7 @@ export function WorkspaceSidebar({
   activeView: "work" | "approvals";
   employee: string;
   role: string | null;
-  accountControls: { onSwitchAccount: () => void; onSignOut: () => void } | null;
+  accountControls: AccountActions;
   demoControls?: ReactNode;
   demoPersona?: DemoPersona | null;
   demoPersonaSwitcher?: ReactNode;
@@ -85,26 +86,55 @@ export function WorkspaceSidebar({
             <ChevronRight className="size-4 text-slate-500" aria-hidden="true" />
           </div>
           {demoPersonaSwitcher}
-          {accountControls && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
-                onClick={accountControls.onSwitchAccount}
-              >
-                <UserRound className="size-4" />
-                Switch
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
-                onClick={accountControls.onSignOut}
-              >
-                <LogOut className="size-4" />
-                Sign out
-              </Button>
+          {(accountControls.onUseDemo ||
+            accountControls.onUseMicrosoft ||
+            accountControls.onSwitchAccount ||
+            accountControls.onSignOut) && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {accountControls.onUseDemo && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  onClick={accountControls.onUseDemo}
+                >
+                  <Layers3 className="size-4" />
+                  Use demo
+                </Button>
+              )}
+              {accountControls.onUseMicrosoft && demoPersona !== undefined && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  onClick={accountControls.onUseMicrosoft}
+                >
+                  <LogIn className="size-4" />
+                  Sign in with Microsoft
+                </Button>
+              )}
+              {accountControls.onSwitchAccount && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  onClick={accountControls.onSwitchAccount}
+                >
+                  <UserRound className="size-4" />
+                  Switch
+                </Button>
+              )}
+              {accountControls.onSignOut && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  onClick={accountControls.onSignOut}
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </Button>
+              )}
             </div>
           )}
         </div>
