@@ -15,7 +15,7 @@ from switchboard.integrations.database import DATABASE_PATH
 from switchboard.investigations import investigate_scenario
 from switchboard.models import EndpointChangeResult
 from switchboard.policy_evaluation import evaluate_policy
-from switchboard.scenarios import Scenario, load_scenarios
+from switchboard.scenarios import load_scenarios
 from switchboard.tools import InvestigationContext, employee_session
 
 RUNS_DIRECTORY = DATABASE_PATH.parent / "workflows"
@@ -85,9 +85,7 @@ def display_investigation_result(
         )
 
 
-def run_investigation(
-    *, scenario_id: str, selected_scenario: Scenario, evaluate_policy_claims: bool
-) -> None:
+def run_investigation(*, scenario_id: str, evaluate_policy_claims: bool) -> None:
     """Run one investigation and display its result and optional policy review."""
     # 1. Run the shared investigation with the CLI's configured storage.
     model = create_model()
@@ -123,9 +121,6 @@ def run_investigation(
     print(
         "\nInvestigation used read-only business tools; proposal storage is reported above."
     )
-    print("\nExpected outcomes for manual review (not an automated grade):")
-    for expected in selected_scenario.expected:
-        print(f"- {expected}")
 
 
 def main():
@@ -160,8 +155,8 @@ def main():
 
     # 2. Handle listing or reviewer operations before starting an investigation.
     if args.list_scenarios:
-        for name, scenario in scenarios.items():
-            print(f"{name}: {scenario.expected[0]}")
+        for name in scenarios:
+            print(name)
         return
 
     if args.reset_demo:
@@ -195,7 +190,7 @@ def main():
 
     try:
         with demo_operation(database_path=DATABASE_PATH):
-            run_command(args=args, parser=parser, scenarios=scenarios)
+            run_command(args=args, parser=parser)
     except DemoBusyError as error:
         raise SystemExit(str(error)) from None
 
@@ -204,7 +199,6 @@ def run_command(
     *,
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
-    scenarios: dict[str, Scenario],
 ) -> None:
     """Dispatch a CLI read or investigation while reset is excluded."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -233,12 +227,10 @@ def run_command(
     if setup is None:
         parser.error("Reset the demo first: --reset-demo baseline --confirm-reset")
     scenario_id = args.scenario or setup.scenario_id
-    selected_scenario = scenarios[scenario_id]
 
     # 3. Run the selected investigation.
     run_investigation(
         scenario_id=scenario_id,
-        selected_scenario=selected_scenario,
         evaluate_policy_claims=args.evaluate_policy,
     )
 

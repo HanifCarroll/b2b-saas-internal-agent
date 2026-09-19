@@ -157,7 +157,6 @@ class InvestigationRequest(BaseModel):
 
 class ScenarioOption(BaseModel):
     id: str
-    expected: list[str]
 
 
 class EmployeeOption(BaseModel):
@@ -277,10 +276,7 @@ def demo_options() -> DemoOptions:
     """Expose synthetic demo choices, never secrets or provider configuration."""
     employees = json.loads((FIXTURES / "employees.json").read_text())
     return DemoOptions(
-        scenarios=[
-            ScenarioOption(id=key, expected=scenario.expected)
-            for key, scenario in load_scenarios().items()
-        ],
+        scenarios=[ScenarioOption(id=key) for key in load_scenarios()],
         employees=[
             EmployeeOption(id=item["id"], name=item["name"], role=item["role"])
             for item in employees

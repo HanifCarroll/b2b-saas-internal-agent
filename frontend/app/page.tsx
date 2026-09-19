@@ -226,9 +226,6 @@ function InvestigationWorkspace({
     optionsQuery.error ??
     histories.error
   )?.message;
-  const expectedOutcomes =
-    options?.scenarios.find((item) => item.id === run?.scenario_id)?.expected ?? [];
-
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
@@ -335,7 +332,6 @@ function InvestigationWorkspace({
                 </Alert>
                 <InvestigationFindings
                   run={run}
-                  expectedOutcomes={expectedOutcomes}
                   busy={isPending}
                   onEvaluatePolicy={evaluatePolicy}
                 />

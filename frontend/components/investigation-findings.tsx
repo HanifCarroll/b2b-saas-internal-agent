@@ -6,12 +6,10 @@ import { Badge } from "@/components/ui/badge";
 
 export function InvestigationFindings({
   run,
-  expectedOutcomes,
   busy,
   onEvaluatePolicy,
 }: {
   run: InvestigationRun;
-  expectedOutcomes: string[];
   busy: boolean;
   onEvaluatePolicy: () => void;
 }) {
@@ -102,16 +100,6 @@ export function InvestigationFindings({
                   {call.name} {JSON.stringify(call.args)}
                 </code>
               </li>
-            ))}
-          </ul>
-        </details>
-        <details>
-          <summary className="cursor-pointer text-sm font-medium">
-            Expected outcomes for manual comparison
-          </summary>
-          <ul className="mt-3 list-disc pl-5 text-sm">
-            {expectedOutcomes.map((item, index) => (
-              <li key={index}>{item}</li>
             ))}
           </ul>
         </details>

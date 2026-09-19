@@ -44,7 +44,7 @@ export type WorkflowStatus = {
 };
 
 export type DemoOptions = {
-  scenarios: { id: string; expected: string[] }[];
+  scenarios: { id: string }[];
   employees: { id: string; name: string; role: string }[];
 };
 export type InvestigationHistoryItem = { run_id: string; scenario_id: string; outcome: string };

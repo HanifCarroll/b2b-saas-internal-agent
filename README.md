@@ -7,6 +7,7 @@ A portfolio project using synthetic company records. The current agent investiga
 - `frontend/`: Next.js application and its Node dependencies.
 - `backend/switchboard/`: Python package shared by the API, CLI, and agent workflow.
 - `backend/tests/`: Python tests.
+- `backend/evals/`: explicitly invoked live-model evals tracked in LangSmith.
 - `backend/data/`: synthetic fixtures, scenarios, and ignored local databases.
 - `backend/pyproject.toml` and `backend/uv.lock`: Python dependencies.
 - `docs/`: project documentation.
@@ -40,7 +41,13 @@ uv run pytest -v
 
 Tests use a scripted model, exercise the actual graph and tools, and make no paid calls. They verify access boundaries and read-only behavior; they do not measure the live model's reasoning quality.
 
-## Investigation scenarios
+Live-model evals are separate and make paid model calls:
+
+```sh
+uv run pytest evals -v
+```
+
+## Synthetic scenario setup
 
 ```sh
 uv run python -m switchboard --list-scenarios
@@ -54,7 +61,17 @@ Reset explicitly restores the selected scenario and clears all saved investigati
 
 Reset builds and validates replacement records before clearing history and replacing the database. If history deletion fails, the old business database remains intact, although some history may already have been removed. A POSIX file lock excludes reset while CLI/API operations are running and rejects new operations during reset. This is a local macOS/Linux demo, not a distributed job system. The CLI investigator remains Alex; the UI can select a simulated investigator. Tools enforce read-only database connections.
 
-Expected outcomes in `backend/data/scenarios/investigations.json` are printed after the run for manual review and are never passed to the model. They are not automated evaluation scores. In LangSmith, find `investigation-<scenario>` or filter by `scenario_id`. Review whether the response matches the expected outcomes and whether tool results support its claims. The cross-customer case should finish with an explanation of the unavailable record. Its tool result retains error status; a completed response does not mean access succeeded.
+Scenario files describe only the synthetic record changes used by the local demo and eval setup. Evaluation expectations live separately under `backend/data/evaluations/` and are never passed to the agent.
+
+## Investigation evals
+
+```sh
+uv run pytest evals/test_investigations.py -v
+```
+
+The six pytest cases run the real model against isolated temporary databases. Each case records its input, validated output, expected outcome, qualitative review criteria, and deterministic outcome score in LangSmith. The expected outcome is asserted locally. The qualitative criteria remain visible reference material for reviewing the experiment; they are not reduced to brittle string assertions.
+
+These evals are excluded from ordinary `uv run pytest -v` runs so normal development checks remain fast, deterministic, and free of model charges. Use `-k CASE_NAME` to run one case while changing a prompt or model.
 
 ## Project layout
 
@@ -64,10 +81,13 @@ Expected outcomes in `backend/data/scenarios/investigations.json` are printed af
 - `backend/switchboard/integrations/`: simulated business systems and access checks.
 - `backend/switchboard/models.py`: shared validated record types.
 - `backend/switchboard/scenarios.py`: scenario definitions and transactional fixture setup.
+- `backend/switchboard/evaluation_cases.py`: validated reference expectations for live-model evals.
 - `backend/switchboard/demo.py`: explicit reset, active scenario, and cross-process reset exclusion.
 - `backend/switchboard/prompts/`: system prompts.
 - `backend/data/fixtures/`: starting business records and policy documents.
 - `backend/data/scenarios/`: baseline request and investigation variations.
+- `backend/data/evaluations/`: withheld outcomes and qualitative review criteria.
+- `backend/evals/`: pytest and LangSmith live-model eval runners.
 - `backend/tests/`: automated checks.
 - `docs/`: company context and worked example.
 
@@ -81,10 +101,10 @@ Valid structure does not establish factual correctness or authorize a change. Ap
 
 ```sh
 uv run python -m switchboard --scenario baseline --evaluate-policy
-uv run python -m switchboard.policy_evaluation
+uv run pytest evals/test_policy_faithfulness.py -v
 ```
 
-The first command adds a separate DeepSeek review of the investigation's policy claims against the source policies. The second calibrates that reviewer against four known examples, including the observed blanket rollback prohibition. Both make paid model calls; ordinary investigations skip the review. With tracing enabled, review calls appear as `policy-faithfulness-review`.
+The first command adds a separate DeepSeek review of one investigation's policy claims against the source policies. The pytest eval calibrates that reviewer against four known examples, including the observed blanket rollback prohibition, and records the experiment in LangSmith. Both make paid model calls; ordinary investigations skip the review. With tracing enabled, review calls appear as `policy-faithfulness-review`.
 
 The reviewer reports specific claims, source excerpts, and explanations. Invalid JSON or invented source excerpts fail the evaluation rather than counting as a pass. An empty issues list means the model found no distortion, not that correctness is proven. The same model family produces and reviews the output, so manual review remains important. This checks policy meaning only; it does not authorize actions or establish customer facts. Calibration expectations are withheld from the judge.
 
@@ -146,7 +166,7 @@ npm run dev -- --hostname 127.0.0.1
 
 Open http://localhost:3000. Choose a reset scenario, click **Reset demo to scenario**, and confirm deletion of saved work. Then select a simulated investigator and start an investigation against the active scenario. Subsequent investigations reuse the current records. The screen shows a pending state during the model call, followed by findings, evidence IDs, tool calls, blockers, and the confirmed proposal storage outcome. A saved proposal opens automatically for review; no run or proposal IDs need to be copied. Change the reviewer to test access restrictions, then approve explicitly as an independent assigned technical lead. The current stored approval appears separately from the investigation report.
 
-Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Expected outcomes are for manual comparison and assume the baseline investigator, Alex; choosing another employee changes the access context.
+Saved investigations can be reopened from the history selector after refreshing the browser or restarting the server. History is limited to the original requester and rechecks their role and customer access. Evaluation expectations stay outside the application interface.
 
 The optional **Evaluate policy claims** button makes a separate model call and stores its judgment. It does not authorize a proposal. Investigation and policy evaluation use the existing model credentials in `backend/.env`; retrieval and approval do not call a model. The pending indicator does not claim token-by-token or node-by-node progress. Completed results survive browser refresh; there is no background job queue or resumable live progress in this local slice.
 

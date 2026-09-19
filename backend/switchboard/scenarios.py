@@ -1,4 +1,4 @@
-"""Reviewer-only scenario setup; expected outcomes never enter the agent prompt."""
+"""Synthetic scenario setup for the local demo and investigation evals."""
 
 import json
 import sqlite3
@@ -23,7 +23,6 @@ class Scenario(Record):
     now: AwareDatetime | None = None
     request: Text | None = None
     ticket_updates: TicketUpdates = Field(default_factory=TicketUpdates)
-    expected: list[Text] = Field(min_length=1)
 
 
 def load_scenarios() -> dict[str, Scenario]:
