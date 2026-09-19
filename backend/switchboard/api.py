@@ -1,7 +1,6 @@
 """API with isolated public demo workspaces or verified Entra authentication."""
 
 import logging
-import sqlite3
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,15 +10,11 @@ from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from switchboard.agent import create_model
-from switchboard.auth import (
-    get_auth_mode,
-    get_entra_employee_id,
-    get_entra_settings,
-)
-from switchboard.demo import DemoBusyError, demo_operation
+from switchboard.auth import get_auth_mode, get_entra_employee_id, get_entra_settings
 from switchboard.demo_cases import (
     DemoCaseSummary,
     PreparedDemoCase,
@@ -33,7 +28,6 @@ from switchboard.integrations.change_management import (
     get_proposal_review,
     list_proposals_awaiting_approval,
 )
-from switchboard.integrations.database import DATABASE_PATH
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import (
     get_ticket,
@@ -57,9 +51,11 @@ from switchboard.runs import (
     find_proposal_run_id,
     get_investigation_run,
     list_investigation_runs,
-    load_run_manifest,
+    load_run,
     save_policy_review,
 )
+from switchboard.scenarios import initialize_demo_workspace, load_scenarios
+from switchboard.storage import StorageError, WorkspaceStorage
 from switchboard.tools import InvestigationContext, employee_session
 from switchboard.workflow_status import (
     WorkflowStatus,
@@ -68,14 +64,11 @@ from switchboard.workflow_status import (
 )
 
 logger = logging.getLogger(__name__)
-
-RUNS_DIRECTORY = DATABASE_PATH.parent / "workflows"
-DEMO_WORKSPACES_DIRECTORY = DATABASE_PATH.parent / "workspaces"
 DEMO_WORKSPACE_COOKIE = "switchboard-demo-workspace"
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     if get_auth_mode() in {"entra", "hybrid"}:
         get_entra_settings()
@@ -86,33 +79,45 @@ async def lifespan(app: FastAPI):
 class RequestContext:
     identity_mode: Literal["demo", "entra"]
     employee_id: str
-    database_path: Path
-    runs_directory: Path
+    workspace_id: str
+    storage: WorkspaceStorage
 
 
 def get_request_context(request: Request, response: Response) -> RequestContext:
-    """Resolve trusted identity and storage once for every business request."""
+    """Resolve trusted identity and isolated D1 storage once per request."""
     auth_mode = get_auth_mode()
     has_authorization = "Authorization" in request.headers
 
+    # 1. Bind verified Entra identity to its own durable workspace.
     if auth_mode == "entra" or (auth_mode == "hybrid" and has_authorization):
+        employee_id = get_entra_employee_id(request)
+        workspace_id = f"entra-{employee_id}"
+        storage = WorkspaceStorage.from_environment(workspace_id=workspace_id)
+        initialize_demo_workspace(
+            storage=storage,
+            scenario_id="baseline",
+            selected_scenario=load_scenarios()["baseline"],
+            identity_mode="entra",
+        )
         return RequestContext(
             identity_mode="entra",
-            employee_id=get_entra_employee_id(request),
-            database_path=DATABASE_PATH,
-            runs_directory=RUNS_DIRECTORY,
+            employee_id=employee_id,
+            workspace_id=workspace_id,
+            storage=storage,
         )
 
     if has_authorization:
         raise HTTPException(status_code=400, detail="Microsoft sign-in is disabled")
 
+    # 2. Restore or create the anonymous visitor's isolated demo workspace.
     try:
         workspace_id = UUID(request.cookies[DEMO_WORKSPACE_COOKIE])
     except (KeyError, ValueError):
         workspace_id = None
+    base_storage = WorkspaceStorage.from_environment(workspace_id="new-demo")
     opened = open_demo_workspace(
         workspace_id=workspace_id,
-        root_directory=DEMO_WORKSPACES_DIRECTORY,
+        base_storage=base_storage,
     )
     if opened.was_created:
         response.set_cookie(
@@ -126,10 +131,10 @@ def get_request_context(request: Request, response: Response) -> RequestContext:
 
     employee_id = request.headers.get("X-Demo-Persona-Id", "emp-alex")
     try:
-        with sqlite3.connect(opened.workspace.database_path) as connection:
-            EmployeeSession(
-                db_connection=connection, employee_id=employee_id
-            ).require_active_employee()
+        EmployeeSession(
+            storage=opened.workspace.storage,
+            employee_id=employee_id,
+        ).require_active_employee()
     except PermissionError:
         raise HTTPException(
             status_code=403, detail="Demo persona unavailable"
@@ -138,8 +143,8 @@ def get_request_context(request: Request, response: Response) -> RequestContext:
     return RequestContext(
         identity_mode="demo",
         employee_id=employee_id,
-        database_path=opened.workspace.database_path,
-        runs_directory=opened.workspace.runs_directory,
+        workspace_id=str(opened.workspace.id),
+        storage=opened.workspace.storage,
     )
 
 
@@ -151,26 +156,13 @@ def require_demo_context(
     return context
 
 
-def protect_demo_operation(
-    request: Request,
-    context: RequestContext = Depends(get_request_context),
-):
-    if request.method == "POST" and request.url.path.endswith("/prepare"):
-        yield
-        return
-
-    try:
-        with demo_operation(database_path=context.database_path):
-            yield
-    except DemoBusyError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from None
+app = FastAPI(title="Switchboard demo", lifespan=lifespan)
 
 
-app = FastAPI(
-    title="Switchboard demo",
-    lifespan=lifespan,
-    dependencies=[Depends(protect_demo_operation)],
-)
+@app.exception_handler(StorageError)
+def storage_error_handler(_request: Request, error: StorageError) -> JSONResponse:
+    status = error.status if 400 <= error.status < 500 else 503
+    return JSONResponse(status_code=status, content={"detail": str(error)})
 
 
 class CurrentEmployee(BaseModel):
@@ -183,16 +175,15 @@ class CurrentEmployee(BaseModel):
 def read_current_employee(
     context: RequestContext = Depends(get_request_context),
 ) -> CurrentEmployee:
-    investigation_context = InvestigationContext(
-        database_path=context.database_path, employee_id=context.employee_id
-    )
     try:
-        with employee_session(investigation_context) as session:
-            return CurrentEmployee(
-                employee_id=session.employee_id,
-                name=session.get_employee_name(employee_id=session.employee_id),
-                role=session.get_active_employee_role(),
-            )
+        session = EmployeeSession(
+            storage=context.storage, employee_id=context.employee_id
+        )
+        return CurrentEmployee(
+            employee_id=session.employee_id,
+            name=session.get_employee_name(employee_id=session.employee_id),
+            role=session.get_active_employee_role(),
+        )
     except PermissionError:
         raise HTTPException(status_code=403, detail="Employee unavailable") from None
 
@@ -207,11 +198,10 @@ class DemoPersona(BaseModel):
 def read_demo_personas(
     context: RequestContext = Depends(require_demo_context),
 ) -> list[DemoPersona]:
-    with sqlite3.connect(context.database_path) as connection:
-        rows = connection.execute(
-            "SELECT id, name, role FROM employees WHERE active = 1 ORDER BY id"
-        ).fetchall()
-    return [DemoPersona(id=row[0], name=row[1], role=row[2]) for row in rows]
+    return [
+        DemoPersona.model_validate(item)
+        for item in context.storage.list_active_employees()
+    ]
 
 
 @app.get("/api/demo/cases", response_model=list[DemoCaseSummary])
@@ -230,13 +220,10 @@ def prepare_case(
         return prepare_demo_case(
             case_id=case_id,
             workspace=DemoWorkspace(
-                id=UUID(context.database_path.parent.name),
-                database_path=context.database_path,
-                runs_directory=context.runs_directory,
+                id=UUID(context.workspace_id),
+                storage=context.storage,
             ),
         )
-    except DemoBusyError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from None
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from None
 
@@ -260,21 +247,16 @@ class InvestigationRequest(BaseModel):
 def review_context(
     *, run_id: UUID, request_context: RequestContext
 ) -> InvestigationContext:
-    """Resolve only application-created run manifests, never client filesystem paths."""
+    """Resolve only a run inside the request's already isolated workspace."""
     try:
-        manifest = load_run_manifest(
-            runs_directory=request_context.runs_directory, run_id=run_id
-        )
+        load_run(storage=request_context.storage, run_id=run_id)
     except FileNotFoundError:
         raise HTTPException(
             status_code=404, detail="Scenario run unavailable"
         ) from None
-
-    database_path = Path(manifest["database_path"])
-    if database_path.resolve() != request_context.database_path.resolve():
-        raise HTTPException(status_code=404, detail="Scenario run unavailable")
     return InvestigationContext(
-        database_path=database_path, employee_id=request_context.employee_id
+        storage=request_context.storage,
+        employee_id=request_context.employee_id,
     )
 
 
@@ -282,29 +264,24 @@ def review_context(
 def list_pending_approvals(
     request_context: RequestContext = Depends(get_request_context),
 ) -> list[ApprovalInboxItem]:
-    """List completed proposals this employee may independently approve."""
     context = InvestigationContext(
-        database_path=request_context.database_path,
+        storage=request_context.storage,
         employee_id=request_context.employee_id,
     )
     try:
         with employee_session(context) as session:
-            proposals = list_proposals_awaiting_approval(
-                session=session,
-                database_path=request_context.database_path,
-            )
+            proposals = list_proposals_awaiting_approval(session=session)
     except PermissionError:
         raise HTTPException(status_code=403, detail="Employee unavailable") from None
 
     items = []
     for proposal in proposals:
         run_id = find_proposal_run_id(
-            runs_directory=request_context.runs_directory,
+            storage=request_context.storage,
             proposal_id=proposal.id,
         )
         if run_id is not None:
             items.append(ApprovalInboxItem(run_id=run_id, proposal=proposal))
-
     return items
 
 
@@ -314,28 +291,21 @@ def read_proposal(
     proposal_id: str,
     request_context: RequestContext = Depends(get_request_context),
 ) -> ProposalReview:
-    # 1. Resolve application storage and authenticated or demo employee context.
     context = review_context(run_id=run_id, request_context=request_context)
-
-    # 2. Delegate authorization and storage to the business functions.
     try:
         with employee_session(context) as session:
-            proposal_review = get_proposal_review(
-                session=session,
-                proposal_id=proposal_id,
-                database_path=context.database_path,
-            )
-            proposal = proposal_review.proposal
-            approval = proposal_review.approval
+            review = get_proposal_review(session=session, proposal_id=proposal_id)
     except PermissionError:
         raise HTTPException(status_code=404, detail="Proposal unavailable") from None
 
     return ProposalReview(
-        proposal=proposal,
-        approval=approval,
-        execution=proposal_review.execution,
+        proposal=review.proposal,
+        approval=review.approval,
+        execution=review.execution,
         current_status=proposal_status(
-            proposal=proposal, approval=approval, execution=proposal_review.execution
+            proposal=review.proposal,
+            approval=review.approval,
+            execution=review.execution,
         ),
     )
 
@@ -348,17 +318,10 @@ def record_approval(
     proposal_id: str,
     request_context: RequestContext = Depends(get_request_context),
 ) -> Approval:
-    # 1. Resolve application storage and authenticated or demo employee context.
     context = review_context(run_id=run_id, request_context=request_context)
-
-    # 2. Delegate authorization and storage to the business functions.
     try:
         with employee_session(context) as session:
-            return approve_proposal(
-                session=session,
-                proposal_id=proposal_id,
-                database_path=context.database_path,
-            )
+            return approve_proposal(session=session, proposal_id=proposal_id)
     except PermissionError:
         raise HTTPException(
             status_code=403, detail="Approval not permitted or proposal unavailable"
@@ -378,18 +341,13 @@ def record_execution(
     proposal_id: str,
     request_context: RequestContext = Depends(get_request_context),
 ) -> ExecuteProposalResult:
-    """Execute through deterministic checks; a receipt does not verify delivery."""
-    # 1. Resolve application storage and authenticated or demo employee identity.
     context = review_context(run_id=run_id, request_context=request_context)
-
-    # 2. Supply server time and delegate the atomic change to the business function.
     try:
         with employee_session(context) as session:
             return execute_proposal(
                 proposal_id=proposal_id,
                 session=session,
                 executed_at=datetime.now(timezone.utc),
-                database_path=context.database_path,
             )
     except PermissionError:
         raise HTTPException(
@@ -404,7 +362,7 @@ def record_execution(
 
 def _ticket_context(*, request_context: RequestContext) -> InvestigationContext:
     return InvestigationContext(
-        database_path=request_context.database_path,
+        storage=request_context.storage,
         employee_id=request_context.employee_id,
     )
 
@@ -457,21 +415,15 @@ def start_investigation(
     request: InvestigationRequest,
     request_context: RequestContext = Depends(get_request_context),
 ) -> InvestigationRun:
-    # 1. Reject unavailable tickets before creating a model client or spending tokens.
     _get_accessible_ticket(ticket_id=request.ticket_id, request_context=request_context)
-
-    # 2. Run the workflow with server time and the authenticated employee identity.
     try:
         run = investigate_ticket(
             ticket_id=request.ticket_id,
             employee_id=request_context.employee_id,
             model=create_model(),
-            runs_directory=request_context.runs_directory,
-            database_path=request_context.database_path,
+            storage=request_context.storage,
             now=datetime.now(timezone.utc),
         )
-        run_id = run.workflow_id
-        result = run.result
     except (ValueError, PermissionError):
         raise HTTPException(
             status_code=422, detail="Investigation result was rejected"
@@ -483,14 +435,15 @@ def start_investigation(
             detail="Investigation could not complete. Check run history before retrying; a proposal may already have been saved.",
         ) from None
 
+    result = run.result
     return InvestigationRun(
-        run_id=UUID(run_id),
+        run_id=UUID(run.workflow_id),
         ticket_id=request.ticket_id,
         result=result,
         current_status=get_workflow_status(
             result=result,
             context=InvestigationContext(
-                database_path=request_context.database_path,
+                storage=request_context.storage,
                 employee_id=request_context.employee_id,
             ),
         ),
@@ -504,7 +457,7 @@ def list_investigations(
 ) -> list[InvestigationSummary]:
     _get_accessible_ticket(ticket_id=ticket_id, request_context=request_context)
     return list_investigation_runs(
-        runs_directory=request_context.runs_directory,
+        storage=request_context.storage,
         employee_id=request_context.employee_id,
         ticket_id=ticket_id,
     )
@@ -517,7 +470,7 @@ def read_investigation(
 ) -> InvestigationRun:
     try:
         return get_investigation_run(
-            runs_directory=request_context.runs_directory,
+            storage=request_context.storage,
             run_id=run_id,
             employee_id=request_context.employee_id,
         )
@@ -532,7 +485,6 @@ def review_policy(
     run_id: UUID,
     request_context: RequestContext = Depends(get_request_context),
 ) -> PolicyReview:
-    # 1. Require access to the investigation before invoking the optional judge.
     run = read_investigation(run_id=run_id, request_context=request_context)
     try:
         review = evaluate_policy(
@@ -545,10 +497,9 @@ def review_policy(
             detail="Policy review could not complete; investigation and approval are unchanged",
         ) from None
 
-    # 2. Retain the separate model judgment without changing proposal authority.
     try:
         save_policy_review(
-            runs_directory=request_context.runs_directory,
+            storage=request_context.storage,
             run_id=run_id,
             employee_id=request_context.employee_id,
             review=review,
@@ -557,5 +508,4 @@ def review_policy(
         raise HTTPException(
             status_code=404, detail="Investigation unavailable"
         ) from None
-
     return review

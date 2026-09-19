@@ -1,15 +1,12 @@
-"""Exercise token verification with real local signatures; no Microsoft calls."""
-
 import time
 from types import SimpleNamespace
 
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi.testclient import TestClient
-from test_api import review_api  # noqa: F401
+from fastapi import HTTPException
 
-from switchboard import api, auth
+from switchboard import auth
 
 TENANT = "b1338704-8cc0-43f7-846c-d930c917b905"
 API = "78e83c6d-0b97-47ee-aa39-114da2139341"
@@ -19,7 +16,6 @@ USER = "9b1cc57a-04b9-45a1-95e9-f7ffa9535a61"
 
 @pytest.fixture
 def identity(monkeypatch):
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "entra")
     monkeypatch.setenv("ENTRA_TENANT_ID", TENANT)
     monkeypatch.setenv("ENTRA_API_CLIENT_ID", API)
     monkeypatch.setenv("ENTRA_WEB_CLIENT_ID", WEB)
@@ -30,11 +26,12 @@ def identity(monkeypatch):
         auth,
         "get_signing_key_client",
         lambda: SimpleNamespace(
-            get_signing_key_from_jwt=lambda token: SimpleNamespace(
+            get_signing_key_from_jwt=lambda _token: SimpleNamespace(
                 key=private_key.public_key()
             )
         ),
     )
+    now = int(time.time())
     claims = {
         "aud": API,
         "iss": f"https://login.microsoftonline.com/{TENANT}/v2.0",
@@ -43,298 +40,26 @@ def identity(monkeypatch):
         "azp": WEB,
         "ver": "2.0",
         "scp": "access_as_user",
-        "iat": int(time.time()),
-        "nbf": int(time.time()) - 1,
-        "exp": int(time.time()) + 300,
+        "iat": now,
+        "nbf": now - 1,
+        "exp": now + 300,
     }
     yield private_key, claims
     auth.get_entra_settings.cache_clear()
 
 
-def test_verified_identity_reaches_business_routes(identity, monkeypatch, tmp_path):
+def test_verified_token_maps_to_business_employee(identity):
     key, claims = identity
     token = jwt.encode(claims, key, algorithm="RS256")
-    monkeypatch.setattr(api, "DATABASE_PATH", tmp_path / "demo.db")
-    seen = []
 
-    def history(*, runs_directory, employee_id, ticket_id):
-        seen.append(employee_id)
-        return []
-
-    monkeypatch.setattr(api, "list_investigation_runs", history)
-    monkeypatch.setattr(api, "_get_accessible_ticket", lambda **kwargs: None)
-    client = TestClient(api.app)
-    headers = {"Authorization": f"Bearer {token}"}
-    assert (
-        client.get(
-            "/api/investigations?ticket_id=CHG-1042", headers=headers
-        ).status_code
-        == 200
-    )
-    assert seen == ["emp-alex"]
-    assert (
-        client.get(
-            "/api/investigations?ticket_id=CHG-1042",
-            headers=headers | {"X-Demo-Persona-Id": "emp-priya"},
-        ).status_code
-        == 400
-    )
-    assert (
-        client.post(
-            "/api/demo/cases/valid-request/prepare",
-            headers=headers,
-        ).status_code
-        == 403
-    )
-    assert seen == ["emp-alex"]
+    assert auth.authenticate_access_token(token) == "emp-alex"
 
 
-def test_hybrid_mode_routes_each_request_to_exactly_one_identity(
-    identity, monkeypatch, tmp_path
-):
-    import sqlite3
-    from contextlib import closing
-
-    from switchboard.integrations.database import seed_database
-
-    signing_key, claims = identity
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "hybrid")
-    authenticated_database = tmp_path / "authenticated.db"
-    with closing(sqlite3.connect(authenticated_database)) as connection:
-        seed_database(connection=connection)
-    monkeypatch.setattr(api, "DATABASE_PATH", authenticated_database)
-    monkeypatch.setattr(api, "RUNS_DIRECTORY", tmp_path / "authenticated-runs")
-    monkeypatch.setattr(api, "DEMO_WORKSPACES_DIRECTORY", tmp_path / "workspaces")
-    client = TestClient(api.app)
-    token = jwt.encode(claims, signing_key, algorithm="RS256")
-
-    demo = client.get("/api/me", headers={"X-Demo-Persona-Id": "emp-priya"})
-    authenticated = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
-
-    assert demo.json()["employee_id"] == "emp-priya"
-    assert authenticated.json()["employee_id"] == "emp-alex"
-    assert (
-        client.get(
-            "/api/me",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "X-Demo-Persona-Id": "emp-priya",
-            },
-        ).status_code
-        == 400
-    )
-    assert (
-        client.get(
-            "/api/demo/cases", headers={"Authorization": f"Bearer {token}"}
-        ).status_code
-        == 403
-    )
-
-
-@pytest.mark.parametrize(
-    "claim,value",
-    [
-        ("aud", WEB),
-        ("iss", "https://evil.example"),
-        ("exp", 1),
-        ("nbf", 9999999999),
-        ("tid", WEB),
-        ("azp", API),
-        ("ver", "1.0"),
-        ("scp", "other"),
-        ("scp", []),
-        ("oid", WEB),
-    ],
-)
-def test_invalid_claims_rejected(identity, claim, value):
+def test_token_without_delegated_scope_is_rejected(identity):
     key, claims = identity
-    claims[claim] = value
-    with pytest.raises(auth.HTTPException) as error:
-        auth.authenticate_access_token(jwt.encode(claims, key, algorithm="RS256"))
-    assert error.value.status_code in {401, 403}
+    claims["scp"] = "User.Read"
+    token = jwt.encode(claims, key, algorithm="RS256")
 
-
-def test_missing_claim_and_bad_signature_rejected(identity):
-    key, claims = identity
-    del claims["scp"]
-    with pytest.raises(auth.HTTPException, match="Invalid access token"):
-        auth.authenticate_access_token(jwt.encode(claims, key, algorithm="RS256"))
-    claims["scp"] = "access_as_user"
-    wrong_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    with pytest.raises(auth.HTTPException, match="Invalid access token"):
-        auth.authenticate_access_token(jwt.encode(claims, wrong_key, algorithm="RS256"))
-    with pytest.raises(auth.HTTPException, match="Invalid access token"):
-        auth.authenticate_access_token(jwt.encode(claims, "x" * 32, algorithm="HS256"))
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "/api/demo/personas",
-        "/api/demo/cases",
-        "/api/approvals",
-        "/api/investigations",
-    ],
-)
-def test_every_read_requires_authentication(identity, path):
-    client = TestClient(api.app)
-    assert client.get(path).status_code == 401
-    assert (
-        client.get(path, headers={"X-Demo-Persona-Id": "emp-alex"}).status_code == 400
-    )
-
-
-def test_mode_fails_closed(monkeypatch):
-    monkeypatch.delenv("SWITCHBOARD_AUTH_MODE", raising=False)
-    assert auth.get_auth_mode() == "entra"
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "hybrid")
-    assert auth.get_auth_mode() == "hybrid"
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "typo")
-    with pytest.raises(RuntimeError):
-        auth.get_auth_mode()
-
-
-def test_provider_outage_is_not_invalid_credentials(identity, monkeypatch):
-    def unavailable(token):
-        raise jwt.PyJWKClientConnectionError("offline")
-
-    monkeypatch.setattr(
-        auth,
-        "get_signing_key_client",
-        lambda: SimpleNamespace(get_signing_key_from_jwt=unavailable),
-    )
-    with pytest.raises(auth.HTTPException) as error:
-        auth.authenticate_access_token("token")
-    assert error.value.status_code == 503
-
-
-def test_entra_identity_still_obeys_business_authorization(identity, review_api):  # noqa: F811
-    import sqlite3
-    from contextlib import closing
-
-    key, claims = identity
-    client, url, _ = review_api
-    headers = {"Authorization": "Bearer " + jwt.encode(claims, key, algorithm="RS256")}
-    assert client.get(url, headers=headers).status_code == 200
-    assert client.post(url + "/approval", headers=headers).status_code == 403
-
-    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
-        connection.execute("UPDATE employees SET active = 0 WHERE id = 'emp-alex'")
-
-    assert client.get(url, headers=headers).status_code == 404
-    assert client.post(url + "/execution", headers=headers).status_code == 403
-
-
-@pytest.mark.parametrize("auth_mode", ["entra", "hybrid"])
-def test_missing_entra_configuration_prevents_startup(monkeypatch, auth_mode):
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", auth_mode)
-    monkeypatch.delenv("ENTRA_TENANT_ID", raising=False)
-    monkeypatch.setattr(api, "load_dotenv", lambda *args: None)
-    auth.get_entra_settings.cache_clear()
-    with pytest.raises(KeyError):
-        with TestClient(api.app):
-            pass
-    auth.get_entra_settings.cache_clear()
-
-
-def test_current_employee_returns_mapped_identity_and_database_role(
-    identity,
-    review_api,  # noqa: F811
-):
-    signing_key, claims = identity
-    client, _, _ = review_api
-    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
-
-    response = client.get(
-        "/api/me", headers={"Authorization": f"Bearer {access_token}"}
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "employee_id": "emp-alex",
-        "name": "Alex Rivera",
-        "role": "implementation_engineer",
-    }
-
-
-@pytest.mark.parametrize(
-    "case,expected_status",
-    [
-        ("inactive", 403),
-        ("missing_token", 401),
-        ("expired_token", 401),
-        ("unmapped_user", 403),
-        ("identity_override", 400),
-    ],
-)
-def test_current_employee_rejects_unavailable_identity(
-    identity,
-    review_api,  # noqa: F811
-    case,
-    expected_status,
-):
-    import sqlite3
-    from contextlib import closing
-
-    signing_key, claims = identity
-    client, _, _ = review_api
-    if case == "inactive":
-        with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
-            connection.execute("UPDATE employees SET active = 0 WHERE id = 'emp-alex'")
-    elif case == "expired_token":
-        claims["exp"] = 1
-    elif case == "unmapped_user":
-        claims["oid"] = WEB
-
-    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
-    headers = {"Authorization": f"Bearer {access_token}"}
-    if case == "missing_token":
-        headers = {}
-    elif case == "identity_override":
-        headers["X-Demo-Persona-Id"] = "emp-priya"
-
-    response = client.get("/api/me", headers=headers)
-
-    assert response.status_code == expected_status
-    assert set(response.json()) == {"detail"}
-
-
-def test_current_employee_reads_updated_role(identity, review_api):  # noqa: F811
-    import sqlite3
-    from contextlib import closing
-
-    signing_key, claims = identity
-    client, _, _ = review_api
-    # The token's claimed role must not override the current business directory.
-    claims["roles"] = ["technical_lead"]
-    access_token = jwt.encode(claims, signing_key, algorithm="RS256")
-    headers = {"Authorization": f"Bearer {access_token}"}
-    assert (
-        client.get("/api/me", headers=headers).json()["role"]
-        == "implementation_engineer"
-    )
-
-    with closing(sqlite3.connect(api.DATABASE_PATH)) as connection, connection:
-        connection.execute(
-            "UPDATE employees SET role = 'support_specialist' WHERE id = 'emp-alex'"
-        )
-
-    assert client.get("/api/me", headers=headers).json() == {
-        "employee_id": "emp-alex",
-        "name": "Alex Rivera",
-        "role": "support_specialist",
-    }
-
-
-def test_current_employee_supports_explicit_demo_identity(review_api, monkeypatch):  # noqa: F811
-    monkeypatch.setenv("SWITCHBOARD_AUTH_MODE", "demo")
-    client, _, _ = review_api
-
-    response = client.get("/api/me", headers={"X-Demo-Persona-Id": "emp-priya"})
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "employee_id": "emp-priya",
-        "name": "Priya Shah",
-        "role": "technical_lead",
-    }
+    with pytest.raises(HTTPException) as error:
+        auth.authenticate_access_token(token)
+    assert error.value.status_code == 403

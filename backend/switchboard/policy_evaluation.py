@@ -6,8 +6,8 @@ from pathlib import Path
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import Field
 
-from switchboard.integrations.database import FIXTURES
 from switchboard.models import Record, Text
+from switchboard.scenarios import FIXTURES
 
 
 class PolicyIssue(Record):

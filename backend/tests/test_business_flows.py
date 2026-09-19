@@ -1,0 +1,198 @@
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
+
+import pytest
+from pydantic import HttpUrl
+
+from switchboard.integrations.change_management import (
+    approve_proposal,
+    execute_proposal,
+    get_proposal,
+    list_proposals_awaiting_approval,
+    save_proposal,
+)
+from switchboard.integrations.employee_directory import EmployeeSession
+from switchboard.integrations.support_desk import get_ticket, list_tickets
+from switchboard.models import (
+    EndpointChangeResult,
+    InvestigationFindings,
+    InvestigationResult,
+)
+from switchboard.proposals import validate_proposal
+from switchboard.runs import (
+    get_investigation_run,
+    list_investigation_runs,
+    save_investigation_run,
+)
+
+
+def candidate() -> InvestigationResult:
+    return InvestigationResult(
+        outcome="proposal_candidate",
+        ticket_id="CHG-1042",
+        proposed_endpoint=HttpUrl("https://events.acme.example/deals"),
+        evidence_ids=["CHG-1042", "acme", "int-acme-prod"],
+        findings=InvestigationFindings(
+            overview="Current records support the requested endpoint change.",
+            checks=["The requester and destination are registered."],
+            policy_requirements=["Independent approval is required."],
+            gaps=[],
+            recommendation="Prepare the proposal for review.",
+        ),
+        blockers=[],
+    )
+
+
+def saved_proposal(storage):
+    author = EmployeeSession(storage=storage, employee_id="emp-alex")
+    proposal = validate_proposal(investigation=candidate(), session=author)
+    return save_proposal(proposal=proposal, session=author).proposal
+
+
+def test_customer_access_applies_to_single_and_collection_reads(storage):
+    alex = EmployeeSession(storage=storage, employee_id="emp-alex")
+    ben = EmployeeSession(storage=storage, employee_id="emp-ben")
+
+    assert get_ticket(session=alex, ticket_id="CHG-1042").customer_id == "acme"
+    assert [ticket.id for ticket in list_tickets(session=alex)] == ["CHG-1042"]
+    assert list_tickets(session=ben) == []
+    with pytest.raises(PermissionError, match="Record unavailable"):
+        get_ticket(session=ben, ticket_id="CHG-1042")
+
+
+def test_proposal_save_and_approval_retries_are_idempotent(storage):
+    author = EmployeeSession(storage=storage, employee_id="emp-alex")
+    proposal = validate_proposal(investigation=candidate(), session=author)
+
+    first = save_proposal(proposal=proposal, session=author)
+    second = save_proposal(
+        proposal=proposal.model_copy(update={"id": str(uuid4())}), session=author
+    )
+    reviewer = EmployeeSession(storage=storage, employee_id="emp-priya")
+    first_approval = approve_proposal(proposal_id=first.proposal.id, session=reviewer)
+    retry_approval = approve_proposal(proposal_id=first.proposal.id, session=reviewer)
+
+    assert first.was_created is True
+    assert second.was_created is False
+    assert second.proposal.id == first.proposal.id
+    assert retry_approval.id == first_approval.id
+
+
+def test_only_an_independent_technical_lead_can_approve(storage):
+    proposal = saved_proposal(storage)
+
+    with pytest.raises(PermissionError):
+        approve_proposal(
+            proposal_id=proposal.id,
+            session=EmployeeSession(storage=storage, employee_id="emp-alex"),
+        )
+    with pytest.raises(PermissionError):
+        approve_proposal(
+            proposal_id=proposal.id,
+            session=EmployeeSession(storage=storage, employee_id="emp-ben"),
+        )
+
+    reviewer = EmployeeSession(storage=storage, employee_id="emp-priya")
+    assert [item.id for item in list_proposals_awaiting_approval(session=reviewer)] == [
+        proposal.id
+    ]
+
+
+def test_execution_is_atomic_and_returns_the_same_receipt_on_retry(storage):
+    proposal = saved_proposal(storage)
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    executor = EmployeeSession(storage=storage, employee_id="emp-alex")
+    executed_at = datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc)
+
+    first = execute_proposal(
+        proposal_id=proposal.id, session=executor, executed_at=executed_at
+    )
+    retry = execute_proposal(
+        proposal_id=proposal.id, session=executor, executed_at=executed_at
+    )
+
+    integration = storage.get_integration(integration_id="int-acme-prod")
+    assert first.was_created is True
+    assert retry.was_created is False
+    assert retry.execution.id == first.execution.id
+    assert integration["endpoint"] == "https://events.acme.example/deals"
+    assert integration["version"] == 8
+
+
+def test_execution_rechecks_current_configuration_before_any_write(storage):
+    proposal = saved_proposal(storage)
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    storage.apply_execution(
+        execution={
+            "id": "other-execution",
+            "proposal_id": "other-proposal",
+            "executed_by_employee_id": "emp-alex",
+            "approval_id": None,
+            "executed_at": "2026-09-22T14:10:00+00:00",
+            "previous_configuration_version": 7,
+            "resulting_configuration_version": 8,
+        },
+        integration_id="int-acme-prod",
+        customer_id="acme",
+        expected_version=7,
+        current_endpoint="https://old.acme.example/deals",
+        proposed_endpoint="https://changed.example/deals",
+    )
+
+    with pytest.raises(ValueError, match="no longer matches"):
+        execute_proposal(
+            proposal_id=proposal.id,
+            session=EmployeeSession(storage=storage, employee_id="emp-alex"),
+            executed_at=datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc),
+        )
+    assert storage.get_execution(proposal_id=proposal.id) is None
+
+
+def test_investigation_history_rechecks_original_employee_access(storage):
+    proposal = saved_proposal(storage)
+    run_id = UUID("8f2a6b6e-265f-4d54-a373-8a461285a831")
+    result = EndpointChangeResult(
+        investigation=candidate(), messages=[], proposal=proposal, was_created=True
+    )
+    save_investigation_run(
+        storage=storage,
+        run_id=run_id,
+        ticket_id="CHG-1042",
+        scenario_id="baseline",
+        requester_employee_id="emp-alex",
+        requester_role="implementation_engineer",
+        customer_ids=["acme"],
+        result=result,
+        created_at=datetime(2026, 9, 19, tzinfo=timezone.utc),
+    )
+
+    saved_run = get_investigation_run(
+        storage=storage, run_id=run_id, employee_id="emp-alex"
+    )
+    assert saved_run.result.proposal is not None
+    assert saved_run.result.proposal.id == proposal.id
+    assert (
+        len(
+            list_investigation_runs(
+                storage=storage, employee_id="emp-alex", ticket_id="CHG-1042"
+            )
+        )
+        == 1
+    )
+    with pytest.raises(PermissionError):
+        get_investigation_run(storage=storage, run_id=run_id, employee_id="emp-priya")
+
+
+def test_missing_and_inaccessible_proposals_share_the_same_error(storage):
+    proposal = saved_proposal(storage)
+    ben = EmployeeSession(storage=storage, employee_id="emp-ben")
+
+    for proposal_id in (proposal.id, "missing"):
+        with pytest.raises(PermissionError, match="Record unavailable"):
+            get_proposal(session=ben, proposal_id=proposal_id)

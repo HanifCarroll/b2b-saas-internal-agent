@@ -73,9 +73,7 @@ def get_workflow_status(
         try:
             with employee_session(context) as session:
                 proposal_review = get_proposal_review(
-                    session=session,
-                    proposal_id=result.proposal.id,
-                    database_path=context.database_path,
+                    session=session, proposal_id=result.proposal.id
                 )
                 proposal = proposal_review.proposal
                 approval = proposal_review.approval

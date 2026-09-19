@@ -1,6 +1,7 @@
 """Run live investigation evaluations with pytest and LangSmith."""
 
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from dotenv import load_dotenv
@@ -12,6 +13,7 @@ from switchboard.evaluation_cases import (
     load_investigation_evaluation_cases,
 )
 from switchboard.investigations import investigate_scenario
+from switchboard.storage import WorkspaceStorage
 
 ROOT = Path(__file__).resolve().parent.parent
 EVALUATION_CASES = load_investigation_evaluation_cases()
@@ -19,17 +21,18 @@ EVALUATION_CASES = load_investigation_evaluation_cases()
 
 @pytest.mark.langsmith(test_suite_name="Switchboard investigation evals")
 @pytest.mark.parametrize("case_id", EVALUATION_CASES, ids=EVALUATION_CASES)
-def test_investigation_reaches_expected_outcome(case_id: str, tmp_path: Path) -> None:
+def test_investigation_reaches_expected_outcome(case_id: str) -> None:
     """Run one isolated live-model case and record its evaluation evidence."""
     # 1. Prepare isolated business records for this evaluation case.
     load_dotenv(ROOT / ".env")
     evaluation_case = EVALUATION_CASES[case_id]
-    database_path = tmp_path / "switchboard.db"
-    runs_directory = tmp_path / "workflows"
+    storage = WorkspaceStorage.from_environment(
+        workspace_id=f"eval-{case_id}-{uuid4()}"
+    )
     reset_demo(
-        database_path=database_path,
-        runs_directory=runs_directory,
+        storage=storage,
         scenario_id=evaluation_case.scenario_id,
+        identity_mode="eval",
     )
 
     testing.log_inputs({"scenario_id": evaluation_case.scenario_id})
@@ -44,8 +47,7 @@ def test_investigation_reaches_expected_outcome(case_id: str, tmp_path: Path) ->
     run = investigate_scenario(
         scenario_id=evaluation_case.scenario_id,
         model=create_model(),
-        runs_directory=runs_directory,
-        database_path=database_path,
+        storage=storage,
     )
     investigation = run.result.investigation
     testing.log_outputs(investigation.model_dump(mode="json"))

@@ -38,7 +38,7 @@ class EndpointChangeWorkflowState(TypedDict):
 def investigate_request(
     state: EndpointChangeWorkflowState, runtime: Runtime[EndpointChangeContext]
 ):
-    # 1. Run the investigator; its tools enforce read-only database connections.
+    # 1. Run the investigator; its tools expose only authorized read operations.
     result = runtime.context.agent.invoke(
         {"messages": [HumanMessage(content=state["request"])]},
         context=runtime.context.investigation_context,
@@ -67,11 +67,7 @@ def prepare_proposal(
     # 2. Validate and save using the trusted employee session.
     with employee_session(runtime.context.investigation_context) as session:
         proposal = validate_proposal(investigation=investigation, session=session)
-        saved_proposal = save_proposal(
-            proposal=proposal,
-            session=session,
-            database_path=runtime.context.investigation_context.database_path,
-        )
+        saved_proposal = save_proposal(proposal=proposal, session=session)
         proposal = saved_proposal.proposal
         was_created = saved_proposal.was_created
 

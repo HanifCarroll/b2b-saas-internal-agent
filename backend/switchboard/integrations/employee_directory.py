@@ -1,139 +1,100 @@
 """Trusted employee context and shared customer-access enforcement."""
 
-import json
-import sqlite3
 from typing import get_args
 
 from switchboard.models import Role
+from switchboard.storage import WorkspaceStorage
 
 ROLES = set(get_args(Role))
 CONFIG_ROLES = {"implementation_engineer", "technical_lead"}
 
 
 class EmployeeSession:
-    """Bind identity outside model-controlled arguments. This is not authentication.
+    """Bind trusted identity to one isolated storage workspace."""
 
-    Bind this session in application code before exposing business functions
-    as tools. Never expose the constructor, connection, or arbitrary SQL. Checks reread directory state.
-    """
-
-    def __init__(self, *, db_connection: sqlite3.Connection, employee_id: str):
-        self._db_connection = db_connection
+    def __init__(self, *, storage: WorkspaceStorage, employee_id: str):
+        self._storage = storage
         self._employee_id = employee_id
 
     @property
     def employee_id(self) -> str:
-        """Identity bound by application code, not supplied by the model."""
         return self._employee_id
 
+    @property
+    def storage(self) -> WorkspaceStorage:
+        return self._storage
+
     def get_active_employee_role(self) -> Role:
-        """Return the current employee's role; deny access if inactive or unknown."""
-        # 1. Look up the active employee using the bound identity.
-        row = self._db_connection.execute(
-            "SELECT role FROM employees WHERE id = ? AND active = 1",
-            (self._employee_id,),
-        ).fetchone()
-
-        # 2. Reject unknown identities or roles before returning the role.
-        if row is None or row[0] not in ROLES:
+        employee = self._storage.get_employee(employee_id=self._employee_id)
+        if (
+            employee is None
+            or employee["active"] not in (True, 1)
+            or employee["role"] not in ROLES
+        ):
             raise PermissionError("Access denied")
-
-        return row[0]
+        return employee["role"]
 
     def get_employee_name(self, *, employee_id: str) -> str:
-        """Return an employee's display name to an authorized active employee."""
         self.require_active_employee()
-        row = self._db_connection.execute(
-            "SELECT name FROM employees WHERE id = ?", (employee_id,)
-        ).fetchone()
-        if row is None:
+        name = self._storage.get_employee_name(employee_id=employee_id)
+        if name is None:
             raise PermissionError("Employee unavailable")
-        return row[0]
+        return name
 
     def require_active_employee(self) -> None:
-        """Raise PermissionError unless the employee is active with a recognized role."""
         self.get_active_employee_role()
 
     def require_customer_access(
         self, *, customer_id: str, allowed_roles: set[str]
     ) -> None:
-        """Require an active employee with a recognized role and customer assignment."""
-        # 1. Limit permission to recognized roles, even if the caller supplies others.
-        permitted_roles = sorted(allowed_roles & ROLES)
-        if not permitted_roles:
-            raise PermissionError("Record unavailable")
-
-        # 2. Check existence, identity, role, and assignment without reading the body.
-        role_placeholders = ",".join("?" for _ in permitted_roles)
-        row = self._db_connection.execute(
-            f"""
-            SELECT 1
-            FROM customers AS customer
-            JOIN assignments AS assignment
-              ON assignment.customer_id = customer.id
-            JOIN employees AS employee
-              ON employee.id = assignment.employee_id
-            WHERE customer.id = ?
-              AND employee.id = ?
-              AND employee.active = 1
-              AND employee.role IN ({role_placeholders})
-            """,
-            (customer_id, self._employee_id, *permitted_roles),
-        ).fetchone()
-        if row is None:
+        permitted_roles = allowed_roles & ROLES
+        role = self.get_active_employee_role()
+        assignments = self._storage.get_employee_assignments(
+            employee_id=self._employee_id
+        )
+        if (
+            role not in permitted_roles
+            or customer_id not in assignments
+            or self._storage.get_customer(customer_id=customer_id) is None
+        ):
             raise PermissionError("Record unavailable")
 
     def read_authorized_record(
         self, *, table: str, record_id: str, allowed_roles: set[str]
     ) -> dict:
-        """Authorize and retrieve a record within one consistent database snapshot."""
-        # 1. Keep ownership lookup, authorization, and retrieval in one snapshot.
-        # A savepoint also works inside a caller's transaction without committing it.
-        # table is an internal constant, never a tool argument.
-        customer_column = "id" if table == "customers" else "customer_id"
-        self._db_connection.execute("SAVEPOINT authorized_record_read")
-        try:
-            row = self._db_connection.execute(
-                f"SELECT {customer_column} FROM {table} WHERE id = ?", (record_id,)
-            ).fetchone()
-            if row is None:
-                raise PermissionError("Record unavailable")
+        readers = {
+            "customers": lambda: self._storage.get_customer(customer_id=record_id),
+            "integrations": lambda: self._storage.get_integration(
+                integration_id=record_id
+            ),
+            "tickets": lambda: self._storage.get_ticket(ticket_id=record_id),
+        }
+        if table not in readers:
+            raise ValueError("Unknown business record type")
 
-            # 2. Use the shared permission check before retrieving customer data.
-            self.require_customer_access(
-                customer_id=row[0], allowed_roles=allowed_roles
-            )
-
-            # 3. Retrieve and decode the body only after authorization succeeds.
-            row = self._db_connection.execute(
-                f"SELECT body FROM {table} WHERE id = ?", (record_id,)
-            ).fetchone()
-            return json.loads(row[0])
-        finally:
-            self._db_connection.execute("RELEASE SAVEPOINT authorized_record_read")
+        record = readers[table]()
+        if record is None:
+            raise PermissionError("Record unavailable")
+        customer_id = record["id"] if table == "customers" else record["customer_id"]
+        self.require_customer_access(
+            customer_id=customer_id, allowed_roles=allowed_roles
+        )
+        return record
 
     def read_authorized_records(
         self, *, table: str, allowed_roles: set[str]
     ) -> list[dict]:
-        """Return every record the bound employee may read."""
-        # 1. Reject an inactive or unknown employee even when the table is empty.
+        if table != "tickets":
+            raise ValueError("Unknown business record collection")
         self.require_active_employee()
-        record_ids = self._db_connection.execute(
-            f"SELECT id FROM {table} ORDER BY id"
-        ).fetchall()
 
-        # 2. Reuse the single-record access check for each candidate record.
         records = []
-        for (record_id,) in record_ids:
+        for record in self._storage.list_tickets():
             try:
-                records.append(
-                    self.read_authorized_record(
-                        table=table,
-                        record_id=record_id,
-                        allowed_roles=allowed_roles,
-                    )
+                self.require_customer_access(
+                    customer_id=record["customer_id"], allowed_roles=allowed_roles
                 )
             except PermissionError:
                 continue
-
+            records.append(record)
         return records
