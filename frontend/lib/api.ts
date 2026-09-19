@@ -48,12 +48,15 @@ export type DemoOptions = {
   scenarios: { id: string }[];
   employees: { id: string; name: string; role: string }[];
 };
+export type PersonReference = { id: string; name: string };
 export type Ticket = {
   id: string;
   customer_id: string;
   integration_id: string;
   requester_contact_id: string;
   assigned_employee_id: string;
+  requester: PersonReference;
+  assigned_employee: PersonReference;
   requested_endpoint: string;
   created_at: string;
   status: string;
@@ -152,7 +155,7 @@ export async function requestApi<T>({
   return response.json();
 }
 
-export type CurrentEmployee = { employee_id: string; role: string };
+export type CurrentEmployee = { employee_id: string; name: string; role: string };
 
 export function identityKey(identity: RequestIdentity) {
   return identity.mode === "demo" ? ["demo", identity.employeeId] : ["entra", identity.accountId];

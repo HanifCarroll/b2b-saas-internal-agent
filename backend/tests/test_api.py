@@ -123,9 +123,17 @@ def test_ticket_list_and_detail_use_employee_access(investigation_api):
     tickets = investigation_api.get("/api/tickets", headers=alex)
     assert tickets.status_code == 200
     assert [ticket["id"] for ticket in tickets.json()] == ["CHG-1042"]
-    assert (
-        investigation_api.get("/api/tickets/CHG-1042", headers=alex).status_code == 200
-    )
+    assert tickets.json()[0]["requester"] == {
+        "id": "contact-jordan",
+        "name": "Jordan Lee",
+    }
+    assert tickets.json()[0]["assigned_employee"] == {
+        "id": "emp-alex",
+        "name": "Alex Rivera",
+    }
+    detail = investigation_api.get("/api/tickets/CHG-1042", headers=alex)
+    assert detail.status_code == 200
+    assert detail.json() == tickets.json()[0]
 
     unavailable = investigation_api.get("/api/tickets/CHG-1042", headers=ben)
     missing = investigation_api.get("/api/tickets/missing", headers=alex)

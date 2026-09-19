@@ -201,6 +201,7 @@ def test_current_employee_returns_mapped_identity_and_database_role(
     assert response.status_code == 200
     assert response.json() == {
         "employee_id": "emp-alex",
+        "name": "Alex Rivera",
         "role": "implementation_engineer",
     }
 
@@ -269,6 +270,7 @@ def test_current_employee_reads_updated_role(identity, review_api):  # noqa: F81
 
     assert client.get("/api/me", headers=headers).json() == {
         "employee_id": "emp-alex",
+        "name": "Alex Rivera",
         "role": "support_specialist",
     }
 
@@ -280,4 +282,8 @@ def test_current_employee_supports_explicit_demo_identity(review_api, monkeypatc
     response = client.get("/api/me", headers={"X-Employee-Id": "emp-priya"})
 
     assert response.status_code == 200
-    assert response.json() == {"employee_id": "emp-priya", "role": "technical_lead"}
+    assert response.json() == {
+        "employee_id": "emp-priya",
+        "name": "Priya Shah",
+        "role": "technical_lead",
+    }

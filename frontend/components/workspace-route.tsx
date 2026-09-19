@@ -91,7 +91,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const history = historyQueryResult.data ?? [];
   const run = selectedRun.isError ? null : (selectedRun.data ?? null);
   const employeeRecord = options?.employees.find((item) => item.id === employee);
-  const employeeName = employeeRecord?.name ?? employee;
+  const employeeName = employeeRecord?.name ?? currentEmployee?.name ?? employee;
   const employeeRole = employeeRecord?.role ?? currentEmployee?.role ?? null;
 
   // 2. Mutations run only on explicit user actions and never retry paid calls.
@@ -379,7 +379,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                       <Database className="size-4" aria-hidden="true" />
                       {selectedTicket.integration_id}
                     </span>
-                    <span>Owner: {employeeName}</span>
+                    <span>Owner: {selectedTicket.assigned_employee.name}</span>
                     <Badge variant="secondary" className="capitalize">
                       {run?.current_status.title ?? selectedTicket.status}
                     </Badge>
@@ -465,7 +465,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                     <dt className="text-muted-foreground">Integration</dt>
                     <dd>{selectedTicket.integration_id}</dd>
                     <dt className="text-muted-foreground">Assigned to</dt>
-                    <dd>{selectedTicket.assigned_employee_id}</dd>
+                    <dd>{selectedTicket.assigned_employee.name}</dd>
                   </dl>
                 </section>
 

@@ -87,7 +87,7 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
             "CREATE TABLE customers (id TEXT PRIMARY KEY, body TEXT NOT NULL)"
         )
         connection.execute(
-            "CREATE TABLE employees (id TEXT PRIMARY KEY, active INTEGER NOT NULL CHECK(active IN (0,1)), role TEXT NOT NULL)"
+            "CREATE TABLE employees (id TEXT PRIMARY KEY, name TEXT NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)), role TEXT NOT NULL)"
         )
         connection.execute(
             "CREATE TABLE assignments (employee_id TEXT REFERENCES employees(id), customer_id TEXT REFERENCES customers(id), PRIMARY KEY(employee_id, customer_id))"
@@ -128,8 +128,8 @@ def seed_database(*, connection: sqlite3.Connection, data_dir: Path = FIXTURES) 
 
         for record in fixtures["employees"]:
             connection.execute(
-                "INSERT INTO employees VALUES (?, ?, ?)",
-                (record["id"], record["active"], record["role"]),
+                "INSERT INTO employees VALUES (?, ?, ?, ?)",
+                (record["id"], record["name"], record["active"], record["role"]),
             )
             connection.executemany(
                 "INSERT INTO assignments VALUES (?, ?)",

@@ -24,6 +24,8 @@ const ticket = {
   integration_id: "int-acme-prod",
   requester_contact_id: "contact-jordan",
   assigned_employee_id: "emp-alex",
+  requester: { id: "contact-jordan", name: "Jordan Lee" },
+  assigned_employee: { id: "emp-alex", name: "Alex Rivera" },
   requested_endpoint: "https://events.acme.example/deals",
   created_at: "2026-09-22T13:30:00Z",
   status: "open",
@@ -64,6 +66,7 @@ test("ticket detail starts an investigation for the displayed ticket", (t) => {
   );
 
   assert.ok(screen.getByRole("heading", { name: "Request summary" }));
+  assert.ok(screen.getByText("Jordan Lee"));
   fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
   assert.equal(investigated, "CHG-1042");
 });

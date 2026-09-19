@@ -86,7 +86,11 @@ test("recognized employee opens the workspace; sign-out immediately hides it", a
   t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit) => {
     assert.equal(path, "/api/me");
     assert.equal(new Headers(options.headers).get("Authorization"), "Bearer token");
-    return Response.json({ employee_id: "emp-alex", role: "implementation_engineer" });
+    return Response.json({
+      employee_id: "emp-alex",
+      name: "Alex Rivera",
+      role: "implementation_engineer",
+    });
   });
   mount(t);
   await screen.findByText("Workspace emp-alex");
@@ -160,7 +164,7 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
         runId="run"
         proposalId="proposal"
         identity={{ mode: "entra", accountId: "alex", getAccessToken: async () => "token" }}
-        currentEmployee={{ employee_id: "emp-alex", role: "technical_lead" }}
+        currentEmployee={{ employee_id: "emp-alex", name: "Alex Rivera", role: "technical_lead" }}
         employees={[]}
         onStatusRefresh={async () => {}}
       />
@@ -179,7 +183,11 @@ test("signed-in workspace puts account controls in the application sidebar", asy
   t.after(cleanup);
   t.mock.method(globalThis, "fetch", async (path: string) => {
     if (path === "/api/me")
-      return Response.json({ employee_id: "emp-alex", role: "implementation_engineer" });
+      return Response.json({
+        employee_id: "emp-alex",
+        name: "Alex Rivera",
+        role: "implementation_engineer",
+      });
     if (path === "/api/demo-options") return Response.json({ employees: [], scenarios: [] });
     if (path === "/api/demo") return Response.json({ scenario_id: "baseline" });
     if (path === "/api/tickets")
@@ -190,6 +198,8 @@ test("signed-in workspace puts account controls in the application sidebar", asy
           integration_id: "int-acme-prod",
           requester_contact_id: "contact-jordan",
           assigned_employee_id: "emp-alex",
+          requester: { id: "contact-jordan", name: "Jordan Lee" },
+          assigned_employee: { id: "emp-alex", name: "Alex Rivera" },
           requested_endpoint: "https://events.acme.example/deals",
           created_at: "2026-09-22T13:30:00Z",
           status: "open",
@@ -205,7 +215,7 @@ test("signed-in workspace puts account controls in the application sidebar", asy
     </WorkspaceProvider>,
   );
   const sidebar = await screen.findByRole("complementary");
-  await waitFor(() => assert.match(sidebar.textContent!, /emp-alex/));
+  await waitFor(() => assert.match(sidebar.textContent!, /Alex Rivera/));
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Switch" })));
   assert.ok(sidebar.contains(screen.getByRole("button", { name: "Sign out" })));
   assert.ok(screen.getByRole("heading", { name: "My work" }));

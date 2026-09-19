@@ -2,7 +2,7 @@
 
 import json
 
-from switchboard.models import Ticket
+from switchboard.models import PersonReference, Ticket, TicketDetails
 
 from .employee_directory import ROLES, EmployeeSession
 
@@ -40,3 +40,32 @@ def list_tickets(*, session: EmployeeSession) -> list[Ticket]:
     """Return tickets assigned to customers the employee may access."""
     records = session.read_authorized_records(table="tickets", allowed_roles=ROLES)
     return [_validate_ticket(record) for record in records]
+
+
+def get_ticket_details(*, session: EmployeeSession, ticket: Ticket) -> TicketDetails:
+    """Add current display names to an already authorized ticket."""
+    customer = session.read_authorized_record(
+        table="customers", record_id=ticket.customer_id, allowed_roles=ROLES
+    )
+    requester = next(
+        (
+            contact
+            for contact in customer["authorized_contacts"]
+            if contact["id"] == ticket.requester_contact_id
+        ),
+        None,
+    )
+    if requester is None:
+        raise ValueError("Ticket requester is unavailable")
+
+    return TicketDetails(
+        **ticket.model_dump(),
+        requester=PersonReference(
+            id=ticket.requester_contact_id,
+            name=requester["name"],
+        ),
+        assigned_employee=PersonReference(
+            id=ticket.assigned_employee_id,
+            name=session.get_employee_name(employee_id=ticket.assigned_employee_id),
+        ),
+    )

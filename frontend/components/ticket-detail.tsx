@@ -31,7 +31,7 @@ export function TicketDetail({
           <Contact className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
           <div>
             <dt className="text-muted-foreground">Requester</dt>
-            <dd className="mt-1 font-medium">{ticket.requester_contact_id}</dd>
+            <dd className="mt-1 font-medium">{ticket.requester.name}</dd>
           </div>
         </div>
         <div className="flex gap-3">

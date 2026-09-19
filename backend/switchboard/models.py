@@ -82,6 +82,16 @@ class Ticket(Record):
     body: Text
 
 
+class PersonReference(Record):
+    id: Text
+    name: Text
+
+
+class TicketDetails(Ticket):
+    requester: PersonReference
+    assigned_employee: PersonReference
+
+
 class Proposal(Record):
     """A proposed endpoint change; its existence does not authorize execution."""
 

@@ -26,7 +26,11 @@ from switchboard.integrations.change_management import (
     list_proposals_awaiting_approval,
 )
 from switchboard.integrations.database import DATABASE_PATH, FIXTURES
-from switchboard.integrations.support_desk import get_ticket, list_tickets
+from switchboard.integrations.support_desk import (
+    get_ticket,
+    get_ticket_details,
+    list_tickets,
+)
 from switchboard.investigations import investigate_ticket
 from switchboard.models import (
     Approval,
@@ -35,6 +39,7 @@ from switchboard.models import (
     Proposal,
     Role,
     Ticket,
+    TicketDetails,
 )
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
 from switchboard.runs import (
@@ -88,6 +93,7 @@ app = FastAPI(
 
 class CurrentEmployee(BaseModel):
     employee_id: str
+    name: str
     role: Role
 
 
@@ -100,6 +106,7 @@ def read_current_employee(
         with employee_session(context) as session:
             return CurrentEmployee(
                 employee_id=session.employee_id,
+                name=session.get_employee_name(employee_id=session.employee_id),
                 role=session.get_active_employee_role(),
             )
     except PermissionError:
@@ -333,22 +340,30 @@ def _get_accessible_ticket(*, ticket_id: str, employee_id: str) -> Ticket:
         raise HTTPException(status_code=404, detail="Ticket unavailable") from None
 
 
-@app.get("/api/tickets", response_model=list[Ticket])
+@app.get("/api/tickets", response_model=list[TicketDetails])
 def read_tickets(
     employee_id: str = Depends(get_request_employee_id),
-) -> list[Ticket]:
+) -> list[TicketDetails]:
     try:
         with employee_session(_ticket_context(employee_id=employee_id)) as session:
-            return list_tickets(session=session)
+            return [
+                get_ticket_details(session=session, ticket=ticket)
+                for ticket in list_tickets(session=session)
+            ]
     except PermissionError:
         raise HTTPException(status_code=403, detail="Employee unavailable") from None
 
 
-@app.get("/api/tickets/{ticket_id}", response_model=Ticket)
+@app.get("/api/tickets/{ticket_id}", response_model=TicketDetails)
 def read_ticket(
     ticket_id: str, employee_id: str = Depends(get_request_employee_id)
-) -> Ticket:
-    return _get_accessible_ticket(ticket_id=ticket_id, employee_id=employee_id)
+) -> TicketDetails:
+    try:
+        with employee_session(_ticket_context(employee_id=employee_id)) as session:
+            ticket = get_ticket(session=session, ticket_id=ticket_id)
+            return get_ticket_details(session=session, ticket=ticket)
+    except PermissionError:
+        raise HTTPException(status_code=404, detail="Ticket unavailable") from None
 
 
 @app.post("/api/investigations", response_model=InvestigationRun)

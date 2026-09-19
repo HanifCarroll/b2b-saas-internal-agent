@@ -40,6 +40,16 @@ class EmployeeSession:
 
         return row[0]
 
+    def get_employee_name(self, *, employee_id: str) -> str:
+        """Return an employee's display name to an authorized active employee."""
+        self.require_active_employee()
+        row = self._db_connection.execute(
+            "SELECT name FROM employees WHERE id = ?", (employee_id,)
+        ).fetchone()
+        if row is None:
+            raise PermissionError("Employee unavailable")
+        return row[0]
+
     def require_active_employee(self) -> None:
         """Raise PermissionError unless the employee is active with a recognized role."""
         self.get_active_employee_role()
