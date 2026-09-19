@@ -1,14 +1,5 @@
+import { Clock3, RefreshCw } from "lucide-react";
 import type { InvestigationHistoryItem } from "@/lib/api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
 export function InvestigationHistory({
@@ -25,47 +16,42 @@ export function InvestigationHistory({
   onRefresh: () => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Saved investigations</CardTitle>
-        <CardDescription>Completed runs for this ticket and employee.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <Field>
-          <FieldLabel htmlFor="history">Open a previous run</FieldLabel>
-          <Select
-            items={history.map((item) => ({
-              value: item.run_id,
-              label: `${item.outcome === "blocked" ? "Blocked" : "Proposal"} · ${item.run_id.slice(0, 8)}`,
-            }))}
-            disabled={busy}
-            value={selectedRunId}
-            onValueChange={(value) => {
-              if (value) onOpenRun(value);
-            }}
-          >
-            <SelectTrigger id="history" className="w-full">
-              <SelectValue placeholder="Choose a run" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {history.map((item) => (
-                  <SelectItem key={item.run_id} value={item.run_id}>
-                    {item.outcome === "blocked" ? "Blocked" : "Proposal"} ·{" "}
-                    {item.run_id.slice(0, 8)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Button variant="outline" disabled={busy} onClick={onRefresh}>
-          Refresh history
+    <section className="border-t pt-6" aria-labelledby="activity-title">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="activity-title" className="flex items-center gap-2 font-semibold">
+          <Clock3 className="size-4" aria-hidden="true" />
+          Investigation history
+        </h2>
+        <Button variant="ghost" size="icon-sm" disabled={busy} onClick={onRefresh}>
+          <RefreshCw className="size-4" />
+          <span className="sr-only">Refresh history</span>
         </Button>
+      </div>
+      <div className="mt-4 flex flex-col gap-2">
+        {history.map((item) => (
+          <button
+            key={item.run_id}
+            type="button"
+            className={`rounded-lg border px-3 py-3 text-left text-sm transition-colors ${
+              selectedRunId === item.run_id ? "border-blue-300 bg-blue-50" : "hover:bg-slate-50"
+            }`}
+            disabled={busy}
+            onClick={() => onOpenRun(item.run_id)}
+          >
+            <span className="block font-medium capitalize">
+              {item.outcome === "blocked" ? "Investigation blocked" : "Proposal prepared"}
+            </span>
+            <span className="mt-1 block font-mono text-xs text-muted-foreground">
+              Run {item.run_id.slice(0, 8)}
+            </span>
+          </button>
+        ))}
         {!history.length && (
-          <p className="text-sm text-muted-foreground">No accessible completed runs yet.</p>
+          <p className="text-sm leading-6 text-muted-foreground">
+            No completed investigations for this request yet.
+          </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

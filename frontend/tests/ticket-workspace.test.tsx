@@ -15,6 +15,7 @@ Object.assign(globalThis, {
 const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
 const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
+const { WorkflowProgress } = await import("../components/workflow-progress");
 
 const ticket = {
   id: "CHG-1042",
@@ -45,6 +46,7 @@ test("ticket list selects an accessible work item", (t) => {
 
   fireEvent.click(screen.getByRole("button", { name: /CHG-1042/ }));
   assert.equal(selected, "CHG-1042");
+  assert.ok(screen.getByText("int-acme-prod"));
 });
 
 test("ticket detail starts an investigation for the displayed ticket", (t) => {
@@ -60,7 +62,26 @@ test("ticket detail starts an investigation for the displayed ticket", (t) => {
     />,
   );
 
-  assert.ok(screen.getByText(ticket.subject));
-  fireEvent.click(screen.getByRole("button", { name: "Investigate ticket" }));
+  assert.ok(screen.getByRole("heading", { name: "Request summary" }));
+  fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
   assert.equal(investigated, "CHG-1042");
+});
+
+test("workflow keeps human review separate from execution", (t) => {
+  t.after(cleanup);
+  render(
+    <WorkflowProgress
+      hasInvestigation
+      hasProposal
+      status={{
+        code: "awaiting_approval",
+        title: "Awaiting approval",
+        next_action: "Review the proposal",
+      }}
+    />,
+  );
+
+  const lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
+  assert.match(lifecycle.textContent!, /ReviewIn progress/);
+  assert.match(lifecycle.textContent!, /ExecuteLocked/);
 });

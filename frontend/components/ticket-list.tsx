@@ -1,7 +1,6 @@
+import { ChevronRight } from "lucide-react";
 import type { Ticket } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function TicketList({
   tickets,
@@ -14,34 +13,66 @@ export function TicketList({
   busy: boolean;
   onSelect: (ticketId: string) => void;
 }) {
+  if (!tickets.length) {
+    return (
+      <div className="grid min-h-64 place-items-center border-t text-center">
+        <div>
+          <p className="font-medium">No assigned requests</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Requests available to this employee will appear here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Assigned tickets</CardTitle>
-        <CardDescription>Customer requests available to your employee account.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {tickets.map((ticket) => (
-          <Button
-            key={ticket.id}
-            variant={selectedTicketId === ticket.id ? "secondary" : "outline"}
-            className="h-auto min-w-0 justify-start whitespace-normal px-4 py-3 text-left"
-            disabled={busy}
-            onClick={() => onSelect(ticket.id)}
-          >
-            <span className="min-w-0">
-              <span className="flex items-center gap-2">
-                <span className="font-semibold">{ticket.id}</span>
-                <Badge variant="outline">{ticket.status}</Badge>
-              </span>
-              <span className="mt-1 block text-sm font-normal text-muted-foreground">
-                {ticket.subject}
-              </span>
+    <div className="border-t" aria-label="Assigned requests">
+      <div className="hidden grid-cols-[110px_minmax(0,1fr)_150px_120px_28px] gap-4 border-b bg-slate-50/70 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
+        <span>ID</span>
+        <span>Request</span>
+        <span>Integration</span>
+        <span>Created</span>
+        <span />
+      </div>
+      {tickets.map((ticket) => (
+        <button
+          key={ticket.id}
+          type="button"
+          className={`grid w-full min-w-0 grid-cols-[1fr_24px] items-center gap-4 border-b px-5 py-4 text-left transition-colors md:grid-cols-[110px_minmax(0,1fr)_150px_120px_28px] ${
+            selectedTicketId === ticket.id ? "bg-blue-50/80" : "bg-white hover:bg-slate-50"
+          }`}
+          disabled={busy}
+          onClick={() => onSelect(ticket.id)}
+        >
+          <span className="hidden font-medium text-slate-700 md:block">{ticket.id}</span>
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 md:hidden">
+              <span className="font-medium">{ticket.id}</span>
+              <Badge variant="outline" className="capitalize">
+                {ticket.status}
+              </Badge>
             </span>
-          </Button>
-        ))}
-        {!tickets.length && <p className="text-sm text-muted-foreground">No accessible tickets.</p>}
-      </CardContent>
-    </Card>
+            <span className="block truncate font-medium text-slate-950">{ticket.subject}</span>
+            <span className="mt-1 block truncate text-sm text-muted-foreground">
+              {ticket.customer_id} · {ticket.integration_id}
+            </span>
+          </span>
+          <span className="hidden min-w-0 md:block">
+            <Badge variant="secondary" className="max-w-full truncate">
+              {ticket.integration_id}
+            </Badge>
+          </span>
+          <span className="hidden text-sm text-muted-foreground md:block">
+            {new Date(ticket.created_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </span>
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+        </button>
+      ))}
+    </div>
   );
 }

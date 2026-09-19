@@ -1,7 +1,6 @@
+import { CalendarClock, Contact, Link2 } from "lucide-react";
 import type { Ticket } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function TicketDetail({
   ticket,
@@ -13,35 +12,47 @@ export function TicketDetail({
   onInvestigate: (ticketId: string) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>{ticket.subject}</CardTitle>
-          <Badge variant="secondary">{ticket.status}</Badge>
+    <section className="border-b pb-7" aria-labelledby="request-summary-title">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="request-summary-title" className="text-lg font-semibold">
+            Request summary
+          </h2>
+          <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            {ticket.body}
+          </p>
         </div>
-        <CardDescription>
-          {ticket.id} · Customer {ticket.customer_id} · Integration {ticket.integration_id}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{ticket.body}</p>
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground">Requested endpoint</dt>
-            <dd className="break-all">{ticket.requested_endpoint}</dd>
-          </div>
+        <Button disabled={busy} onClick={() => onInvestigate(ticket.id)}>
+          {busy ? "Investigating…" : "Start investigation"}
+        </Button>
+      </div>
+      <dl className="mt-6 grid gap-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
+        <div className="flex gap-3">
+          <Contact className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
           <div>
             <dt className="text-muted-foreground">Requester</dt>
-            <dd>{ticket.requester_contact_id}</dd>
+            <dd className="mt-1 font-medium">{ticket.requester_contact_id}</dd>
           </div>
-        </dl>
-        <Button disabled={busy} onClick={() => onInvestigate(ticket.id)}>
-          Investigate ticket
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Uses the configured model and current business records. It may take a minute.
-        </p>
-      </CardContent>
-    </Card>
+        </div>
+        <div className="flex gap-3">
+          <Link2 className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <dt className="text-muted-foreground">Requested endpoint</dt>
+            <dd className="mt-1 break-all font-mono text-xs">{ticket.requested_endpoint}</dd>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <CalendarClock className="mt-0.5 size-4 text-muted-foreground" aria-hidden="true" />
+          <div>
+            <dt className="text-muted-foreground">Requested</dt>
+            <dd className="mt-1 font-medium">{new Date(ticket.created_at).toLocaleString()}</dd>
+          </div>
+        </div>
+      </dl>
+      <p className="mt-5 text-xs text-muted-foreground">
+        The investigation uses the configured model and current business records. It may take a
+        minute.
+      </p>
+    </section>
   );
 }

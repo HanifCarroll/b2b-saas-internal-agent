@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   requestApi,
   proposalReviewQuery,
@@ -11,16 +12,7 @@ import {
   type CurrentEmployee,
   type ExecuteProposalResult,
 } from "@/lib/api";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -64,7 +56,7 @@ export function ProposalReview({
     proposalReviewQuery({ identity: reviewerIdentity, runId, proposalId }),
   );
 
-  // 2. Refresh confirmed records after success or an uncertain failure; never retry approval automatically.
+  // 2. Refresh confirmed records after success or an uncertain failure; never retry writes.
   const approval = useMutation({
     mutationFn: () =>
       requestApi<Approval>({
@@ -100,145 +92,167 @@ export function ProposalReview({
   const review = !error && !busy ? reviewQuery.data : undefined;
 
   return (
-    <section className="flex flex-col gap-4" aria-label="Proposal review" aria-live="polite">
-      {identity.mode === "demo" && (
-        <Field>
-          <FieldLabel htmlFor="reviewer">Review or execute as</FieldLabel>
-          <Select
-            items={employees.map((item) => ({
-              value: item.id,
-              label: `${item.name} · ${item.role.replaceAll("_", " ")}`,
-            }))}
-            disabled={busy}
-            value={employee}
-            onValueChange={(value) => {
-              if (!value) return;
-              setEmployee(value);
-              approval.reset();
-              execution.reset();
-            }}
-          >
-            <SelectTrigger id="reviewer" className="w-full">
-              <SelectValue placeholder="Select an option" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {employees.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name} · {item.role.replaceAll("_", " ")}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <FieldDescription>
-            Simulated identity. Current customer access and action permissions are checked by the
-            server.
-          </FieldDescription>
-        </Field>
-      )}
+    <section className="py-7" aria-label="Proposal review" aria-live="polite">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        {identity.mode === "demo" && (
+          <Field className="w-full max-w-sm">
+            <FieldLabel htmlFor="reviewer">Review or execute as</FieldLabel>
+            <Select
+              items={employees.map((item) => ({
+                value: item.id,
+                label: `${item.name} · ${item.role.replaceAll("_", " ")}`,
+              }))}
+              disabled={busy}
+              value={employee}
+              onValueChange={(value) => {
+                if (!value) return;
+                setEmployee(value);
+                approval.reset();
+                execution.reset();
+              }}
+            >
+              <SelectTrigger id="reviewer" className="w-full">
+                <SelectValue placeholder="Select an option" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {employees.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name} · {item.role.replaceAll("_", " ")}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Simulated identity. Access and action permissions are checked by the server.
+            </FieldDescription>
+          </Field>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            approval.reset();
+            execution.reset();
+            void reviewQuery.refetch();
+            void onStatusRefresh();
+          }}
+        >
+          <RefreshCw className="size-4" />
+          Refresh proposal
+        </Button>
+      </div>
+
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mt-5">
           <AlertTitle>Review unavailable</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <Button
-        variant="outline"
-        disabled={busy}
-        onClick={() => {
-          approval.reset();
-          execution.reset();
-          void reviewQuery.refetch();
-          void onStatusRefresh();
-        }}
-      >
-        Refresh proposal
-      </Button>
+
       {review && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <CardTitle>{review.proposal.ticket_id}</CardTitle>
-              <Badge variant={review.approval ? "default" : "secondary"}>
-                {review.current_status.title}
-              </Badge>
-            </div>
-            <CardDescription>
-              {review.proposal.customer_id} · {review.proposal.integration_id} ·{" "}
-              {review.proposal.environment}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            {review.execution && (
-              <Alert>
-                <CheckCircle2 />
-                <AlertTitle>Configuration updated — delivery not yet verified</AlertTitle>
-                <AlertDescription>
-                  <p>
-                    {review.execution.executed_by_employee_id} ·{" "}
-                    {new Date(review.execution.executed_at).toLocaleString()}
-                  </p>
-                  <p>
-                    Version {review.execution.previous_configuration_version} →{" "}
-                    {review.execution.resulting_configuration_version}
-                  </p>
-                  <p className="break-all">Receipt: {review.execution.id}</p>
-                  {execution.data && (
-                    <p>
-                      {execution.data.was_created
-                        ? "This request updated the configuration."
-                        : "Already executed; no change repeated."}
-                    </p>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-            <div className="flex flex-col gap-3 rounded-lg border p-5">
-              <p className="text-xs font-medium uppercase text-muted-foreground">
-                Endpoint when proposed
-              </p>
-              <p className="break-all font-mono text-sm">{review.proposal.current_endpoint}</p>
-              <ArrowRight className="size-5 text-muted-foreground" />
-              <p className="text-xs font-medium uppercase text-muted-foreground">
-                Proposed endpoint
-              </p>
-              <p className="break-all font-mono text-sm">{review.proposal.proposed_endpoint}</p>
-            </div>
-            <dl className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Expected configuration version</dt>
-                <dd className="mt-1 font-medium">
-                  {review.proposal.expected_configuration_version}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Proposed by</dt>
-                <dd className="mt-1 font-medium">{review.proposal.proposed_by_employee_id}</dd>
-              </div>
-            </dl>
-            <Alert>
-              <AlertTitle>Recovery plan: manual intervention</AlertTitle>
+        <div className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">Proposed change</h2>
+            <Badge variant={review.approval ? "default" : "secondary"}>
+              {review.current_status.title}
+            </Badge>
+          </div>
+
+          {review.execution && (
+            <Alert className="mt-5 border-emerald-200 bg-emerald-50/70">
+              <CheckCircle2 />
+              <AlertTitle>Configuration updated — delivery not yet verified</AlertTitle>
               <AlertDescription>
-                If delivery verification fails, stop and request manual intervention. No automatic
-                rollback is authorized.
+                <p>
+                  {review.execution.executed_by_employee_id} ·{" "}
+                  {new Date(review.execution.executed_at).toLocaleString()}
+                </p>
+                <p>
+                  Version {review.execution.previous_configuration_version} →{" "}
+                  {review.execution.resulting_configuration_version}
+                </p>
+                <p className="break-all">Receipt: {review.execution.id}</p>
+                {execution.data && (
+                  <p>
+                    {execution.data.was_created
+                      ? "This request updated the configuration."
+                      : "Already executed; no change repeated."}
+                  </p>
+                )}
               </AlertDescription>
             </Alert>
-            {review.approval && (
-              <Alert>
-                <CheckCircle2 />
-                <AlertTitle>Stored approval</AlertTitle>
-                <AlertDescription>
-                  <p>
-                    {review.approval.approved_by_employee_id} ·{" "}
-                    {new Date(review.approval.created_at).toLocaleString()}
-                  </p>
-                  <p className="break-all">Receipt: {review.approval.id}</p>
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-          <CardFooter className="flex flex-col items-start gap-3">
+          )}
+
+          <div className="mt-4 grid items-center gap-3 rounded-lg border bg-slate-50/60 p-5 md:grid-cols-[1fr_auto_1fr]">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Before
+              </p>
+              <p className="mt-2 break-all rounded-md bg-white p-3 font-mono text-xs">
+                {review.proposal.current_endpoint}
+              </p>
+            </div>
+            <ArrowRight className="size-5 rotate-90 text-muted-foreground md:rotate-0" />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                After
+              </p>
+              <p className="mt-2 break-all rounded-md border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs text-emerald-950">
+                {review.proposal.proposed_endpoint}
+              </p>
+            </div>
+          </div>
+
+          <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-muted-foreground">Expected configuration version</dt>
+              <dd className="mt-1 font-medium">{review.proposal.expected_configuration_version}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Proposed by</dt>
+              <dd className="mt-1 font-medium">{review.proposal.proposed_by_employee_id}</dd>
+            </div>
+          </dl>
+
+          <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
+            <div className="flex gap-3">
+              <ShieldCheck className="mt-0.5 size-5 text-amber-700" aria-hidden="true" />
+              <div>
+                <p className="font-semibold text-amber-950">Independent approval required</p>
+                <p className="mt-1 text-sm leading-6 text-amber-900">
+                  Production changes require an authorized reviewer who is different from the
+                  proposer. Approval records the decision; it does not execute the change.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Alert className="mt-5">
+            <AlertTitle>Recovery plan: manual intervention</AlertTitle>
+            <AlertDescription>
+              If delivery verification fails, stop and request manual intervention. No automatic
+              rollback is authorized.
+            </AlertDescription>
+          </Alert>
+
+          {review.approval && (
+            <Alert className="mt-5 border-emerald-200 bg-emerald-50/70">
+              <CheckCircle2 />
+              <AlertTitle>Stored approval</AlertTitle>
+              <AlertDescription>
+                <p>
+                  {review.approval.approved_by_employee_id} ·{" "}
+                  {new Date(review.approval.created_at).toLocaleString()}
+                </p>
+                <p className="break-all">Receipt: {review.approval.id}</p>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t pt-5">
             <Button
               onClick={() => approval.mutate()}
               disabled={
@@ -249,40 +263,35 @@ export function ProposalReview({
             >
               Approve this proposal
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Records approval of this saved proposal, including its recovery plan. Does not execute
-              the change. Delivery verification is a separate step.
-            </p>
             {!review.execution && (
-              <>
-                <Button
-                  disabled={
-                    busy ||
-                    !["approval_recorded", "approval_not_required"].includes(
-                      review.current_status.code,
-                    ) ||
-                    !["implementation_engineer", "technical_lead"].includes(role ?? "")
+              <Button
+                variant="outline"
+                disabled={
+                  busy ||
+                  !["approval_recorded", "approval_not_required"].includes(
+                    review.current_status.code,
+                  ) ||
+                  !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Execute ${review.proposal.ticket_id}? Change ${review.proposal.integration_id} (${review.proposal.environment}) from ${review.proposal.current_endpoint} to ${review.proposal.proposed_endpoint}. Recovery requires manual intervention. This does not verify delivery.`,
+                    )
+                  ) {
+                    execution.mutate();
                   }
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Execute ${review.proposal.ticket_id}? Change ${review.proposal.integration_id} (${review.proposal.environment}) from ${review.proposal.current_endpoint} to ${review.proposal.proposed_endpoint}. Recovery requires manual intervention. This does not verify delivery.`,
-                      )
-                    ) {
-                      execution.mutate();
-                    }
-                  }}
-                >
-                  Execute change
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Execution uses the server’s actual UTC time. Production changes must be inside the
-                  registered change window.
-                </p>
-              </>
+                }}
+              >
+                Execute change
+              </Button>
             )}
-          </CardFooter>
-        </Card>
+            <p className="max-w-xl text-xs leading-5 text-muted-foreground">
+              Execution uses the server’s UTC time and requires a valid change window. Delivery
+              verification remains a separate step.
+            </p>
+          </div>
+        </div>
       )}
     </section>
   );

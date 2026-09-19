@@ -160,7 +160,7 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
 });
 
 const { default: Home } = await import("../app/page");
-test("signed-in workspace has one header with account controls", async (t) => {
+test("signed-in workspace puts account controls in the application sidebar", async (t) => {
   account = { tenantId: "tenant", homeAccountId: "alex" };
   t.after(cleanup);
   t.mock.method(globalThis, "fetch", async (path: string) => {
@@ -171,10 +171,9 @@ test("signed-in workspace has one header with account controls", async (t) => {
     return Response.json([]);
   });
   render(<Home />);
-  const header = await screen.findByRole("banner");
-  await waitFor(() => assert.match(header.textContent!, /Signed in as emp-alex/));
-  assert.equal(screen.getAllByRole("banner").length, 1);
-  assert.ok(header.contains(screen.getByRole("button", { name: "Switch account" })));
-  assert.ok(header.contains(screen.getByRole("button", { name: "Sign out" })));
-  assert.equal(screen.queryByText("Microsoft sign-in"), null);
+  const sidebar = await screen.findByRole("complementary");
+  await waitFor(() => assert.match(sidebar.textContent!, /emp-alex/));
+  assert.ok(sidebar.contains(screen.getByRole("button", { name: "Switch" })));
+  assert.ok(sidebar.contains(screen.getByRole("button", { name: "Sign out" })));
+  assert.ok(screen.getByRole("heading", { name: "My work" }));
 });
