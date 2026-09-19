@@ -122,7 +122,7 @@ def get_request_employee_id(request: Request) -> str:
         return request.state.employee_id
 
     # Entra mode never accepts a caller-selected persona, even with a valid token.
-    if "X-Demo-Persona-Id" in request.headers or "X-Employee-Id" in request.headers:
+    if "X-Demo-Persona-Id" in request.headers:
         raise HTTPException(status_code=400, detail="Simulated identity is disabled")
 
     scheme, _, access_token = request.headers.get("Authorization", "").partition(" ")

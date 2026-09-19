@@ -97,9 +97,6 @@ def get_request_context(request: Request, response: Response) -> RequestContext:
             runs_directory=RUNS_DIRECTORY,
         )
 
-    if "X-Employee-Id" in request.headers:
-        raise HTTPException(status_code=400, detail="Legacy demo identity is disabled")
-
     try:
         workspace_id = UUID(request.cookies[DEMO_WORKSPACE_COOKIE])
     except (KeyError, ValueError):
