@@ -34,13 +34,13 @@ export function PolicyEvidenceDocument({
         </dl>
       )}
 
-      <div className="max-w-[65ch]">
+      <div className="max-w-[72ch]">
         <Markdown
           skipHtml
           disallowedElements={["img"]}
           components={{
             h1: ({ children }) => (
-              <h1 className="mt-8 text-2xl font-semibold tracking-tight first:mt-0">{children}</h1>
+              <h1 className="mt-8 text-2xl font-semibold tracking-tight">{children}</h1>
             ),
             h2: ({ children }) => (
               <h2 className="mt-8 text-lg font-semibold tracking-tight">{children}</h2>
