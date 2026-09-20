@@ -7,26 +7,23 @@ from dotenv import load_dotenv
 from langsmith import testing
 
 from switchboard.agent import create_model
-from switchboard.evaluation_cases import (
-    PolicyFaithfulnessEvaluationCase,
-    load_policy_faithfulness_evaluation_cases,
-)
+from switchboard.evaluation_cases import load_policy_faithfulness_evaluation_cases
 from switchboard.policy_evaluation import evaluate_policy
 
 ROOT = Path(__file__).resolve().parent.parent
-EVALUATION_CASES = load_policy_faithfulness_evaluation_cases()
+EVALUATION_CASES = {
+    evaluation_case.id: evaluation_case
+    for evaluation_case in load_policy_faithfulness_evaluation_cases()
+}
 
 
 @pytest.mark.langsmith(test_suite_name="Switchboard policy faithfulness evals")
-@pytest.mark.parametrize(
-    "evaluation_case", EVALUATION_CASES, ids=[case.id for case in EVALUATION_CASES]
-)
-def test_policy_judge_matches_reference_expectation(
-    evaluation_case: PolicyFaithfulnessEvaluationCase,
-) -> None:
+@pytest.mark.parametrize("case_id", EVALUATION_CASES)
+def test_policy_judge_matches_reference_expectation(case_id: str) -> None:
     """Compare one live judge result with its withheld expected classification."""
-    # 1. Record the case without exposing its expectation to the model.
+    # 1. Load the case and record only the input shown to the model.
     load_dotenv(ROOT / ".env")
+    evaluation_case = EVALUATION_CASES[case_id]
     testing.log_inputs({"investigation_output": evaluation_case.investigation_output})
     testing.log_reference_outputs(
         {
