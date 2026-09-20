@@ -4,18 +4,23 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import HttpUrl
 
-from switchboard.delivery_verification import verify_execution_delivery
-from switchboard.integrations import delivery_service
-from switchboard.integrations.change_management import (
+from switchboard.change_management import (
     approve_proposal,
     execute_proposal,
     get_proposal,
     list_proposals_awaiting_approval,
     save_proposal,
 )
+from switchboard.delivery_verification import verify_execution_delivery
+from switchboard.integrations import delivery_service
 from switchboard.integrations.delivery_service import DeliveryTestResult
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import get_ticket, list_tickets
+from switchboard.investigation.runs import (
+    get_investigation_run,
+    list_investigation_runs,
+    save_investigation_run,
+)
 from switchboard.models import (
     DecisionCriterion,
     EndpointChangeResult,
@@ -24,11 +29,6 @@ from switchboard.models import (
     ReportValidation,
 )
 from switchboard.proposals import validate_proposal
-from switchboard.runs import (
-    get_investigation_run,
-    list_investigation_runs,
-    save_investigation_run,
-)
 
 
 def candidate() -> InvestigationResult:

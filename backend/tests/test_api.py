@@ -154,7 +154,7 @@ def test_investigation_is_validated_before_the_proposal_is_saved(storage, monkey
     )
     monkeypatch.setattr(api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
-        "switchboard.investigations.build_agent",
+        "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(proposal_candidate_report()),
     )
 
@@ -186,7 +186,7 @@ def test_failed_report_validation_saves_neither_run_nor_proposal(storage, monkey
     )
     monkeypatch.setattr(api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
-        "switchboard.investigations.build_agent",
+        "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(report),
     )
 
@@ -207,7 +207,7 @@ def test_validated_blocked_investigation_is_saved_without_a_proposal(
     )
     monkeypatch.setattr(api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
-        "switchboard.investigations.build_agent",
+        "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(blocked_report()),
     )
 

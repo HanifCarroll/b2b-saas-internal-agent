@@ -4,8 +4,8 @@ import json
 from datetime import datetime
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+from switchboard.change_management import get_proposal
 from switchboard.integrations import delivery_service
-from switchboard.integrations.change_management import get_proposal
 from switchboard.integrations.configuration_service import get_integration
 from switchboard.integrations.employee_directory import CONFIG_ROLES, EmployeeSession
 from switchboard.models import (

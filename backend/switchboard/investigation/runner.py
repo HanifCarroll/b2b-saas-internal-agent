@@ -5,14 +5,17 @@ from uuid import UUID, uuid4
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from switchboard.agent import build_agent
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import get_ticket
+from switchboard.investigation.agent import build_agent
+from switchboard.investigation.runs import save_investigation_run
+from switchboard.investigation.tools import InvestigationContext
+from switchboard.investigation.workflow import (
+    EndpointChangeContext,
+    endpoint_change_graph,
+)
 from switchboard.models import EndpointChangeResult, InvestigationRunResult
-from switchboard.runs import save_investigation_run
 from switchboard.storage import WorkspaceStorage
-from switchboard.tools import InvestigationContext
-from switchboard.workflow import EndpointChangeContext, endpoint_change_graph
 
 
 def investigate_scenario(

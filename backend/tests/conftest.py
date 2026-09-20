@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from switchboard.scenarios import build_workspace_payload, load_scenarios
+from switchboard.demo.scenarios import build_workspace_payload, load_scenarios
 from tests.storage_fake import MemoryStorageBridge
 
 

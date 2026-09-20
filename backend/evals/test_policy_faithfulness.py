@@ -6,10 +6,15 @@ import pytest
 from dotenv import load_dotenv
 from langsmith import testing
 
-from switchboard.agent import create_model
-from switchboard.evaluation_cases import load_policy_faithfulness_evaluation_cases
-from switchboard.report_validation import PolicySource, evaluate_policy_claims
-from switchboard.scenarios import FIXTURES
+from switchboard.demo.scenarios import FIXTURES
+from switchboard.investigation.agent import create_model
+from switchboard.investigation.evaluation_cases import (
+    load_policy_faithfulness_evaluation_cases,
+)
+from switchboard.investigation.report_validation import (
+    PolicySource,
+    evaluate_policy_claims,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 EVALUATION_CASES = {

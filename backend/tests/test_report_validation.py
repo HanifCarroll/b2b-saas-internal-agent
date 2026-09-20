@@ -7,16 +7,16 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from pydantic import ValidationError
 
-from switchboard.models import (
-    InvestigationBlocker,
-    InvestigationFindings,
-    InvestigationResult,
-)
-from switchboard.report_validation import (
+from switchboard.investigation.report_validation import (
     PolicySource,
     ReportValidationError,
     evaluate_policy_claims,
     validate_investigation_report,
+)
+from switchboard.models import (
+    InvestigationBlocker,
+    InvestigationFindings,
+    InvestigationResult,
 )
 
 

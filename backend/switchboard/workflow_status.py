@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from switchboard.integrations.change_management import get_proposal_review
+from switchboard.change_management import get_proposal_review
+from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import (
     Approval,
     DeliveryVerification,
@@ -12,7 +13,6 @@ from switchboard.models import (
     Execution,
     Proposal,
 )
-from switchboard.tools import InvestigationContext, employee_session
 
 
 class WorkflowStatus(BaseModel):

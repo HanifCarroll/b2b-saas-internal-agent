@@ -4,6 +4,12 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from switchboard.integrations.customer_registry import get_customer
+from switchboard.integrations.employee_directory import (
+    CONFIG_ROLES,
+    ROLES,
+    EmployeeSession,
+)
 from switchboard.models import (
     Approval,
     ChangeWindow,
@@ -16,9 +22,6 @@ from switchboard.models import (
 )
 from switchboard.proposals import validate_endpoint_change_request
 from switchboard.storage import StorageError
-
-from .customer_registry import get_customer
-from .employee_directory import CONFIG_ROLES, ROLES, EmployeeSession
 
 
 def _from_storage(model, record: dict):

@@ -2,8 +2,8 @@
 
 from typing import Literal
 
+from switchboard.demo.scenarios import build_workspace_payload, load_scenarios
 from switchboard.models import DemoSetup
-from switchboard.scenarios import build_workspace_payload, load_scenarios
 from switchboard.storage import WorkspaceStorage
 
 

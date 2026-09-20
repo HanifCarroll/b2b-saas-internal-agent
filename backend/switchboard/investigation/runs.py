@@ -7,9 +7,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import EndpointChangeResult
 from switchboard.storage import WorkspaceStorage
-from switchboard.tools import InvestigationContext, employee_session
 from switchboard.workflow_status import WorkflowStatus, get_workflow_status
 
 

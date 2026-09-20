@@ -1,7 +1,9 @@
 """Keep live-model evaluation references aligned with scenario setup."""
 
-from switchboard.evaluation_cases import load_investigation_evaluation_cases
-from switchboard.scenarios import load_scenarios
+from switchboard.demo.scenarios import load_scenarios
+from switchboard.investigation.evaluation_cases import (
+    load_investigation_evaluation_cases,
+)
 
 
 def test_every_investigation_scenario_has_one_evaluation_case():

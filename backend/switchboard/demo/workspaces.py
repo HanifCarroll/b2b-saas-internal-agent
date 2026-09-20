@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from switchboard.scenarios import initialize_demo_workspace, load_scenarios
+from switchboard.demo.scenarios import initialize_demo_workspace, load_scenarios
 from switchboard.storage import WorkspaceStorage
 
 WORKSPACE_LIFETIME_SECONDS = 24 * 60 * 60

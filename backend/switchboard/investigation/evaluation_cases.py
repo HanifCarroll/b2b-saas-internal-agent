@@ -5,10 +5,10 @@ from typing import Literal
 
 from pydantic import Field, TypeAdapter
 
+from switchboard.investigation.report_validation import PolicyIssueKind
 from switchboard.models import Record, Text
-from switchboard.report_validation import PolicyIssueKind
 
-EVALUATIONS = Path(__file__).resolve().parent.parent / "data" / "evaluations"
+EVALUATIONS = Path(__file__).resolve().parents[2] / "data" / "evaluations"
 
 
 class InvestigationEvaluationCase(Record):

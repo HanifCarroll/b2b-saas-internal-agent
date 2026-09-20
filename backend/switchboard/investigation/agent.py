@@ -7,8 +7,8 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import ToolErrorMiddleware
 from langchain_deepseek import ChatDeepSeek
 
+from switchboard.investigation.tools import TOOLS, InvestigationContext
 from switchboard.models import InvestigationResult
-from switchboard.tools import TOOLS, InvestigationContext
 
 MODEL = "deepseek-flash"
 

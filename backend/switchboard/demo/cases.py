@@ -6,8 +6,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, HttpUrl
 
-from switchboard.demo_workspaces import DemoWorkspace
-from switchboard.integrations.change_management import approve_proposal, save_proposal
+from switchboard.change_management import approve_proposal, save_proposal
+from switchboard.demo.scenarios import build_workspace_payload, load_scenarios
+from switchboard.demo.workspaces import DemoWorkspace
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import (
     DecisionCriterion,
@@ -17,7 +18,6 @@ from switchboard.models import (
     ReportValidation,
 )
 from switchboard.proposals import validate_proposal
-from switchboard.scenarios import build_workspace_payload, load_scenarios
 
 
 class DemoCaseSummary(BaseModel):

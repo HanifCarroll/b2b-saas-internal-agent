@@ -7,12 +7,12 @@ import pytest
 from dotenv import load_dotenv
 from langsmith import testing
 
-from switchboard.agent import create_model
-from switchboard.demo import reset_demo
-from switchboard.evaluation_cases import (
+from switchboard.demo.setup import reset_demo
+from switchboard.investigation.agent import create_model
+from switchboard.investigation.evaluation_cases import (
     load_investigation_evaluation_cases,
 )
-from switchboard.investigations import investigate_scenario
+from switchboard.investigation.runner import investigate_scenario
 from switchboard.storage import WorkspaceStorage
 
 ROOT = Path(__file__).resolve().parent.parent

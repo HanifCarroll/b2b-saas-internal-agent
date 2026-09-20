@@ -13,29 +13,40 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from switchboard.agent import create_model
 from switchboard.auth import get_auth_mode, get_entra_employee_id, get_entra_settings
-from switchboard.delivery_verification import verify_execution_delivery
-from switchboard.demo_cases import (
-    DemoCaseSummary,
-    PreparedDemoCase,
-    list_demo_cases,
-    prepare_demo_case,
-)
-from switchboard.demo_workspaces import DemoWorkspace, open_demo_workspace
-from switchboard.integrations.change_management import (
+from switchboard.change_management import (
     approve_proposal,
     execute_proposal,
     get_proposal_review,
     list_proposals_awaiting_approval,
 )
+from switchboard.delivery_verification import verify_execution_delivery
+from switchboard.demo.cases import (
+    DemoCaseSummary,
+    PreparedDemoCase,
+    list_demo_cases,
+    prepare_demo_case,
+)
+from switchboard.demo.scenarios import initialize_demo_workspace, load_scenarios
+from switchboard.demo.workspaces import DemoWorkspace, open_demo_workspace
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import (
     get_ticket,
     get_ticket_details,
     list_tickets,
 )
-from switchboard.investigations import investigate_ticket
+from switchboard.investigation.agent import create_model
+from switchboard.investigation.report_validation import ReportValidationError
+from switchboard.investigation.runner import investigate_ticket
+from switchboard.investigation.runs import (
+    InvestigationRun,
+    InvestigationSummary,
+    find_proposal_run_id,
+    get_investigation_run,
+    list_investigation_runs,
+    load_run,
+)
+from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import (
     Approval,
     DeliveryVerification,
@@ -47,18 +58,7 @@ from switchboard.models import (
     TicketDetails,
     VerifyDeliveryResult,
 )
-from switchboard.report_validation import ReportValidationError
-from switchboard.runs import (
-    InvestigationRun,
-    InvestigationSummary,
-    find_proposal_run_id,
-    get_investigation_run,
-    list_investigation_runs,
-    load_run,
-)
-from switchboard.scenarios import initialize_demo_workspace, load_scenarios
 from switchboard.storage import StorageError, WorkspaceStorage
-from switchboard.tools import InvestigationContext, employee_session
 from switchboard.workflow_status import (
     WorkflowStatus,
     get_workflow_status,

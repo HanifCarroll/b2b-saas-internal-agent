@@ -9,15 +9,15 @@ from uuid import UUID
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from switchboard.agent import create_model
-from switchboard.demo import read_demo_setup, reset_demo
-from switchboard.integrations.change_management import get_proposal
-from switchboard.investigations import investigate_scenario
+from switchboard.change_management import get_proposal
+from switchboard.demo.scenarios import load_scenarios
+from switchboard.demo.setup import read_demo_setup, reset_demo
+from switchboard.investigation.agent import create_model
+from switchboard.investigation.runner import investigate_scenario
+from switchboard.investigation.runs import load_run
+from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import EndpointChangeResult
-from switchboard.runs import load_run
-from switchboard.scenarios import load_scenarios
 from switchboard.storage import WorkspaceStorage
-from switchboard.tools import InvestigationContext, employee_session
 
 
 def cli_storage() -> WorkspaceStorage:

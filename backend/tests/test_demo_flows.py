@@ -2,8 +2,8 @@ from uuid import UUID
 
 import pytest
 
-from switchboard.demo_cases import list_demo_cases, prepare_demo_case
-from switchboard.demo_workspaces import DemoWorkspace, open_demo_workspace
+from switchboard.demo.cases import list_demo_cases, prepare_demo_case
+from switchboard.demo.workspaces import DemoWorkspace, open_demo_workspace
 
 
 def test_new_visitors_receive_isolated_baseline_workspaces(storage_bridge):

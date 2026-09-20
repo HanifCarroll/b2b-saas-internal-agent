@@ -9,8 +9,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 
-from switchboard.integrations.change_management import save_proposal
+from switchboard.change_management import save_proposal
 from switchboard.integrations.policy_library import list_policies
+from switchboard.investigation.report_validation import (
+    PolicySource,
+    validate_investigation_report,
+)
+from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import (
     EndpointChangeResult,
     InvestigationResult,
@@ -18,8 +23,6 @@ from switchboard.models import (
     ReportValidation,
 )
 from switchboard.proposals import validate_proposal
-from switchboard.report_validation import PolicySource, validate_investigation_report
-from switchboard.tools import InvestigationContext, employee_session
 
 
 # Dependencies supplied by the application that the workflow will use

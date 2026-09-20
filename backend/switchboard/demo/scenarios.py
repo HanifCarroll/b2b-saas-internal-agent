@@ -10,7 +10,7 @@ from pydantic import AwareDatetime, Field, HttpUrl, TypeAdapter
 from switchboard.models import Customer, Employee, Integration, Record, Text, Ticket
 from switchboard.storage import WorkspaceStorage
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA = Path(__file__).resolve().parents[2] / "data"
 FIXTURES = DATA / "fixtures"
 SCENARIOS = DATA / "scenarios"
 
