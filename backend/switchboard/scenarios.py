@@ -58,7 +58,7 @@ def build_workspace_payload(
     ]
 
     # 2. Apply the selected scenario to the request inputs and ticket copy.
-    inputs = json.loads((SCENARIOS / "baseline.json").read_text())
+    inputs = json.loads((SCENARIOS / "base-inputs.json").read_text())
     if selected_scenario.now is not None:
         inputs["now"] = selected_scenario.now.isoformat()
     if selected_scenario.request is not None:

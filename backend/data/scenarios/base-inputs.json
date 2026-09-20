@@ -1,0 +1,6 @@
+{
+  "now": "2026-09-22T14:15:00Z",
+  "requester_employee_id": "emp-alex",
+  "ticket_id": "CHG-1042",
+  "request": "Move Acme's production CRM sync to the new endpoint in CHG-1042."
+}
