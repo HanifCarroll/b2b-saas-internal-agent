@@ -18,6 +18,9 @@ Text = Annotated[str, Field(min_length=1, pattern=r"\S")]
 Role = Literal["support_specialist", "implementation_engineer", "technical_lead"]
 Environment = Literal["sandbox", "production"]
 DeliveryOutcome = Literal["delivered", "failed", "inconclusive"]
+CriterionStatus = Literal["verified", "unverified", "unavailable", "failed", "deferred"]
+WorkflowStage = Literal["proposal", "review", "execution", "verification"]
+BlockerKind = Literal["missing_evidence", "confirmed_violation"]
 ClockTime = Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 
 
@@ -183,15 +186,32 @@ class VerifyDeliveryResult:
     was_created: bool
 
 
+class DecisionCriterion(Record):
+    """One policy or evidence condition relevant to the requested change."""
+
+    name: Text
+    status: CriterionStatus
+    required_before: WorkflowStage
+    explanation: Text
+    policy_id: Text | None
+    evidence_ids: list[Text]
+
+
+class InvestigationBlocker(Record):
+    """A condition that prevents proposal preparation and how to resolve it."""
+
+    kind: BlockerKind
+    summary: Text
+    resolution: Text
+
+
 class InvestigationFindings(Record):
-    """Readable sections generated with the investigation, not a second model call."""
+    """Readable, structured sections generated with the investigation."""
 
     overview: Text = Field(description="Brief conclusion and requested change.")
-    checks: list[Text] = Field(description="Evidence checks, one finding per item.")
-    policy_requirements: list[Text] = Field(
-        description="Applicable policy rules, including their conditions and exceptions."
+    decision_criteria: list[DecisionCriterion] = Field(
+        description="Evidence and policy conditions relevant to this decision."
     )
-    gaps: list[Text] = Field(description="Unknown or unverified facts; empty if none.")
     recommendation: Text = Field(
         description="What the evidence supports, without claiming a proposal was saved, approved, or executed."
     )
@@ -205,7 +225,7 @@ class InvestigationResult(Record):
     proposed_endpoint: HttpUrl | None
     evidence_ids: list[Text]
     findings: InvestigationFindings
-    blockers: list[Text]
+    blockers: list[InvestigationBlocker]
 
     @field_serializer("proposed_endpoint")
     def serialize_endpoint(self, endpoint: HttpUrl | None) -> str | None:

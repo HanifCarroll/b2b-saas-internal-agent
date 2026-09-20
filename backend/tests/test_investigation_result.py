@@ -17,9 +17,24 @@ def candidate():
         "evidence_ids": ["CHG-1042", "acme", "int-acme-prod", "endpoint-change-v2"],
         "findings": {
             "overview": "The request supports preparing a proposal; approval is unverified.",
-            "checks": [],
-            "policy_requirements": [],
-            "gaps": [],
+            "decision_criteria": [
+                {
+                    "name": "Requester authorization",
+                    "status": "verified",
+                    "required_before": "proposal",
+                    "explanation": "The requester is registered for this customer.",
+                    "policy_id": "endpoint-change-v2",
+                    "evidence_ids": ["acme"],
+                },
+                {
+                    "name": "Independent approval",
+                    "status": "deferred",
+                    "required_before": "execution",
+                    "explanation": "A different technical lead must approve the proposal.",
+                    "policy_id": "endpoint-change-v2",
+                    "evidence_ids": [],
+                },
+            ],
             "recommendation": "Review the evidence before proceeding.",
         },
         "blockers": [],
@@ -39,7 +54,17 @@ def test_valid_candidate(candidate):
         ("ticket_id", None, "requires a ticket ID"),
         ("proposed_endpoint", None, "requires a proposed endpoint"),
         ("evidence_ids", [], "requires supporting evidence"),
-        ("blockers", ["Unregistered destination"], "cannot have blockers"),
+        (
+            "blockers",
+            [
+                {
+                    "kind": "confirmed_violation",
+                    "summary": "Destination is not registered.",
+                    "resolution": "Register the destination before trying again.",
+                }
+            ],
+            "cannot have blockers",
+        ),
     ],
 )
 def test_candidate_rejects_inconsistent_fields(candidate, field, value, message):
@@ -58,12 +83,16 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
         evidence_ids=[],
         findings=InvestigationFindings(
             overview="The requested record is unavailable.",
-            checks=[],
-            policy_requirements=[],
-            gaps=[],
+            decision_criteria=[],
             recommendation="Review the evidence before proceeding.",
         ),
-        blockers=["Required evidence could not be retrieved."],
+        blockers=[
+            {
+                "kind": "missing_evidence",
+                "summary": "Required evidence could not be retrieved.",
+                "resolution": "Restore access to the record and investigate again.",
+            }
+        ],
     )
 
     # 2. Verify the expected result and any safety guarantees.
@@ -94,11 +123,27 @@ def test_invalid_field_values_are_rejected(candidate, field, value):
         InvestigationResult.model_validate_json(json.dumps(candidate))
 
 
-@pytest.mark.parametrize(
-    "field", ["overview", "checks", "policy_requirements", "gaps", "recommendation"]
-)
+@pytest.mark.parametrize("field", ["overview", "decision_criteria", "recommendation"])
 def test_findings_sections_are_required(candidate, field):
     candidate["findings"].pop(field)
+    with pytest.raises(ValidationError):
+        InvestigationResult.model_validate_json(json.dumps(candidate))
+
+
+@pytest.mark.parametrize(
+    "status", ["verified", "unverified", "unavailable", "failed", "deferred"]
+)
+def test_decision_criterion_accepts_each_agreed_status(candidate, status):
+    candidate["findings"]["decision_criteria"][0]["status"] = status
+
+    result = InvestigationResult.model_validate_json(json.dumps(candidate))
+
+    assert result.findings.decision_criteria[0].status == status
+
+
+def test_decision_criterion_rejects_an_unknown_status(candidate):
+    candidate["findings"]["decision_criteria"][0]["status"] = "passed"
+
     with pytest.raises(ValidationError):
         InvestigationResult.model_validate_json(json.dumps(candidate))
 

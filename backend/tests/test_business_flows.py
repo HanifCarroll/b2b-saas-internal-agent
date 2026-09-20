@@ -17,6 +17,7 @@ from switchboard.integrations.delivery_service import DeliveryTestResult
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import get_ticket, list_tickets
 from switchboard.models import (
+    DecisionCriterion,
     EndpointChangeResult,
     InvestigationFindings,
     InvestigationResult,
@@ -37,9 +38,24 @@ def candidate() -> InvestigationResult:
         evidence_ids=["CHG-1042", "acme", "int-acme-prod"],
         findings=InvestigationFindings(
             overview="Current records support the requested endpoint change.",
-            checks=["The requester and destination are registered."],
-            policy_requirements=["Independent approval is required."],
-            gaps=[],
+            decision_criteria=[
+                DecisionCriterion(
+                    name="Requester and destination",
+                    status="verified",
+                    required_before="proposal",
+                    explanation="The requester and destination are registered.",
+                    policy_id="endpoint-change-v2",
+                    evidence_ids=["acme", "int-acme-prod"],
+                ),
+                DecisionCriterion(
+                    name="Independent approval",
+                    status="deferred",
+                    required_before="execution",
+                    explanation="A different technical lead must approve the proposal.",
+                    policy_id="endpoint-change-v2",
+                    evidence_ids=[],
+                ),
+            ],
             recommendation="Prepare the proposal for review.",
         ),
         blockers=[],

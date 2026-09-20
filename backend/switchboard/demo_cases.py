@@ -10,6 +10,7 @@ from switchboard.demo_workspaces import DemoWorkspace
 from switchboard.integrations.change_management import approve_proposal, save_proposal
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import (
+    DecisionCriterion,
     EndpointChangeResult,
     InvestigationFindings,
     InvestigationResult,
@@ -141,13 +142,28 @@ def _prepare_proposal(*, workspace: DemoWorkspace, scenario_id: str):
         evidence_ids=["CHG-1042", "acme", "int-acme-prod"],
         findings=InvestigationFindings(
             overview="The request is supported by current customer and integration records.",
-            checks=[
-                "The requester and destination are registered for Acme production."
+            decision_criteria=[
+                DecisionCriterion(
+                    name="Requester and destination",
+                    status="verified",
+                    required_before="proposal",
+                    explanation=(
+                        "The requester and destination are registered for Acme production."
+                    ),
+                    policy_id="endpoint-change-v2",
+                    evidence_ids=["acme", "int-acme-prod"],
+                ),
+                DecisionCriterion(
+                    name="Independent approval",
+                    status="deferred",
+                    required_before="execution",
+                    explanation=(
+                        "A different technical lead must approve before execution."
+                    ),
+                    policy_id="endpoint-change-v2",
+                    evidence_ids=[],
+                ),
             ],
-            policy_requirements=[
-                "A different technical lead must approve before execution."
-            ],
-            gaps=[],
             recommendation="Review the saved proposal before execution.",
         ),
         blockers=[],
