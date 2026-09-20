@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   requestApi,
   proposalReviewQuery,
@@ -14,6 +14,7 @@ import {
   type VerifyDeliveryResult,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ProposalChangeSummary } from "@/components/proposal-change-summary";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -252,45 +253,13 @@ export function ProposalReview({
             </Alert>
           )}
 
-          <div className="mt-4 overflow-hidden rounded-xl border bg-background">
-            <div className="grid md:grid-cols-[minmax(0,1fr)_3.5rem_minmax(0,1fr)]">
-              <div className="min-w-0 p-5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Current endpoint
-                </p>
-                <p className="mt-3 break-all font-mono text-sm leading-6">
-                  {review.proposal.current_endpoint}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-center border-y bg-muted/30 py-3 md:border-x md:border-y-0 md:py-0">
-                <span className="flex size-8 items-center justify-center rounded-full border bg-background text-muted-foreground">
-                  <ArrowRight className="size-4 rotate-90 md:rotate-0" aria-label="Changes to" />
-                </span>
-              </div>
-
-              <div className="min-w-0 bg-emerald-50/60 p-5">
-                <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">
-                  Proposed endpoint
-                </p>
-                <p className="mt-3 break-all font-mono text-sm leading-6 text-emerald-950">
-                  {review.proposal.proposed_endpoint}
-                </p>
-              </div>
-            </div>
-
-            <dl className="grid border-t bg-muted/20 text-sm sm:grid-cols-2 sm:divide-x">
-              <div className="p-4">
-                <dt className="text-xs text-muted-foreground">Expected current version</dt>
-                <dd className="mt-1 font-medium tabular-nums">
-                  {review.proposal.expected_configuration_version}
-                </dd>
-              </div>
-              <div className="border-t p-4 sm:border-t-0">
-                <dt className="text-xs text-muted-foreground">Proposed by</dt>
-                <dd className="mt-1 font-medium">{proposerName}</dd>
-              </div>
-            </dl>
+          <div className="mt-4">
+            <ProposalChangeSummary
+              currentEndpoint={review.proposal.current_endpoint}
+              proposedEndpoint={review.proposal.proposed_endpoint}
+              expectedVersion={review.proposal.expected_configuration_version}
+              proposerName={proposerName ?? review.proposal.proposed_by_employee_id}
+            />
           </div>
 
           <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">

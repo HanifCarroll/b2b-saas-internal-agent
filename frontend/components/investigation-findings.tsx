@@ -7,6 +7,7 @@ import {
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
+import Link from "next/link";
 import type {
   CriterionStatus,
   DecisionCriterion,
@@ -176,16 +177,17 @@ function EvidenceReference({ evidenceId, run }: { evidenceId: string; run: Inves
 
 export function EvidenceLink({ evidenceId, run }: { evidenceId: string; run: InvestigationRun }) {
   return (
-    <a
+    <Link
       href={evidencePath({
         ticketId: run.ticket_id,
         runId: run.run_id,
         evidenceId,
       })}
+      scroll={false}
       className="font-medium text-blue-700 underline-offset-4 hover:underline"
     >
       {evidenceId}
-    </a>
+    </Link>
   );
 }
 

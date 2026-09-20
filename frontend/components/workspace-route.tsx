@@ -220,7 +220,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   function closeEvidence() {
     if (route.kind !== "request") return;
 
-    router.replace(requestPath(route.ticketId, route.runId));
+    router.replace(requestPath(route.ticketId, route.runId), { scroll: false });
   }
   const sidebarDemoControls =
     identity.mode === "demo" ? (

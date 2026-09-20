@@ -6,6 +6,7 @@ import React from "react";
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 Object.assign(globalThis, {
   window: dom.window,
+  self: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   Element: dom.window.Element,
@@ -18,9 +19,11 @@ const { render, screen, cleanup, fireEvent } = await import("@testing-library/re
 const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
-const { InvestigationFindings } = await import("../components/investigation-findings");
+const { EvidenceLink, InvestigationFindings } =
+  await import("../components/investigation-findings");
 const { EvidenceDocument } = await import("../components/evidence-document");
 const { EvidenceSheet } = await import("../components/evidence-sheet");
+const { ProposalChangeSummary } = await import("../components/proposal-change-summary");
 const { ApprovalInbox } = await import("../components/approval-inbox");
 const { WorkspaceError } = await import("../components/workspace-route");
 
@@ -231,6 +234,18 @@ test("investigation report shows structured criteria and actionable blockers", (
   );
 });
 
+test("evidence links preserve report scroll during URL navigation", () => {
+  const link = EvidenceLink({
+    evidenceId: "CHG-1042",
+    run: {
+      run_id: "run-1",
+      ticket_id: "CHG-1042",
+    },
+  } as Parameters<typeof EvidenceLink>[0]);
+
+  assert.equal(link.props.scroll, false);
+});
+
 test("workflow shows delivery verification after execution", (t) => {
   t.after(cleanup);
   render(
@@ -358,9 +373,32 @@ test("evidence opens in a dismissible sheet", (t) => {
 
   const sheet = screen.getByRole("dialog");
   assert.ok(sheet.className.includes("data-[side=right]:w-full"));
+  assert.ok(sheet.className.includes("duration-300"));
+  assert.ok(sheet.className.includes("data-[side=right]:data-starting-style:translate-x-full"));
+  assert.ok(sheet.className.includes("motion-reduce:transition-none"));
   assert.ok(screen.getByRole("heading", { name: "Integration evidence" }));
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   assert.equal(closed, true);
+});
+
+test("proposal change summary compares endpoints without a directional arrow", (t) => {
+  t.after(cleanup);
+  render(
+    <ProposalChangeSummary
+      currentEndpoint="https://old.acme.example/deals"
+      proposedEndpoint="https://events.acme.example/deals"
+      expectedVersion={7}
+      proposerName="Alex Rivera"
+    />,
+  );
+
+  const summary = screen.getByRole("region", { name: "Proposed change" });
+  assert.ok(summary.className.includes("md:grid-cols-2"));
+  assert.ok(screen.getByText("Current endpoint"));
+  assert.ok(screen.getByText("Proposed endpoint"));
+  assert.ok(screen.getByText("Expected current version"));
+  assert.ok(screen.getByText("Alex Rivera"));
+  assert.equal(screen.queryByLabelText("Changes to"), null);
 });
 
 test("approval inbox opens a proposal awaiting independent review", (t) => {
