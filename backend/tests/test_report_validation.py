@@ -1,11 +1,11 @@
 """Automatic policy validation is a gate before investigation persistence."""
 
 import json
+from unittest.mock import Mock
 
 import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
-from pydantic import ValidationError
 
 from switchboard.investigation.report_validation import (
     PolicySource,
@@ -79,6 +79,20 @@ def test_clean_report_passes_without_revision():
     assert validated.validation.evaluation_count == 1
     assert validated.validation.revision_count == 0
     assert validated.validation.policy_ids == ["endpoint-change-v2"]
+
+
+def test_policy_review_disables_model_thinking():
+    model = Mock()
+    validation_model = model.bind.return_value
+    validation_model.invoke.return_value = AIMessage(content='{"issues": []}')
+
+    evaluate_policy_claims(
+        investigation_output=draft_report().model_dump(mode="json"),
+        policies=POLICIES,
+        model=model,
+    )
+
+    model.bind.assert_called_once_with(extra_body={"thinking": {"type": "disabled"}})
 
 
 def test_policy_issue_is_revised_once_and_rechecked():
@@ -158,7 +172,7 @@ def test_report_rejects_fabricated_policy_excerpt():
 def test_invalid_judge_output_is_not_a_pass(response):
     model = GenericFakeChatModel(messages=iter([AIMessage(content=response)]))
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ReportValidationError, match="invalid output"):
         evaluate_policy_claims(
             investigation_output="Never roll back.",
             policies=POLICIES,

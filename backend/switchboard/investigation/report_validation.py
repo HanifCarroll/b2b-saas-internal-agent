@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from pydantic import ValidationError
 
 from switchboard.models import (
     InvestigationFindings,
@@ -111,7 +112,7 @@ def evaluate_policy_claims(
     model: BaseChatModel,
 ) -> PolicyReview:
     prompt = (Path(__file__).parent / "prompts" / "policy_evaluation.md").read_text()
-    response = model.invoke(
+    response = model.bind(extra_body={"thinking": {"type": "disabled"}}).invoke(
         [
             (
                 "system",
@@ -131,7 +132,10 @@ def evaluate_policy_claims(
         ],
         config={"run_name": "policy-faithfulness-review"},
     )
-    review = PolicyReview.model_validate_json(response.text)
+    try:
+        review = PolicyReview.model_validate_json(response.text)
+    except ValidationError as error:
+        raise ReportValidationError("Policy review returned invalid output") from error
 
     sources = {policy.id: policy.content for policy in policies}
     for issue in review.issues:
@@ -152,7 +156,7 @@ def _revise_findings(
     model: BaseChatModel,
 ) -> InvestigationFindings:
     prompt = (Path(__file__).parent / "prompts" / "report_revision.md").read_text()
-    response = model.invoke(
+    response = model.bind(extra_body={"thinking": {"type": "disabled"}}).invoke(
         [
             (
                 "system",
@@ -173,7 +177,12 @@ def _revise_findings(
         ],
         config={"run_name": "policy-faithfulness-revision"},
     )
-    return InvestigationFindings.model_validate_json(response.text)
+    try:
+        return InvestigationFindings.model_validate_json(response.text)
+    except ValidationError as error:
+        raise ReportValidationError(
+            "Policy revision returned invalid output"
+        ) from error
 
 
 def _validation_receipt(
