@@ -11,7 +11,6 @@ export function WorkspaceSidebar({
   employee,
   role,
   accountControls,
-  demoControls,
   demoPersona,
   demoPersonaSwitcher,
   onOpenWork,
@@ -21,7 +20,6 @@ export function WorkspaceSidebar({
   employee: string;
   role: string | null;
   accountControls: AccountActions;
-  demoControls?: ReactNode;
   demoPersona?: DemoPersona | null;
   demoPersonaSwitcher?: ReactNode;
   onOpenWork: () => void;
@@ -66,7 +64,6 @@ export function WorkspaceSidebar({
       </nav>
 
       <div className="mt-auto flex flex-col gap-3 p-3">
-        {demoControls}
         <div className="border-t border-white/10 pt-3">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             {demoPersona !== undefined ? (

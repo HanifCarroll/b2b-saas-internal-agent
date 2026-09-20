@@ -19,20 +19,16 @@ import { ApprovalInbox } from "@/components/approval-inbox";
 import { ProposalReview } from "@/components/proposal-review";
 import {
   approvalInboxQuery,
-  clearDemoQueries,
-  demoCasesQuery,
   demoPersonasQuery,
   historyQuery,
   investigationEvidenceQuery,
   investigationQuery,
   investigationKeys,
   type InvestigationRun,
-  prepareDemoCase,
   requestApi,
   ticketsQuery,
   proposalReviewKeys,
 } from "@/lib/api";
-import { DemoCaseLauncher } from "@/components/demo-case-launcher";
 import { DemoPersonaSwitcher } from "@/components/demo-persona";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
@@ -60,14 +56,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   );
   const activeView = route.kind === "approvals" ? "approvals" : "work";
   const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketFilter, setTicketFilter] = useState<"all" | "needs_attention">("all");
 
   // 1. Query keys isolate each employee's data; Query manages cancellation and loading.
   const personasQuery = useQuery({
     ...demoPersonasQuery(identity),
-    enabled: identity.mode === "demo",
-  });
-  const casesQuery = useQuery({
-    ...demoCasesQuery(identity),
     enabled: identity.mode === "demo",
   });
   const ticketsQueryResult = useQuery(ticketsQuery(identity));
@@ -87,7 +80,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     enabled: route.kind === "request" && Boolean(route.runId && route.evidenceId),
   });
   const personas = personasQuery.data ?? [];
-  const cases = casesQuery.data ?? [];
   const tickets = ticketsQueryResult.data ?? [];
   const approvals = approvalsQueryResult.data ?? [];
   const selectedProposalId = route.kind === "approvals" ? (route.proposalId ?? null) : null;
@@ -96,13 +88,15 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const selectedApprovalRunId =
     route.kind === "approvals" ? (route.runId ?? selectedApproval?.run_id ?? null) : null;
   const normalizedTicketSearch = ticketSearch.trim().toLowerCase();
-  const visibleTickets = normalizedTicketSearch
-    ? tickets.filter((ticket) =>
+  const visibleTickets = tickets.filter(
+    (ticket) =>
+      (ticketFilter === "all" || ticket.needs_attention) &&
+      (!normalizedTicketSearch ||
         [ticket.id, ticket.subject, ticket.customer_id, ticket.integration_id].some((value) =>
           value.toLowerCase().includes(normalizedTicketSearch),
-        ),
-      )
-    : tickets;
+        )),
+  );
+  const needsAttentionCount = tickets.filter((ticket) => ticket.needs_attention).length;
   const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
   const history = historyQueryResult.data ?? [];
   const run = selectedRun.isError ? null : (selectedRun.data ?? null);
@@ -111,7 +105,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const employeeRole = employeeRecord?.role ?? currentEmployee?.role ?? null;
   const reconnecting = [
     personasQuery,
-    casesQuery,
     ticketsQueryResult,
     approvalsQueryResult,
     historyQueryResult,
@@ -138,21 +131,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     onSettled: (_data, _error, ticketId) =>
       queryClient.invalidateQueries({ queryKey: investigationKeys.history(identity, ticketId) }),
   });
-  const casePreparation = useMutation({
-    mutationFn: (caseId: string) => prepareDemoCase({ identity, caseId }),
-    onMutate: () => {
-      setSelectedRunId(null);
-      investigation.reset();
-    },
-    onSuccess: async (prepared) => {
-      await clearDemoQueries(queryClient);
-      onEmployeeChange(prepared.persona_id);
-      router.push(prepared.path);
-    },
-  });
-
   function startTicketInvestigation(ticketId: string) {
-    casePreparation.reset();
     setSelectedRunId(null);
     investigation.mutate(ticketId);
   }
@@ -191,24 +170,21 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   }
 
   // 3. Derive presentation from query and mutation state, rather than copying it.
-  const pendingMessage = casePreparation.isPending
-    ? "Preparing the demo case…"
-    : investigation.isPending
-      ? "Investigating records and validating the result…"
-      : reconnecting
-        ? "Reconnecting to the service…"
-        : selectedRun.isLoading
-          ? "Loading saved investigation…"
-          : "";
+  const pendingMessage = investigation.isPending
+    ? "Investigating records and validating the result…"
+    : reconnecting
+      ? "Reconnecting to the service…"
+      : selectedRun.isLoading
+        ? "Loading saved investigation…"
+        : "";
   const isPending = pendingMessage !== "";
-  const operationError = (casePreparation.error ?? investigation.error)?.message;
+  const operationError = investigation.error?.message;
   const evidenceError = evidenceQueryResult.error?.message;
   const readError = (
     selectedRun.error ??
     ticketsQueryResult.error ??
     approvalsQueryResult.error ??
     personasQuery.error ??
-    casesQuery.error ??
     historyQueryResult.error
   )?.message;
   const error = operationError ?? readError;
@@ -222,14 +198,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
 
     router.replace(requestPath(route.ticketId, route.runId), { scroll: false });
   }
-  const sidebarDemoControls =
-    identity.mode === "demo" ? (
-      <DemoCaseLauncher
-        cases={cases}
-        busy={isPending || mutationsInProgress > 0 || casesQuery.isFetching}
-        onPrepare={(caseId) => casePreparation.mutate(caseId)}
-      />
-    ) : undefined;
   const demoPersonaSwitcher =
     identity.mode === "demo" ? (
       <DemoPersonaSwitcher
@@ -247,7 +215,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
         employee={employeeName}
         role={employeeRole}
         accountControls={accountActions}
-        demoControls={sidebarDemoControls}
         demoPersona={identity.mode === "demo" ? (employeeRecord ?? null) : undefined}
         demoPersonaSwitcher={demoPersonaSwitcher}
         onOpenWork={clearSelection}
@@ -342,12 +309,20 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                 </div>
               </div>
               <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
-                <span className="rounded-md bg-blue-50 px-3 py-1.5 font-medium text-blue-700">
+                <button
+                  type="button"
+                  className={`rounded-md px-3 py-1.5 font-medium ${ticketFilter === "all" ? "bg-blue-50 text-blue-700" : "text-muted-foreground hover:bg-slate-100"}`}
+                  onClick={() => setTicketFilter("all")}
+                >
                   All {tickets.length}
-                </span>
-                <span className="rounded-md px-3 py-1.5 text-muted-foreground">
-                  Needs attention {tickets.length}
-                </span>
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-md px-3 py-1.5 font-medium ${ticketFilter === "needs_attention" ? "bg-blue-50 text-blue-700" : "text-muted-foreground hover:bg-slate-100"}`}
+                  onClick={() => setTicketFilter("needs_attention")}
+                >
+                  Needs attention {needsAttentionCount}
+                </button>
               </div>
             </div>
           </div>
@@ -361,12 +336,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             {isPending && <PendingOperation message={pendingMessage} />}
             <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 px-5 py-4">
-                <div>
-                  <h2 className="font-semibold">Assigned requests</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Open a request to inspect it and start an investigation.
-                  </p>
-                </div>
+                <h2 className="font-semibold">Assigned requests</h2>
                 <Badge variant="secondary">{tickets.length} open</Badge>
               </div>
               <TicketList

@@ -437,6 +437,12 @@ test("signed-in workspace puts account controls in the application sidebar", asy
           status: "open",
           subject: "Update production CRM event delivery endpoint",
           body: "Please move the production CRM sync.",
+          workflow_status: {
+            code: "ready_to_investigate",
+            title: "Ready to investigate",
+            next_action: "Run an investigation.",
+          },
+          needs_attention: true,
         },
       ]);
     return Response.json([]);
@@ -457,37 +463,63 @@ test("signed-in workspace puts account controls in the application sidebar", asy
   assert.equal(pushedPath, "/approvals");
 });
 
-test("public demo shows fictional personas and prepares a selected case", async (t) => {
+test("public demo shows persistent requests with workflow filters", async (t) => {
   process.env.NEXT_PUBLIC_AUTH_MODE = "demo";
   pushedPath = "";
   t.after(() => {
     cleanup();
     process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
   });
-  t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit = {}) => {
+  t.mock.method(globalThis, "fetch", async (path: string) => {
     if (path === "/api/demo/personas") {
       return Response.json([
         { id: "emp-alex", name: "Alex Rivera", role: "implementation_engineer" },
         { id: "emp-priya", name: "Priya Shah", role: "technical_lead" },
       ]);
     }
-    if (path === "/api/demo/cases") {
+    if (path === "/api/tickets") {
       return Response.json([
         {
-          id: "pending-approval",
-          title: "Review a pending proposal",
-          description: "Review a valid proposal as an independent technical lead.",
-          recommended_persona_id: "emp-priya",
+          id: "CHG-1042",
+          customer_id: "acme",
+          integration_id: "int-acme-prod",
+          requester_contact_id: "contact-jordan",
+          assigned_employee_id: "emp-alex",
+          requester: { id: "contact-jordan", name: "Jordan Lee" },
+          assigned_employee: { id: "emp-alex", name: "Alex Rivera" },
+          requested_endpoint: "https://events.acme.example/deals",
+          created_at: "2026-09-22T13:30:00Z",
+          status: "open",
+          subject: "Investigate CRM delivery",
+          body: "Please update the endpoint.",
+          workflow_status: {
+            code: "ready_to_investigate",
+            title: "Ready to investigate",
+            next_action: "Run an investigation.",
+          },
+          needs_attention: true,
+        },
+        {
+          id: "CHG-1045",
+          customer_id: "acme",
+          integration_id: "int-acme-orders-prod",
+          requester_contact_id: "contact-jordan",
+          assigned_employee_id: "emp-alex",
+          requester: { id: "contact-jordan", name: "Jordan Lee" },
+          assigned_employee: { id: "emp-alex", name: "Alex Rivera" },
+          requested_endpoint: "https://events.acme.example/orders",
+          created_at: "2026-09-22T13:45:00Z",
+          status: "open",
+          subject: "Update order delivery",
+          body: "Please update the endpoint.",
+          workflow_status: {
+            code: "awaiting_approval",
+            title: "Awaiting approval",
+            next_action: "Obtain approval.",
+          },
+          needs_attention: false,
         },
       ]);
-    }
-    if (path === "/api/demo/cases/pending-approval/prepare") {
-      assert.equal(options.method, "POST");
-      return Response.json({
-        case_id: "pending-approval",
-        persona_id: "emp-priya",
-        path: "/approvals/proposal-1?run=run-1",
-      });
     }
     return Response.json([]);
   });
@@ -503,10 +535,14 @@ test("public demo shows fictional personas and prepares a selected case", async 
   assert.match(sidebar.textContent!, /Alex Rivera/);
   assert.equal(sidebar.querySelector(".lucide-chevron-right"), null);
   assert.equal(within(sidebar).getByText("implementation engineer").tabIndex, 0);
-  fireEvent.click(screen.getByText("Try a demo case"));
-  fireEvent.click(await screen.findByRole("button", { name: /Review a pending proposal/ }));
-  const dialog = await screen.findByRole("alertdialog");
-  assert.equal(pushedPath, "");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Prepare case" }));
-  await waitFor(() => assert.equal(pushedPath, "/approvals/proposal-1?run=run-1"));
+  assert.equal(screen.queryByText("Try a demo case"), null);
+  assert.equal(
+    screen.queryByText("Open a request to inspect it and start an investigation."),
+    null,
+  );
+  assert.equal((await screen.findAllByText("Ready to investigate")).length, 2);
+  assert.equal(screen.getAllByText("Awaiting approval").length, 2);
+  fireEvent.click(screen.getByRole("button", { name: "Needs attention 1" }));
+  assert.ok(screen.getByText("Investigate CRM delivery"));
+  assert.equal(screen.queryByText("Update order delivery"), null);
 });

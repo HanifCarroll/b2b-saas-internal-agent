@@ -40,6 +40,12 @@ const ticket = {
   status: "open",
   subject: "Update production CRM event delivery endpoint",
   body: "Please move the production CRM sync.",
+  workflow_status: {
+    code: "ready_to_investigate" as const,
+    title: "Ready to investigate",
+    next_action: "Run an investigation.",
+  },
+  needs_attention: true,
 };
 
 test("failed workspace reads offer a manual retry", (t) => {
@@ -75,7 +81,7 @@ test("ticket list selects an accessible work item", (t) => {
 
   fireEvent.click(screen.getByRole("button", { name: /CHG-1042/ }));
   assert.equal(selected, "CHG-1042");
-  assert.ok(screen.getByText("int-acme-prod"));
+  assert.ok(screen.getByText(/int-acme-prod/));
 });
 
 test("ticket detail starts an investigation for the displayed ticket", (t) => {

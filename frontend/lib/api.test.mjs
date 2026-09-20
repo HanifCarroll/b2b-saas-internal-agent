@@ -3,8 +3,6 @@ import { test } from "node:test";
 import { QueryClient } from "@tanstack/react-query";
 import {
   requestApi,
-  clearDemoQueries,
-  demoCasesQuery,
   demoPersonasQuery,
   historyQuery,
   investigationQuery,
@@ -13,7 +11,6 @@ import {
   ticketsQuery,
   proposalReviewQuery,
   proposalReviewKeys,
-  prepareDemoCase,
   shouldRetryReadRequest,
 } from "./api.ts";
 
@@ -123,7 +120,6 @@ test("stable demo metadata remains fresh for the page session", () => {
   const identity = { mode: "demo", employeeId: "emp-alex" };
 
   assert.equal(demoPersonasQuery(identity).staleTime, Infinity);
-  assert.equal(demoCasesQuery(identity).staleTime, Infinity);
 });
 
 test("canceling a run query aborts its network request", async (t) => {
@@ -214,69 +210,6 @@ test("proposal reviews isolate reviewers and invalidate together after approval"
   assert.equal(client.getQueryState(alex.queryKey).isInvalidated, true);
   assert.equal(client.getQueryState(priya.queryKey).isInvalidated, true);
   assert.equal((await client.fetchQuery(priya)).approval.id, "approval-1");
-});
-
-test("preparing a case clears saved-work caches but keeps demo choices", async () => {
-  const client = new QueryClient();
-  try {
-    for (const employee of ["emp-alex", "emp-priya"]) {
-      client.setQueryData(
-        investigationKeys.history({ mode: "demo", employeeId: employee }, "CHG-1042"),
-        [{ run_id: "old-run" }],
-      );
-      client.setQueryData(
-        investigationKeys.run({ mode: "demo", employeeId: employee }, "old-run"),
-        { result: "old" },
-      );
-      client.setQueryData([...proposalReviewKeys.proposal("old-run", "proposal"), employee], {
-        approval: "old",
-      });
-    }
-    client.setQueryData(["demo-cases"], [{ id: "valid-request" }]);
-    client.setQueryData(["demo-personas", "demo", "emp-alex"], [{ id: "emp-alex" }]);
-    await clearDemoQueries(client);
-    assert.equal(client.getQueriesData({ queryKey: ["investigations"] }).length, 0);
-    assert.equal(client.getQueriesData({ queryKey: ["investigation"] }).length, 0);
-    assert.equal(client.getQueriesData({ queryKey: ["proposal-review"] }).length, 0);
-    assert.deepEqual(client.getQueryData(["demo-cases"]), [{ id: "valid-request" }]);
-    assert.deepEqual(client.getQueryData(["demo-personas", "demo", "emp-alex"]), [
-      { id: "emp-alex" },
-    ]);
-  } finally {
-    client.clear();
-  }
-});
-
-test("demo choices and case preparation use the public demo API", async (t) => {
-  const paths = [];
-  t.mock.method(globalThis, "fetch", async (path, options) => {
-    paths.push([path, options.method ?? "GET"]);
-    if (path === "/api/demo/personas") return Response.json([{ id: "emp-alex" }]);
-    if (path === "/api/demo/cases") return Response.json([{ id: "valid-request" }]);
-    return Response.json({
-      case_id: "valid-request",
-      persona_id: "emp-alex",
-      path: "/requests/CHG-1042",
-    });
-  });
-  const identity = { mode: "demo", employeeId: "emp-alex" };
-
-  assert.deepEqual(
-    await demoPersonasQuery(identity).queryFn({ signal: AbortSignal.timeout(1000) }),
-    [{ id: "emp-alex" }],
-  );
-  assert.deepEqual(await demoCasesQuery(identity).queryFn({ signal: AbortSignal.timeout(1000) }), [
-    { id: "valid-request" },
-  ]);
-  assert.equal(
-    (await prepareDemoCase({ identity, caseId: "valid-request" })).persona_id,
-    "emp-alex",
-  );
-  assert.deepEqual(paths, [
-    ["/api/demo/personas", "GET"],
-    ["/api/demo/cases", "GET"],
-    ["/api/demo/cases/valid-request/prepare", "POST"],
-  ]);
 });
 
 test("demo requests send only the selected employee identity", async (t) => {

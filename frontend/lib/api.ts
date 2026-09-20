@@ -50,6 +50,7 @@ export type ProposalReviewResult = {
 
 export type WorkflowStatus = {
   code:
+    | "ready_to_investigate"
     | "configuration_updated"
     | "delivery_verified"
     | "manual_intervention_required"
@@ -63,13 +64,6 @@ export type WorkflowStatus = {
 };
 
 export type DemoPersona = { id: string; name: string; role: string };
-export type DemoCaseSummary = {
-  id: string;
-  title: string;
-  description: string;
-  recommended_persona_id: string;
-};
-export type PreparedDemoCase = { case_id: string; persona_id: string; path: string };
 export type PersonReference = { id: string; name: string };
 export type Ticket = {
   id: string;
@@ -84,6 +78,10 @@ export type Ticket = {
   status: string;
   subject: string;
   body: string;
+};
+export type AssignedRequestSummary = Ticket & {
+  workflow_status: WorkflowStatus;
+  needs_attention: boolean;
 };
 export type InvestigationHistoryItem = {
   run_id: string;
@@ -246,7 +244,7 @@ export const investigationKeys = {
 export const ticketsQuery = (identity: RequestIdentity) => ({
   queryKey: investigationKeys.tickets(identity),
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<Ticket[]>({
+    requestApi<AssignedRequestSummary[]>({
       path: "/api/tickets",
       identity,
       options: { signal },
@@ -263,31 +261,6 @@ export const demoPersonasQuery = (identity: RequestIdentity) => ({
     }),
   staleTime: Infinity,
 });
-
-export const demoCasesQuery = (identity: RequestIdentity) => ({
-  queryKey: ["demo-cases"],
-  queryFn: ({ signal }: { signal: AbortSignal }) =>
-    requestApi<DemoCaseSummary[]>({
-      path: "/api/demo/cases",
-      identity,
-      options: { signal },
-    }),
-  staleTime: Infinity,
-});
-
-export function prepareDemoCase({
-  identity,
-  caseId,
-}: {
-  identity: RequestIdentity;
-  caseId: string;
-}) {
-  return requestApi<PreparedDemoCase>({
-    path: `/api/demo/cases/${encodeURIComponent(caseId)}/prepare`,
-    identity,
-    options: { method: "POST" },
-  });
-}
 
 export function historyQuery(identity: RequestIdentity, ticketId: string | null) {
   return {
@@ -377,17 +350,4 @@ export function proposalReviewQuery({
     staleTime: 0,
     gcTime: 0,
   };
-}
-
-export async function clearDemoQueries(client: import("@tanstack/react-query").QueryClient) {
-  await client.cancelQueries();
-  for (const key of [
-    "tickets",
-    "investigations",
-    "investigation",
-    "approval-inbox",
-    "proposal-review",
-  ]) {
-    client.removeQueries({ queryKey: [key] });
-  }
 }

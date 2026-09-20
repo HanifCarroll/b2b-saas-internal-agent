@@ -1,5 +1,5 @@
 import { ChevronRight } from "lucide-react";
-import type { Ticket } from "@/lib/api";
+import type { AssignedRequestSummary } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 
 export function TicketList({
@@ -8,7 +8,7 @@ export function TicketList({
   busy,
   onSelect,
 }: {
-  tickets: Ticket[];
+  tickets: AssignedRequestSummary[];
   selectedTicketId: string | null;
   busy: boolean;
   onSelect: (ticketId: string) => void;
@@ -28,10 +28,10 @@ export function TicketList({
 
   return (
     <div className="border-t" aria-label="Assigned requests">
-      <div className="hidden grid-cols-[110px_minmax(0,1fr)_150px_120px_28px] gap-4 border-b bg-slate-50/70 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
+      <div className="hidden grid-cols-[110px_minmax(0,1fr)_170px_120px_28px] gap-4 border-b bg-slate-50/70 px-5 py-3 text-xs font-medium text-muted-foreground md:grid">
         <span>ID</span>
         <span>Request</span>
-        <span>Integration</span>
+        <span>Stage</span>
         <span>Created</span>
         <span />
       </div>
@@ -39,7 +39,7 @@ export function TicketList({
         <button
           key={ticket.id}
           type="button"
-          className={`grid w-full min-w-0 grid-cols-[1fr_24px] items-center gap-4 border-b px-5 py-4 text-left transition-colors md:grid-cols-[110px_minmax(0,1fr)_150px_120px_28px] ${
+          className={`grid w-full min-w-0 grid-cols-[1fr_24px] items-center gap-4 border-b px-5 py-4 text-left transition-colors md:grid-cols-[110px_minmax(0,1fr)_170px_120px_28px] ${
             selectedTicketId === ticket.id ? "bg-blue-50/80" : "bg-white hover:bg-slate-50"
           }`}
           disabled={busy}
@@ -50,7 +50,7 @@ export function TicketList({
             <span className="flex items-center gap-2 md:hidden">
               <span className="font-medium">{ticket.id}</span>
               <Badge variant="outline" className="capitalize">
-                {ticket.status}
+                {ticket.workflow_status.title}
               </Badge>
             </span>
             <span className="block truncate font-medium text-slate-950">{ticket.subject}</span>
@@ -60,7 +60,7 @@ export function TicketList({
           </span>
           <span className="hidden min-w-0 md:block">
             <Badge variant="secondary" className="max-w-full truncate">
-              {ticket.integration_id}
+              {ticket.workflow_status.title}
             </Badge>
           </span>
           <span className="hidden text-sm text-muted-foreground md:block">
