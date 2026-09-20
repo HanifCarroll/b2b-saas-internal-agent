@@ -2,6 +2,7 @@
 
 - Python code, tests, data, and dependencies live in `backend/`; the Next.js app lives in `frontend/`.
 - Run frontend commands from `frontend/`. Use Oxlint (`npm run lint`) and Oxfmt (`npm run format` / `npm run format:check`), not ESLint or Prettier. Verify frontend edits with lint, format check, and `npm run build`.
+- Never use native browser alerts, confirmation dialogs, or prompts. Use the appropriate shadcn component, such as `AlertDialog` for confirmation and `sonner` for transient feedback.
 - Run Python commands from `backend/`. Use uv to manage dependencies and run Python tools.
 - Before finishing a turn where you edited Python code, run `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, and `uv run pytest -v`.
 

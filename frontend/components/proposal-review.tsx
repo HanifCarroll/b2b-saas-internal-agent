@@ -18,6 +18,17 @@ import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -314,27 +325,40 @@ export function ProposalReview({
               Approve this proposal
             </Button>
             {!review.execution && (
-              <Button
-                variant="outline"
-                disabled={
-                  busy ||
-                  !["approval_recorded", "approval_not_required"].includes(
-                    review.current_status.code,
-                  ) ||
-                  !["implementation_engineer", "technical_lead"].includes(role ?? "")
-                }
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Execute ${review.proposal.ticket_id}? Change ${review.proposal.integration_id} (${review.proposal.environment}) from ${review.proposal.current_endpoint} to ${review.proposal.proposed_endpoint}. Recovery requires manual intervention. This does not verify delivery.`,
-                    )
-                  ) {
-                    execution.mutate();
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      disabled={
+                        busy ||
+                        !["approval_recorded", "approval_not_required"].includes(
+                          review.current_status.code,
+                        ) ||
+                        !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                      }
+                    />
                   }
-                }}
-              >
-                Execute change
-              </Button>
+                >
+                  Execute change
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Execute {review.proposal.ticket_id}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Change {review.proposal.integration_id} ({review.proposal.environment}) from{" "}
+                      {review.proposal.current_endpoint} to {review.proposal.proposed_endpoint}.
+                      Recovery requires manual intervention. This does not verify delivery.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => execution.mutate()}>
+                      Execute change
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
             {review.execution && !review.verification && (
               <Button

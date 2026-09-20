@@ -14,8 +14,12 @@ Object.assign(globalThis, {
   Element: dom.window.Element,
   Node: dom.window.Node,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: (callback: FrameRequestCallback) =>
+    dom.window.setTimeout(() => callback(Date.now()), 0),
+  cancelAnimationFrame: (handle: number) => dom.window.clearTimeout(handle),
 });
-const { render, screen, cleanup, fireEvent, waitFor } = await import("@testing-library/react");
+const { render, screen, cleanup, fireEvent, waitFor, within } =
+  await import("@testing-library/react");
 let account: object | null = null;
 let loginCalls = 0;
 let logoutCalls = 0;
@@ -251,6 +255,80 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
   assert.equal(screen.queryByText("Review or execute as"), null);
 });
 
+test("proposal execution requires confirmation in an alert dialog", async (t) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let executionRequests = 0;
+  t.after(() => {
+    cleanup();
+    client.clear();
+  });
+  t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit = {}) => {
+    if (options.method === "POST" && path.endsWith("/execution")) {
+      executionRequests++;
+      return Response.json({
+        execution: {
+          id: "execution",
+          proposal_id: "proposal",
+          executed_by_employee_id: "emp-alex",
+          executed_at: "2026-09-22T14:15:00Z",
+          approval_id: "approval",
+          previous_configuration_version: 1,
+          resulting_configuration_version: 2,
+        },
+        was_created: true,
+      });
+    }
+    return Response.json({
+      proposal: {
+        id: "proposal",
+        ticket_id: "CHG-1042",
+        customer_id: "acme",
+        integration_id: "production",
+        environment: "production",
+        current_endpoint: "https://old.example",
+        proposed_endpoint: "https://new.example",
+        expected_configuration_version: 1,
+        recovery_plan: "manual_intervention",
+        proposed_by_employee_id: "emp-alex",
+        created_at: "2026-09-22T13:30:00Z",
+      },
+      approval: {
+        id: "approval",
+        proposal_id: "proposal",
+        approved_by_employee_id: "emp-priya",
+        created_at: "2026-09-22T14:00:00Z",
+      },
+      execution: null,
+      verification: null,
+      current_status: { code: "approval_recorded", title: "Approval recorded" },
+    });
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProposalReview
+        runId="run"
+        proposalId="proposal"
+        identity={{ mode: "entra", accountId: "alex", getAccessToken: async () => "token" }}
+        currentEmployee={{
+          employee_id: "emp-alex",
+          name: "Alex Rivera",
+          role: "implementation_engineer",
+        }}
+        employees={[]}
+        onStatusRefresh={async () => {}}
+      />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "Execute change" }));
+
+  const dialog = await screen.findByRole("alertdialog");
+  assert.ok(within(dialog).getByRole("heading", { name: "Execute CHG-1042?" }));
+  assert.equal(executionRequests, 0);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Execute change" }));
+  await waitFor(() => assert.equal(executionRequests, 1));
+});
+
 test("executed proposal can be verified without repeating execution", async (t) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let verified = false;
@@ -386,7 +464,6 @@ test("public demo shows fictional personas and prepares a selected case", async 
     cleanup();
     process.env.NEXT_PUBLIC_AUTH_MODE = "entra";
   });
-  t.mock.method(window, "confirm", () => true);
   t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit = {}) => {
     if (path === "/api/demo/personas") {
       return Response.json([
@@ -426,5 +503,8 @@ test("public demo shows fictional personas and prepares a selected case", async 
   assert.match(sidebar.textContent!, /Alex Rivera/);
   fireEvent.click(screen.getByText("Try a demo case"));
   fireEvent.click(await screen.findByRole("button", { name: /Review a pending proposal/ }));
+  const dialog = await screen.findByRole("alertdialog");
+  assert.equal(pushedPath, "");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Prepare case" }));
   await waitFor(() => assert.equal(pushedPath, "/approvals/proposal-1?run=run-1"));
 });
