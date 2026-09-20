@@ -1,20 +1,25 @@
 import { Check, LockKeyhole } from "lucide-react";
 import type { WorkflowStatus } from "@/lib/api";
 
-type StageState = "complete" | "current" | "locked";
+type StageState = "complete" | "current" | "ready" | "locked";
 
 export function WorkflowProgress({
   hasInvestigation,
   hasProposal,
+  investigationInProgress = false,
   status,
 }: {
   hasInvestigation: boolean;
   hasProposal: boolean;
+  investigationInProgress?: boolean;
   status: WorkflowStatus | null;
 }) {
   const stages: { label: string; state: StageState }[] = [
     { label: "Request", state: "complete" },
-    { label: "Investigate", state: hasInvestigation ? "complete" : "current" },
+    {
+      label: "Investigate",
+      state: hasInvestigation ? "complete" : investigationInProgress ? "current" : "ready",
+    },
     {
       label: "Propose",
       state: hasProposal ? "complete" : hasInvestigation ? "current" : "locked",
@@ -47,7 +52,7 @@ export function WorkflowProgress({
             className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
               stage.state === "complete"
                 ? "bg-emerald-600 text-white"
-                : stage.state === "current"
+                : stage.state === "current" || stage.state === "ready"
                   ? "bg-amber-500 text-white"
                   : "bg-slate-100 text-slate-500"
             }`}
@@ -67,7 +72,9 @@ export function WorkflowProgress({
                 ? "Complete"
                 : stage.state === "current"
                   ? "In progress"
-                  : "Locked"}
+                  : stage.state === "ready"
+                    ? "Ready"
+                    : "Locked"}
             </span>
           </span>
         </li>

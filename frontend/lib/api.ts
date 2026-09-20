@@ -91,33 +91,41 @@ export type InvestigationHistoryItem = {
   scenario_id: string | null;
   outcome: string;
 };
-export type PolicyReview = {
-  issues: {
-    claim: string;
-    policy_id: string;
-    policy_excerpt: string;
-    explanation: string;
-  }[];
-  limitation: string;
+export type CriterionStatus = "verified" | "unverified" | "unavailable" | "failed" | "deferred";
+export type WorkflowStage = "proposal" | "review" | "execution" | "verification";
+export type DecisionCriterion = {
+  name: string;
+  status: CriterionStatus;
+  required_before: WorkflowStage;
+  explanation: string;
+  policy_id: string | null;
+  evidence_ids: string[];
+};
+export type InvestigationBlocker = {
+  kind: "missing_evidence" | "confirmed_violation";
+  summary: string;
+  resolution: string;
 };
 export type InvestigationRun = {
   current_status: WorkflowStatus;
   run_id: string;
   ticket_id: string;
   scenario_id: string | null;
-  policy_review: PolicyReview | null;
   result: {
     investigation: {
       outcome: string;
       findings: {
         overview: string;
-        checks: string[];
-        policy_requirements: string[];
-        gaps: string[];
+        decision_criteria: DecisionCriterion[];
         recommendation: string;
       };
-      blockers: string[];
+      blockers: InvestigationBlocker[];
       evidence_ids: string[];
+    };
+    report_validation: {
+      policy_ids: string[];
+      evaluation_count: number;
+      revision_count: number;
     };
     proposal: { id: string } | null;
     was_created: boolean | null;

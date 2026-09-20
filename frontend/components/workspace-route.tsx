@@ -26,7 +26,6 @@ import {
   investigationQuery,
   investigationKeys,
   type InvestigationRun,
-  type PolicyReview,
   prepareDemoCase,
   requestApi,
   ticketsQuery,
@@ -118,26 +117,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     onSettled: (_data, _error, ticketId) =>
       queryClient.invalidateQueries({ queryKey: investigationKeys.history(identity, ticketId) }),
   });
-  const policyEvaluation = useMutation({
-    mutationFn: (runId: string) =>
-      requestApi<PolicyReview>({
-        path: `/api/investigations/${runId}/policy-review`,
-        identity,
-        options: { method: "POST" },
-      }),
-    onSuccess: (policyReview, runId) => {
-      queryClient.setQueryData<InvestigationRun>(
-        investigationKeys.run(identity, runId),
-        (current) => (current ? { ...current, policy_review: policyReview } : current),
-      );
-    },
-  });
   const casePreparation = useMutation({
     mutationFn: (caseId: string) => prepareDemoCase({ identity, caseId }),
     onMutate: () => {
       setSelectedRunId(null);
       investigation.reset();
-      policyEvaluation.reset();
     },
     onSuccess: async (prepared) => {
       await clearDemoQueries(queryClient);
@@ -148,14 +132,12 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
 
   function startTicketInvestigation(ticketId: string) {
     casePreparation.reset();
-    policyEvaluation.reset();
     setSelectedRunId(null);
     investigation.mutate(ticketId);
   }
 
   function selectTicket(ticketId: string) {
     investigation.reset();
-    policyEvaluation.reset();
     setSelectedRunId(null);
     router.push(requestPath(ticketId));
   }
@@ -163,7 +145,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   function changePersona(personaId: string) {
     setSelectedRunId(null);
     investigation.reset();
-    policyEvaluation.reset();
     onEmployeeChange(personaId);
     router.push(workspacePaths.work);
   }
@@ -176,13 +157,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   function openApprovals() {
     setSelectedRunId(null);
     investigation.reset();
-    policyEvaluation.reset();
     router.push(workspacePaths.approvals);
   }
 
   function openRun(id: string) {
     investigation.reset();
-    policyEvaluation.reset();
     setSelectedRunId(id);
   }
 
@@ -190,23 +169,16 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     void historyQueryResult.refetch();
   }
 
-  function evaluatePolicy() {
-    if (run) policyEvaluation.mutate(run.run_id);
-  }
-
   // 3. Derive presentation from query and mutation state, rather than copying it.
   const pendingMessage = casePreparation.isPending
     ? "Preparing the demo case…"
     : investigation.isPending
       ? "Investigating records and validating the result…"
-      : policyEvaluation.isPending
-        ? "Reviewing policy claims…"
-        : selectedRun.isLoading
-          ? "Loading saved investigation…"
-          : "";
+      : selectedRun.isLoading
+        ? "Loading saved investigation…"
+        : "";
   const isPending = pendingMessage !== "";
-  const operationError = (casePreparation.error ?? investigation.error ?? policyEvaluation.error)
-    ?.message;
+  const operationError = (casePreparation.error ?? investigation.error)?.message;
   const readError = (
     selectedRun.error ??
     ticketsQueryResult.error ??
@@ -413,6 +385,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             <WorkflowProgress
               hasInvestigation={run !== null}
               hasProposal={run?.result.proposal !== null && run?.result.proposal !== undefined}
+              investigationInProgress={investigation.isPending}
               status={run?.current_status ?? null}
             />
 
@@ -433,11 +406,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                 />
                 {run && (
                   <>
-                    <InvestigationFindings
-                      run={run}
-                      busy={isPending}
-                      onEvaluatePolicy={evaluatePolicy}
-                    />
+                    <InvestigationFindings run={run} />
                     {run.result.proposal && (
                       <ProposalReview
                         key={run.run_id}
@@ -463,18 +432,22 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
                     Current stage
                   </h2>
                   <div className="mt-3 flex gap-3 rounded-lg border p-4">
-                    {run?.current_status.code === "blocked" ? (
+                    {run?.current_status.code === "blocked" && !investigation.isPending ? (
                       <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
                     ) : (
                       <ShieldCheck className="mt-0.5 size-5 shrink-0 text-amber-600" />
                     )}
                     <div>
                       <p className="font-medium">
-                        {run?.current_status.title ?? "Ready to investigate"}
+                        {investigation.isPending
+                          ? "Investigation in progress"
+                          : (run?.current_status.title ?? "Ready to investigate")}
                       </p>
                       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        {run?.current_status.next_action ??
-                          "Run an investigation to gather evidence and determine the next action."}
+                        {investigation.isPending
+                          ? "Reviewing records and validating the report."
+                          : (run?.current_status.next_action ??
+                            "Run an investigation to gather evidence and determine the next action.")}
                       </p>
                     </div>
                   </div>

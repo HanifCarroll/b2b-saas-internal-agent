@@ -23,7 +23,7 @@ export function TicketDetail({
           </p>
         </div>
         <Button disabled={busy} onClick={() => onInvestigate(ticket.id)}>
-          {busy ? "Investigating…" : "Start investigation"}
+          Start investigation
         </Button>
       </div>
       <dl className="mt-6 grid gap-5 text-sm sm:grid-cols-2 xl:grid-cols-3">

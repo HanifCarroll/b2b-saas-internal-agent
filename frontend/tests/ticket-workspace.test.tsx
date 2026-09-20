@@ -16,6 +16,7 @@ const { render, screen, cleanup, fireEvent } = await import("@testing-library/re
 const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
+const { InvestigationFindings } = await import("../components/investigation-findings");
 const { ApprovalInbox } = await import("../components/approval-inbox");
 const { WorkspaceError } = await import("../components/workspace-route");
 
@@ -106,6 +107,102 @@ test("workflow keeps human review separate from execution", (t) => {
   const lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
   assert.match(lifecycle.textContent!, /ReviewIn progress/);
   assert.match(lifecycle.textContent!, /ExecuteLocked/);
+});
+
+test("workflow distinguishes a ready investigation from one in progress", (t) => {
+  t.after(cleanup);
+  const { rerender } = render(
+    <WorkflowProgress
+      hasInvestigation={false}
+      hasProposal={false}
+      investigationInProgress={false}
+      status={null}
+    />,
+  );
+
+  let lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
+  assert.match(lifecycle.textContent!, /InvestigateReady/);
+
+  rerender(
+    <WorkflowProgress
+      hasInvestigation={false}
+      hasProposal={false}
+      investigationInProgress
+      status={null}
+    />,
+  );
+  lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
+  assert.match(lifecycle.textContent!, /InvestigateIn progress/);
+});
+
+test("investigation report shows structured criteria and actionable blockers", (t) => {
+  t.after(cleanup);
+  render(
+    <InvestigationFindings
+      run={{
+        run_id: "run-1",
+        ticket_id: "CHG-1042",
+        scenario_id: null,
+        current_status: {
+          code: "blocked",
+          title: "Investigation blocked",
+          next_action: "Resolve the blockers.",
+        },
+        result: {
+          investigation: {
+            outcome: "blocked",
+            findings: {
+              overview: "The destination record could not be retrieved.",
+              decision_criteria: [
+                {
+                  name: "Destination registration",
+                  status: "unavailable",
+                  required_before: "proposal",
+                  explanation: "The integration record was unavailable.",
+                  policy_id: "endpoint-change-v2",
+                  evidence_ids: [],
+                },
+                {
+                  name: "Independent approval",
+                  status: "deferred",
+                  required_before: "execution",
+                  explanation: "A different technical lead must approve it.",
+                  policy_id: "endpoint-change-v2",
+                  evidence_ids: [],
+                },
+              ],
+              recommendation: "Restore access and investigate again.",
+            },
+            blockers: [
+              {
+                kind: "missing_evidence",
+                summary: "Integration evidence is unavailable.",
+                resolution: "Restore access to the integration record.",
+              },
+            ],
+            evidence_ids: ["CHG-1042", "endpoint-change-v2"],
+          },
+          report_validation: {
+            policy_ids: ["endpoint-change-v2"],
+            evaluation_count: 2,
+            revision_count: 1,
+          },
+          proposal: null,
+          was_created: null,
+          messages: [],
+        },
+      }}
+    />,
+  );
+
+  assert.ok(screen.getByRole("heading", { name: "Decision criteria" }));
+  assert.ok(screen.getByText("Unavailable"));
+  assert.ok(screen.getByText("Required before execution"));
+  assert.ok(screen.getByRole("heading", { name: "What needs attention" }));
+  assert.equal(screen.queryByText("Passed"), null);
+  assert.equal(screen.queryByRole("button", { name: /Evaluate policy claims/ }), null);
+  const technicalDetails = screen.getByText("Technical details").closest("details");
+  assert.equal(technicalDetails?.open, false);
 });
 
 test("workflow shows delivery verification after execution", (t) => {
