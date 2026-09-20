@@ -11,6 +11,8 @@ Object.assign(globalThis, {
   Element: dom.window.Element,
   Node: dom.window.Node,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+  requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0),
+  cancelAnimationFrame: (handle: number) => clearTimeout(handle),
 });
 const { render, screen, cleanup, fireEvent } = await import("@testing-library/react");
 const { TicketList } = await import("../components/ticket-list");
@@ -18,6 +20,7 @@ const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
 const { InvestigationFindings } = await import("../components/investigation-findings");
 const { EvidenceDocument } = await import("../components/evidence-document");
+const { EvidenceSheet } = await import("../components/evidence-sheet");
 const { ApprovalInbox } = await import("../components/approval-inbox");
 const { WorkspaceError } = await import("../components/workspace-route");
 
@@ -224,7 +227,7 @@ test("investigation report shows structured criteria and actionable blockers", (
   assert.ok(screen.getByText("Prevalidated local fixture; no model evaluation was run."));
   assert.equal(
     screen.getAllByRole("link", { name: "endpoint-change-v2" })[0].getAttribute("href"),
-    "/requests/CHG-1042/investigations/run-1/evidence/endpoint-change-v2",
+    "/requests/CHG-1042?run=run-1&evidence=endpoint-change-v2",
   );
 });
 
@@ -251,8 +254,6 @@ test("evidence document distinguishes the captured integration from the current 
   t.after(cleanup);
   render(
     <EvidenceDocument
-      ticketId="CHG-1042"
-      runId="run-1"
       detail={{
         snapshot: {
           id: "int-acme-prod",
@@ -280,16 +281,86 @@ test("evidence document distinguishes the captured integration from the current 
     />,
   );
 
-  assert.ok(screen.getByRole("heading", { name: "Integration evidence" }));
   assert.ok(screen.getByText("This record changed after the investigation."));
   assert.ok(screen.getByText("Captured during investigation"));
   assert.ok(screen.getByText("Current record"));
-  assert.equal(
-    screen.getByRole("link", { name: "Back to investigation" }).getAttribute("href"),
-    "/requests/CHG-1042?run=run-1",
-  );
   assert.ok(screen.getByText("https://old.acme.example/deals"));
   assert.ok(screen.getByText("https://events.acme.example/deals"));
+  assert.equal(
+    screen
+      .getByText("https://events.acme.example/deals")
+      .closest("[data-changed]")
+      ?.getAttribute("data-changed"),
+    "true",
+  );
+});
+
+test("unchanged evidence is shown once", (t) => {
+  t.after(cleanup);
+  const unchangedTicket = {
+    id: "CHG-1042",
+    subject: "Update production CRM event delivery endpoint",
+    status: "open",
+    created_at: "2026-09-22T13:30:00Z",
+  };
+
+  render(
+    <EvidenceDocument
+      detail={{
+        snapshot: {
+          id: "CHG-1042",
+          kind: "ticket",
+          captured_at: "2026-09-22T14:00:00Z",
+          document: unchangedTicket,
+        },
+        current_document: unchangedTicket,
+        has_changed: false,
+      }}
+    />,
+  );
+
+  assert.ok(screen.getByText("Unchanged since capture"));
+  assert.equal(screen.queryByText("Current record"), null);
+  assert.equal(screen.getAllByText("CHG-1042").length, 1);
+});
+
+test("evidence opens in a dismissible sheet", (t) => {
+  t.after(cleanup);
+  let closed = false;
+
+  render(
+    <EvidenceSheet
+      ticketId="CHG-1042"
+      runId="run-1"
+      detail={{
+        snapshot: {
+          id: "int-acme-prod",
+          kind: "integration",
+          captured_at: "2026-09-22T14:00:00Z",
+          document: {
+            id: "int-acme-prod",
+            name: "Acme production CRM sync",
+            customer_id: "acme",
+            environment: "production",
+            endpoint: "https://events.acme.example/deals",
+            version: 8,
+          },
+        },
+        current_document: null,
+        has_changed: null,
+      }}
+      onClose={() => {
+        closed = true;
+      }}
+      onRetry={() => {}}
+    />,
+  );
+
+  const sheet = screen.getByRole("dialog");
+  assert.ok(sheet.className.includes("data-[side=right]:w-full"));
+  assert.ok(screen.getByRole("heading", { name: "Integration evidence" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  assert.equal(closed, true);
 });
 
 test("approval inbox opens a proposal awaiting independent review", (t) => {

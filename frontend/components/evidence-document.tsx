@@ -1,91 +1,53 @@
-import { ArrowLeft, FileCheck2 } from "lucide-react";
+import { FileCheck2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import type { EvidenceKind, InvestigationEvidenceDetail } from "@/lib/api";
-import { requestPath } from "@/lib/workspace-routes";
+import { cn } from "@/lib/utils";
 
-const evidenceTitles: Record<EvidenceKind, string> = {
-  ticket: "Ticket evidence",
-  customer: "Customer evidence",
-  integration: "Integration evidence",
-  policy: "Policy evidence",
-};
-
-export function EvidenceDocument({
-  detail,
-  ticketId,
-  runId,
-}: {
-  detail: InvestigationEvidenceDetail;
-  ticketId: string;
-  runId: string;
-}) {
+export function EvidenceDocument({ detail }: { detail: InvestigationEvidenceDetail }) {
   const { snapshot, current_document: currentDocument, has_changed: hasChanged } = detail;
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="border-b px-5 py-6 sm:px-8">
-        <div className="mx-auto max-w-5xl">
-          <a
-            href={requestPath(ticketId, runId)}
-            className="inline-flex items-center gap-2 text-sm font-medium hover:underline"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back to investigation
-          </a>
-          <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">
-                {ticketId} · Run {runId.slice(0, 8)}
-              </p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-                {evidenceTitles[snapshot.kind]}
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Exact record saved with this investigation.
-              </p>
-            </div>
-            <Badge variant="secondary">{snapshot.id}</Badge>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col gap-6 p-5 sm:p-6">
+      {hasChanged === true && (
+        <Alert className="border-amber-300 bg-amber-50/70">
+          <FileCheck2 className="text-amber-700" />
+          <AlertTitle>This record changed after the investigation.</AlertTitle>
+          <AlertDescription>
+            The captured evidence remains unchanged below. The current record is shown separately.
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
-        {hasChanged === true && (
-          <Alert className="mb-6 border-amber-300 bg-amber-50/70">
-            <FileCheck2 className="text-amber-700" />
-            <AlertTitle>This record changed after the investigation.</AlertTitle>
-            <AlertDescription>
-              The captured evidence remains unchanged below. The current record is shown separately.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <div className={currentDocument ? "grid gap-6 xl:grid-cols-2" : "grid gap-6"}>
+      <div className={hasChanged ? "grid gap-6 xl:grid-cols-2" : "grid gap-6"}>
+        <EvidencePanel
+          title="Captured during investigation"
+          description={`Captured ${formatDateTime(snapshot.captured_at)}`}
+          kind={snapshot.kind}
+          document={snapshot.document}
+          comparisonDocument={hasChanged ? currentDocument : null}
+        />
+        {hasChanged && currentDocument && (
           <EvidencePanel
-            title="Captured during investigation"
-            description={`Captured ${formatDateTime(snapshot.captured_at)}`}
+            title="Current record"
+            description={hasChanged ? "Latest accessible version" : "Unchanged since capture"}
             kind={snapshot.kind}
-            document={snapshot.document}
+            document={currentDocument}
+            comparisonDocument={snapshot.document}
           />
-          {currentDocument && (
-            <EvidencePanel
-              title="Current record"
-              description={hasChanged ? "Latest accessible version" : "Unchanged since capture"}
-              kind={snapshot.kind}
-              document={currentDocument}
-            />
-          )}
-        </div>
-
-        {!currentDocument && (
-          <p className="mt-6 text-sm text-muted-foreground">
-            The current record is no longer available to this employee. The captured evidence is
-            preserved.
-          </p>
         )}
       </div>
-    </main>
+
+      {hasChanged === false && (
+        <p className="text-sm text-muted-foreground">Unchanged since capture</p>
+      )}
+
+      {!currentDocument && (
+        <p className="text-sm text-muted-foreground">
+          The current record is no longer available to this employee. The captured evidence is
+          preserved.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -94,11 +56,13 @@ function EvidencePanel({
   description,
   kind,
   document,
+  comparisonDocument,
 }: {
   title: string;
   description: string;
   kind: EvidenceKind;
   document: Record<string, unknown>;
+  comparisonDocument: Record<string, unknown> | null;
 }) {
   return (
     <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -107,7 +71,7 @@ function EvidencePanel({
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
       <div className="p-5">
-        <EvidenceFields kind={kind} document={document} />
+        <EvidenceFields kind={kind} document={document} comparisonDocument={comparisonDocument} />
       </div>
     </section>
   );
@@ -116,19 +80,33 @@ function EvidencePanel({
 function EvidenceFields({
   kind,
   document,
+  comparisonDocument,
 }: {
   kind: EvidenceKind;
   document: Record<string, unknown>;
+  comparisonDocument: Record<string, unknown> | null;
 }) {
   if (kind === "policy") {
     return (
       <div>
-        <EvidenceRow label="Policy ID" value={document.id} />
+        <EvidenceRow
+          label="Policy ID"
+          value={document.id}
+          changed={fieldChanged("id", document, comparisonDocument)}
+        />
         <div className="mt-5 border-t pt-5">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Policy text
           </p>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{String(document.content)}</p>
+          <p
+            data-changed={fieldChanged("content", document, comparisonDocument)}
+            className={cn(
+              "mt-2 whitespace-pre-wrap rounded-md text-sm leading-7",
+              fieldChanged("content", document, comparisonDocument) && "bg-amber-50 p-3",
+            )}
+          >
+            {String(document.content)}
+          </p>
         </div>
       </div>
     );
@@ -137,13 +115,15 @@ function EvidenceFields({
   if (kind === "integration") {
     return (
       <EvidenceRows
+        document={document}
+        comparisonDocument={comparisonDocument}
         rows={[
-          ["Integration ID", document.id],
-          ["Name", document.name],
-          ["Customer", document.customer_id],
-          ["Environment", document.environment],
-          ["Endpoint", document.endpoint],
-          ["Configuration version", document.version],
+          ["id", "Integration ID", document.id],
+          ["name", "Name", document.name],
+          ["customer_id", "Customer", document.customer_id],
+          ["environment", "Environment", document.environment],
+          ["endpoint", "Endpoint", document.endpoint],
+          ["version", "Configuration version", document.version],
         ]}
       />
     );
@@ -152,17 +132,19 @@ function EvidenceFields({
   if (kind === "ticket") {
     return (
       <EvidenceRows
+        document={document}
+        comparisonDocument={comparisonDocument}
         rows={[
-          ["Ticket ID", document.id],
-          ["Subject", document.subject],
-          ["Status", document.status],
-          ["Customer", document.customer_id],
-          ["Integration", document.integration_id],
-          ["Requester", document.requester_contact_id],
-          ["Assigned employee", document.assigned_employee_id],
-          ["Requested endpoint", document.requested_endpoint],
-          ["Created", formatDateTime(String(document.created_at))],
-          ["Request body", document.body],
+          ["id", "Ticket ID", document.id],
+          ["subject", "Subject", document.subject],
+          ["status", "Status", document.status],
+          ["customer_id", "Customer", document.customer_id],
+          ["integration_id", "Integration", document.integration_id],
+          ["requester_contact_id", "Requester", document.requester_contact_id],
+          ["assigned_employee_id", "Assigned employee", document.assigned_employee_id],
+          ["requested_endpoint", "Requested endpoint", document.requested_endpoint],
+          ["created_at", "Created", formatDateTime(String(document.created_at))],
+          ["body", "Request body", document.body],
         ]}
       />
     );
@@ -185,36 +167,77 @@ function EvidenceFields({
 
   return (
     <EvidenceRows
+      document={document}
+      comparisonDocument={comparisonDocument}
       rows={[
-        ["Customer ID", document.id],
-        ["Name", document.name],
-        ["Authorized contacts", authorizedContacts],
+        ["id", "Customer ID", document.id],
+        ["name", "Name", document.name],
+        ["authorized_contacts", "Authorized contacts", authorizedContacts],
         [
+          "production_change_window",
           "Production change window",
           `${String(changeWindow.weekday)} ${String(changeWindow.start)}–${String(changeWindow.end)} ${String(changeWindow.timezone)}`,
         ],
-        ["Registered destinations", registeredDestinations],
+        ["registered_destinations", "Registered destinations", registeredDestinations],
       ]}
     />
   );
 }
 
-function EvidenceRows({ rows }: { rows: [string, unknown][] }) {
+function EvidenceRows({
+  rows,
+  document,
+  comparisonDocument,
+}: {
+  rows: [string, string, unknown][];
+  document: Record<string, unknown>;
+  comparisonDocument: Record<string, unknown> | null;
+}) {
   return (
     <dl className="divide-y">
-      {rows.map(([label, value]) => (
-        <EvidenceRow key={label} label={label} value={value} />
+      {rows.map(([key, label, value]) => (
+        <EvidenceRow
+          key={key}
+          label={label}
+          value={value}
+          changed={fieldChanged(key, document, comparisonDocument)}
+        />
       ))}
     </dl>
   );
 }
 
-function EvidenceRow({ label, value }: { label: string; value: unknown }) {
+function EvidenceRow({
+  label,
+  value,
+  changed,
+}: {
+  label: string;
+  value: unknown;
+  changed: boolean;
+}) {
   return (
-    <div className="grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[160px_1fr] sm:gap-5">
+    <div
+      data-changed={changed}
+      className={cn(
+        "grid gap-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[160px_1fr] sm:gap-5",
+        changed && "bg-amber-50 px-3",
+      )}
+    >
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="whitespace-pre-wrap break-words text-sm font-medium">{String(value)}</dd>
     </div>
+  );
+}
+
+function fieldChanged(
+  key: string,
+  document: Record<string, unknown>,
+  comparisonDocument: Record<string, unknown> | null,
+) {
+  return (
+    comparisonDocument !== null &&
+    JSON.stringify(document[key]) !== JSON.stringify(comparisonDocument[key])
   );
 }
 

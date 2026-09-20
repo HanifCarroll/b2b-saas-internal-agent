@@ -36,7 +36,7 @@ import { DemoCaseLauncher } from "@/components/demo-case-launcher";
 import { DemoPersonaSwitcher } from "@/components/demo-persona";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
-import { EvidenceDocument } from "@/components/evidence-document";
+import { EvidenceSheet } from "@/components/evidence-sheet";
 import { TicketDetail } from "@/components/ticket-detail";
 import { TicketList } from "@/components/ticket-list";
 import { WorkflowProgress } from "@/components/workflow-progress";
@@ -46,8 +46,7 @@ import { approvalPath, requestPath, workspacePaths } from "@/lib/workspace-route
 
 export type WorkspaceRouteDescriptor =
   | { kind: "work" }
-  | { kind: "request"; ticketId: string; runId?: string }
-  | { kind: "evidence"; ticketId: string; runId: string; evidenceId: string }
+  | { kind: "request"; ticketId: string; runId?: string; evidenceId?: string }
   | { kind: "approvals"; proposalId?: string; runId?: string };
 
 export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
@@ -55,8 +54,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const router = useRouter();
   const employee = identity.mode === "demo" ? identity.employeeId : currentEmployee!.employee_id;
   const queryClient = useQueryClient();
-  const selectedTicketId =
-    route.kind === "request" || route.kind === "evidence" ? route.ticketId : null;
+  const selectedTicketId = route.kind === "request" ? route.ticketId : null;
   const [selectedRunId, setSelectedRunId] = useState<string | null>(
     route.kind === "request" ? (route.runId ?? null) : null,
   );
@@ -83,10 +81,10 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const evidenceQueryResult = useQuery({
     ...investigationEvidenceQuery(
       identity,
-      route.kind === "evidence" ? route.runId : "",
-      route.kind === "evidence" ? route.evidenceId : "",
+      route.kind === "request" ? (route.runId ?? "") : "",
+      route.kind === "request" ? (route.evidenceId ?? "") : "",
     ),
-    enabled: route.kind === "evidence",
+    enabled: route.kind === "request" && Boolean(route.runId && route.evidenceId),
   });
   const personas = personasQuery.data ?? [];
   const cases = casesQuery.data ?? [];
@@ -204,9 +202,9 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
           : "";
   const isPending = pendingMessage !== "";
   const operationError = (casePreparation.error ?? investigation.error)?.message;
+  const evidenceError = evidenceQueryResult.error?.message;
   const readError = (
     selectedRun.error ??
-    evidenceQueryResult.error ??
     ticketsQueryResult.error ??
     approvalsQueryResult.error ??
     personasQuery.error ??
@@ -217,6 +215,12 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
 
   function retryWorkspaceReads() {
     void queryClient.refetchQueries({ type: "active" });
+  }
+
+  function closeEvidence() {
+    if (route.kind !== "request") return;
+
+    router.replace(requestPath(route.ticketId, route.runId));
   }
   const sidebarDemoControls =
     identity.mode === "demo" ? (
@@ -311,24 +315,6 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             )}
           </div>
         </main>
-      ) : route.kind === "evidence" ? (
-        evidenceQueryResult.data ? (
-          <EvidenceDocument
-            detail={evidenceQueryResult.data}
-            ticketId={route.ticketId}
-            runId={route.runId}
-          />
-        ) : (
-          <main className="min-h-screen bg-white px-5 py-8 sm:px-8">
-            <div className="mx-auto max-w-5xl">
-              {readError ? (
-                <WorkspaceError message={readError} onRetry={retryWorkspaceReads} />
-              ) : (
-                <PendingOperation message="Loading evidence…" />
-              )}
-            </div>
-          </main>
-        )
       ) : !selectedTicket ? (
         <main className="min-h-screen">
           <div className="border-b bg-white px-5 py-7 sm:px-8">
@@ -522,6 +508,17 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             </div>
           </div>
         </main>
+      )}
+
+      {route.kind === "request" && route.runId && route.evidenceId && (
+        <EvidenceSheet
+          detail={evidenceQueryResult.data}
+          error={evidenceError}
+          ticketId={route.ticketId}
+          runId={route.runId}
+          onClose={closeEvidence}
+          onRetry={() => void evidenceQueryResult.refetch()}
+        />
       )}
     </div>
   );

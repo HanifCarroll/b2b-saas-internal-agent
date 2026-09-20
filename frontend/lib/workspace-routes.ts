@@ -17,7 +17,8 @@ export function evidencePath({
   runId: string;
   evidenceId: string;
 }) {
-  return `/requests/${encodeURIComponent(ticketId)}/investigations/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}`;
+  const query = new URLSearchParams({ run: runId, evidence: evidenceId });
+  return `/requests/${encodeURIComponent(ticketId)}?${query}`;
 }
 
 export function approvalPath({ proposalId, runId }: { proposalId: string; runId: string }) {
