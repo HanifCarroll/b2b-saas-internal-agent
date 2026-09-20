@@ -27,7 +27,7 @@ def test_policy_judge_matches_reference_expectation(
     """Compare one live judge result with its withheld expected classification."""
     # 1. Record the case without exposing its expectation to the model.
     load_dotenv(ROOT / ".env")
-    testing.log_inputs({"claims": evaluation_case.claims})
+    testing.log_inputs({"investigation_output": evaluation_case.investigation_output})
     testing.log_reference_outputs(
         {
             "expect_issue": evaluation_case.expect_issue,
@@ -37,7 +37,10 @@ def test_policy_judge_matches_reference_expectation(
     )
 
     # 2. Run the real judge and record its validated output.
-    review = evaluate_policy(claims=evaluation_case.claims, model=create_model())
+    review = evaluate_policy(
+        investigation_output=evaluation_case.investigation_output,
+        model=create_model(),
+    )
     testing.log_outputs(review.model_dump(mode="json"))
 
     # 3. Score the broad classification and the expected policy findings.

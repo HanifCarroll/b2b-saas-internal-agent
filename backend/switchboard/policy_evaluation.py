@@ -1,4 +1,4 @@
-"""Optional model-based review of policy claims; never authorizes an action."""
+"""Optional model-based review of investigation output; never authorizes an action."""
 
 import json
 from pathlib import Path
@@ -31,8 +31,8 @@ class PolicyReview(Record):
     limitation: str = Field(default="Model judgment, not proof of correctness.")
 
 
-def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
-    """Compare claims with policy sources in a separate call, without agent history."""
+def evaluate_policy(*, investigation_output: str, model: BaseChatModel) -> PolicyReview:
+    """Compare investigation output with policy sources without agent history."""
     # 1. Load the source policies and require evidence for evaluation.
     policies = [
         {"id": path.stem, "content": path.read_text()}
@@ -41,7 +41,7 @@ def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
     if not policies:
         raise ValueError("Policy evaluation requires policy sources")
 
-    # 2. Ask the reviewer model to compare claims with those sources.
+    # 2. Ask the reviewer model to compare the investigation output with the sources.
     prompt = (Path(__file__).parent / "prompts" / "policy_evaluation.md").read_text()
     response = model.invoke(
         [
@@ -51,7 +51,15 @@ def evaluate_policy(*, claims: str, model: BaseChatModel) -> PolicyReview:
                 + "\n\nOutput schema:\n"
                 + json.dumps(PolicyReview.model_json_schema()),
             ),
-            ("human", json.dumps({"policies": policies, "claims": claims})),
+            (
+                "human",
+                json.dumps(
+                    {
+                        "policies": policies,
+                        "investigation_output": investigation_output,
+                    }
+                ),
+            ),
         ],
         config={"run_name": "policy-faithfulness-review"},
     )

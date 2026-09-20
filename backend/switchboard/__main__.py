@@ -66,7 +66,7 @@ def display_investigation_result(
         )
 
 
-def run_investigation(*, scenario_id: str, evaluate_policy_claims: bool) -> None:
+def run_investigation(*, scenario_id: str, evaluate_policy_output: bool) -> None:
     model = create_model()
     try:
         run = investigate_scenario(
@@ -84,9 +84,10 @@ def run_investigation(*, scenario_id: str, evaluate_policy_claims: bool) -> None
 
     print(f"Workflow ID: {run.workflow_id}")
     display_investigation_result(result=run.result, workflow_id=run.workflow_id)
-    if evaluate_policy_claims:
+    if evaluate_policy_output:
         review = evaluate_policy(
-            claims=run.result.investigation.model_dump_json(), model=model
+            investigation_output=run.result.investigation.model_dump_json(),
+            model=model,
         )
         print("\nPolicy faithfulness review (model judgment):")
         print(review.model_dump_json(indent=2))
@@ -155,7 +156,7 @@ def main() -> None:
         parser.error("Reset the demo first: --reset-demo baseline --confirm-reset")
     run_investigation(
         scenario_id=args.scenario or setup.scenario_id,
-        evaluate_policy_claims=args.evaluate_policy,
+        evaluate_policy_output=args.evaluate_policy,
     )
 
 

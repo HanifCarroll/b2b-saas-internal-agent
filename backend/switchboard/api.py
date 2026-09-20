@@ -523,7 +523,8 @@ def review_policy(
     run = read_investigation(run_id=run_id, request_context=request_context)
     try:
         review = evaluate_policy(
-            claims=run.result.investigation.model_dump_json(), model=create_model()
+            investigation_output=run.result.investigation.model_dump_json(),
+            model=create_model(),
         )
     except Exception:
         logger.exception("Policy review failed")

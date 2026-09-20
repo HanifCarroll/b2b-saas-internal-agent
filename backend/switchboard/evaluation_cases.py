@@ -19,7 +19,7 @@ class InvestigationEvaluationCase(Record):
 
 class PolicyFaithfulnessEvaluationCase(Record):
     id: Text
-    claims: Text
+    investigation_output: Text
     expect_issue: bool
     expected_issue_kinds: list[PolicyIssueKind] = Field(default_factory=list)
     expected_policy_ids: list[Text] = Field(default_factory=list)
