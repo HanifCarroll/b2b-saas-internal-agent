@@ -127,6 +127,7 @@ export type InvestigationRun = {
       evaluation_count: number;
       revision_count: number;
     };
+    evidence: EvidenceSnapshot[];
     proposal: { id: string } | null;
     was_created: boolean | null;
     messages: {
@@ -137,6 +138,19 @@ export type InvestigationRun = {
       }[];
     }[];
   };
+};
+
+export type EvidenceKind = "ticket" | "customer" | "integration" | "policy";
+export type EvidenceSnapshot = {
+  id: string;
+  kind: EvidenceKind;
+  captured_at: string;
+  document: Record<string, unknown>;
+};
+export type InvestigationEvidenceDetail = {
+  snapshot: EvidenceSnapshot;
+  current_document: Record<string, unknown> | null;
+  has_changed: boolean | null;
 };
 
 export type RequestIdentity =
@@ -224,6 +238,8 @@ export const investigationKeys = {
     ["investigations", ...identityKey(identity), ticketId] as const,
   run: (identity: RequestIdentity, runId: string | null) =>
     ["investigation", ...identityKey(identity), runId] as const,
+  evidence: (identity: RequestIdentity, runId: string, evidenceId: string) =>
+    ["investigation-evidence", ...identityKey(identity), runId, evidenceId] as const,
 };
 
 export const ticketsQuery = (identity: RequestIdentity) => ({
@@ -299,6 +315,22 @@ export function investigationQuery(identity: RequestIdentity, runId: string | nu
         options: { signal },
       });
     },
+  };
+}
+
+export function investigationEvidenceQuery(
+  identity: RequestIdentity,
+  runId: string,
+  evidenceId: string,
+) {
+  return {
+    queryKey: investigationKeys.evidence(identity, runId, evidenceId),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      requestApi<InvestigationEvidenceDetail>({
+        path: `/api/investigations/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(evidenceId)}`,
+        identity,
+        options: { signal },
+      }),
   };
 }
 

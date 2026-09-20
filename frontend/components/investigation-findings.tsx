@@ -15,6 +15,7 @@ import type {
 } from "@/lib/api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { evidencePath } from "@/lib/workspace-routes";
 
 export function InvestigationFindings({ run }: { run: InvestigationRun }) {
   const { investigation, messages, report_validation: validation } = run.result;
@@ -38,7 +39,7 @@ export function InvestigationFindings({ run }: { run: InvestigationRun }) {
         <p className="mt-3 text-sm font-medium text-slate-900">{findings.recommendation}</p>
       </div>
 
-      <DecisionCriteria criteria={findings.decision_criteria} />
+      <DecisionCriteria criteria={findings.decision_criteria} run={run} />
       <AttentionItems blockers={investigation.blockers} />
 
       {run.result.proposal && (
@@ -57,7 +58,18 @@ export function InvestigationFindings({ run }: { run: InvestigationRun }) {
       <details id="technical-investigation-details" className="mt-5 rounded-lg border px-4 py-3">
         <summary className="cursor-pointer text-sm font-medium">Technical details</summary>
         <div className="mt-4 flex flex-col gap-4 text-sm text-muted-foreground">
-          <p>Evidence records: {investigation.evidence_ids.join(", ") || "None retrieved"}</p>
+          <div>
+            <p className="font-medium text-foreground">Evidence records</p>
+            {investigation.evidence_ids.length ? (
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-2">
+                {investigation.evidence_ids.map((evidenceId) => (
+                  <EvidenceReference key={evidenceId} evidenceId={evidenceId} run={run} />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2">None retrieved</p>
+            )}
+          </div>
           <p>Governing policies: {validation.policy_ids.join(", ")}</p>
           <p>
             Policy claims validated automatically with {validation.evaluation_count} evaluation
@@ -84,7 +96,13 @@ export function InvestigationFindings({ run }: { run: InvestigationRun }) {
   );
 }
 
-function DecisionCriteria({ criteria }: { criteria: DecisionCriterion[] }) {
+function DecisionCriteria({
+  criteria,
+  run,
+}: {
+  criteria: DecisionCriterion[];
+  run: InvestigationRun;
+}) {
   if (!criteria.length) return null;
 
   return (
@@ -97,6 +115,12 @@ function DecisionCriteria({ criteria }: { criteria: DecisionCriterion[] }) {
         {criteria.map((criterion) => {
           const presentation = criterionPresentation(criterion.status);
           const StatusIcon = presentation.icon;
+          const sourceIds = Array.from(
+            new Set([
+              ...(criterion.policy_id ? [criterion.policy_id] : []),
+              ...criterion.evidence_ids,
+            ]),
+          );
 
           return (
             <div
@@ -119,10 +143,13 @@ function DecisionCriteria({ criteria }: { criteria: DecisionCriterion[] }) {
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
                   {criterion.explanation}
                 </p>
-                {criterion.policy_id && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Policy: {criterion.policy_id}
-                  </p>
+                {sourceIds.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span>Sources:</span>
+                    {sourceIds.map((evidenceId) => (
+                      <EvidenceReference key={evidenceId} evidenceId={evidenceId} run={run} />
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -130,6 +157,28 @@ function DecisionCriteria({ criteria }: { criteria: DecisionCriterion[] }) {
         })}
       </div>
     </section>
+  );
+}
+
+function EvidenceReference({ evidenceId, run }: { evidenceId: string; run: InvestigationRun }) {
+  const captured = run.result.evidence.some((item) => item.id === evidenceId);
+  if (!captured) return <span>{evidenceId}</span>;
+
+  return <EvidenceLink evidenceId={evidenceId} run={run} />;
+}
+
+export function EvidenceLink({ evidenceId, run }: { evidenceId: string; run: InvestigationRun }) {
+  return (
+    <a
+      href={evidencePath({
+        ticketId: run.ticket_id,
+        runId: run.run_id,
+        evidenceId,
+      })}
+      className="font-medium text-blue-700 underline-offset-4 hover:underline"
+    >
+      {evidenceId}
+    </a>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   demoPersonasQuery,
   historyQuery,
   investigationQuery,
+  investigationEvidenceQuery,
   investigationKeys,
   ticketsQuery,
   proposalReviewQuery,
@@ -151,6 +152,22 @@ test("unselected runs stay disabled; inaccessible runs surface errors", async (t
     client.fetchQuery(investigationQuery({ mode: "demo", employeeId: "emp-alex" }, "run-1")),
     /Record unavailable/,
   );
+});
+
+test("investigation evidence uses the run-scoped authorized endpoint", async (t) => {
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    assert.equal(path, "/api/investigations/run-1/evidence/int-acme-prod");
+    assert.equal(new Headers(options.headers).get("X-Demo-Persona-Id"), "emp-alex");
+    return Response.json({ snapshot: { id: "int-acme-prod" }, has_changed: false });
+  });
+
+  const detail = await investigationEvidenceQuery(
+    { mode: "demo", employeeId: "emp-alex" },
+    "run-1",
+    "int-acme-prod",
+  ).queryFn({ signal: AbortSignal.timeout(1000) });
+
+  assert.equal(detail.snapshot.id, "int-acme-prod");
 });
 
 test("proposal reviews isolate reviewers and invalidate together after approval", async (t) => {

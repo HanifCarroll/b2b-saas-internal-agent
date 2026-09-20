@@ -23,6 +23,7 @@ import {
   demoCasesQuery,
   demoPersonasQuery,
   historyQuery,
+  investigationEvidenceQuery,
   investigationQuery,
   investigationKeys,
   type InvestigationRun,
@@ -35,6 +36,7 @@ import { DemoCaseLauncher } from "@/components/demo-case-launcher";
 import { DemoPersonaSwitcher } from "@/components/demo-persona";
 import { InvestigationHistory } from "@/components/investigation-history";
 import { InvestigationFindings } from "@/components/investigation-findings";
+import { EvidenceDocument } from "@/components/evidence-document";
 import { TicketDetail } from "@/components/ticket-detail";
 import { TicketList } from "@/components/ticket-list";
 import { WorkflowProgress } from "@/components/workflow-progress";
@@ -44,7 +46,8 @@ import { approvalPath, requestPath, workspacePaths } from "@/lib/workspace-route
 
 export type WorkspaceRouteDescriptor =
   | { kind: "work" }
-  | { kind: "request"; ticketId: string }
+  | { kind: "request"; ticketId: string; runId?: string }
+  | { kind: "evidence"; ticketId: string; runId: string; evidenceId: string }
   | { kind: "approvals"; proposalId?: string; runId?: string };
 
 export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
@@ -52,8 +55,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const router = useRouter();
   const employee = identity.mode === "demo" ? identity.employeeId : currentEmployee!.employee_id;
   const queryClient = useQueryClient();
-  const selectedTicketId = route.kind === "request" ? route.ticketId : null;
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const selectedTicketId =
+    route.kind === "request" || route.kind === "evidence" ? route.ticketId : null;
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(
+    route.kind === "request" ? (route.runId ?? null) : null,
+  );
   const activeView = route.kind === "approvals" ? "approvals" : "work";
   const [ticketSearch, setTicketSearch] = useState("");
 
@@ -74,6 +80,14 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const mutationsInProgress = useIsMutating();
   const historyQueryResult = useQuery(historyQuery(identity, selectedTicketId));
   const selectedRun = useQuery(investigationQuery(identity, selectedRunId));
+  const evidenceQueryResult = useQuery({
+    ...investigationEvidenceQuery(
+      identity,
+      route.kind === "evidence" ? route.runId : "",
+      route.kind === "evidence" ? route.evidenceId : "",
+    ),
+    enabled: route.kind === "evidence",
+  });
   const personas = personasQuery.data ?? [];
   const cases = casesQuery.data ?? [];
   const tickets = ticketsQueryResult.data ?? [];
@@ -181,6 +195,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const operationError = (casePreparation.error ?? investigation.error)?.message;
   const readError = (
     selectedRun.error ??
+    evidenceQueryResult.error ??
     ticketsQueryResult.error ??
     approvalsQueryResult.error ??
     personasQuery.error ??
@@ -285,6 +300,24 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             )}
           </div>
         </main>
+      ) : route.kind === "evidence" ? (
+        evidenceQueryResult.data ? (
+          <EvidenceDocument
+            detail={evidenceQueryResult.data}
+            ticketId={route.ticketId}
+            runId={route.runId}
+          />
+        ) : (
+          <main className="min-h-screen bg-white px-5 py-8 sm:px-8">
+            <div className="mx-auto max-w-5xl">
+              {readError ? (
+                <WorkspaceError message={readError} onRetry={retryWorkspaceReads} />
+              ) : (
+                <PendingOperation message="Loading evidence…" />
+              )}
+            </div>
+          </main>
+        )
       ) : !selectedTicket ? (
         <main className="min-h-screen">
           <div className="border-b bg-white px-5 py-7 sm:px-8">

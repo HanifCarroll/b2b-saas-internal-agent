@@ -1,6 +1,18 @@
 import { WorkspaceRoute } from "@/components/workspace-route";
 
-export default async function RequestPage({ params }: PageProps<"/requests/[ticketId]">) {
+export default async function RequestPage({
+  params,
+  searchParams,
+}: PageProps<"/requests/[ticketId]">) {
   const { ticketId } = await params;
-  return <WorkspaceRoute route={{ kind: "request", ticketId }} />;
+  const { run } = await searchParams;
+  return (
+    <WorkspaceRoute
+      route={{
+        kind: "request",
+        ticketId,
+        runId: typeof run === "string" ? run : undefined,
+      }}
+    />
+  );
 }

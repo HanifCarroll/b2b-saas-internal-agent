@@ -17,6 +17,7 @@ const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
 const { InvestigationFindings } = await import("../components/investigation-findings");
+const { EvidenceDocument } = await import("../components/evidence-document");
 const { ApprovalInbox } = await import("../components/approval-inbox");
 const { WorkspaceError } = await import("../components/workspace-route");
 
@@ -187,6 +188,20 @@ test("investigation report shows structured criteria and actionable blockers", (
             evaluation_count: 2,
             revision_count: 1,
           },
+          evidence: [
+            {
+              id: "CHG-1042",
+              kind: "ticket",
+              captured_at: "2026-09-22T14:00:00Z",
+              document: { id: "CHG-1042" },
+            },
+            {
+              id: "endpoint-change-v2",
+              kind: "policy",
+              captured_at: "2026-09-22T14:00:00Z",
+              document: { id: "endpoint-change-v2" },
+            },
+          ],
           proposal: null,
           was_created: null,
           messages: [],
@@ -203,6 +218,10 @@ test("investigation report shows structured criteria and actionable blockers", (
   assert.equal(screen.queryByRole("button", { name: /Evaluate policy claims/ }), null);
   const technicalDetails = screen.getByText("Technical details").closest("details");
   assert.equal(technicalDetails?.open, false);
+  assert.equal(
+    screen.getAllByRole("link", { name: "endpoint-change-v2" })[0].getAttribute("href"),
+    "/requests/CHG-1042/investigations/run-1/evidence/endpoint-change-v2",
+  );
 });
 
 test("workflow shows delivery verification after execution", (t) => {
@@ -222,6 +241,51 @@ test("workflow shows delivery verification after execution", (t) => {
   const lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
   assert.match(lifecycle.textContent!, /ExecuteComplete/);
   assert.match(lifecycle.textContent!, /VerifyComplete/);
+});
+
+test("evidence document distinguishes the captured integration from the current record", (t) => {
+  t.after(cleanup);
+  render(
+    <EvidenceDocument
+      ticketId="CHG-1042"
+      runId="run-1"
+      detail={{
+        snapshot: {
+          id: "int-acme-prod",
+          kind: "integration",
+          captured_at: "2026-09-22T14:00:00Z",
+          document: {
+            id: "int-acme-prod",
+            customer_id: "acme",
+            name: "Acme production CRM sync",
+            environment: "production",
+            endpoint: "https://old.acme.example/deals",
+            version: 7,
+          },
+        },
+        current_document: {
+          id: "int-acme-prod",
+          customer_id: "acme",
+          name: "Acme production CRM sync",
+          environment: "production",
+          endpoint: "https://events.acme.example/deals",
+          version: 8,
+        },
+        has_changed: true,
+      }}
+    />,
+  );
+
+  assert.ok(screen.getByRole("heading", { name: "Integration evidence" }));
+  assert.ok(screen.getByText("This record changed after the investigation."));
+  assert.ok(screen.getByText("Captured during investigation"));
+  assert.ok(screen.getByText("Current record"));
+  assert.equal(
+    screen.getByRole("link", { name: "Back to investigation" }).getAttribute("href"),
+    "/requests/CHG-1042?run=run-1",
+  );
+  assert.ok(screen.getByText("https://old.acme.example/deals"));
+  assert.ok(screen.getByText("https://events.acme.example/deals"));
 });
 
 test("approval inbox opens a proposal awaiting independent review", (t) => {
