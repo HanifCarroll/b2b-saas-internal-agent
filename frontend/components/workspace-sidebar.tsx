@@ -38,7 +38,7 @@ export function WorkspaceSidebar({
   return (
     <aside className="flex min-h-0 w-full flex-col border-b border-sidebar-border bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:min-h-screen lg:w-60 lg:border-r lg:border-b-0">
       <div className="flex h-20 items-center gap-3 px-6 text-lg font-semibold tracking-tight">
-        <span className="grid size-9 place-items-center rounded-xl bg-sidebar-accent">
+        <span className="grid size-8 place-items-center">
           <SwitchboardMark />
         </span>
         Switchboard
@@ -149,19 +149,18 @@ export function WorkspaceSidebar({
 function SwitchboardMark() {
   return (
     <svg
-      viewBox="0 0 24 24"
-      className="size-5 text-sidebar-accent-foreground"
+      viewBox="0 0 32 32"
+      className="size-8 text-blue-600"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="3.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <circle cx="5" cy="12" r="2" fill="currentColor" stroke="none" />
-      <circle cx="18" cy="6" r="2" fill="currentColor" stroke="none" />
-      <circle cx="18" cy="18" r="2" fill="currentColor" stroke="none" />
-      <path d="M7 11.2 16 6.8M7 12.8l9 4.4" />
+      <path d="M25 7H12a5 5 0 0 0 0 10h8a5 5 0 0 1 0 10H7" />
+      <circle cx="25" cy="7" r="2.25" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="27" r="2.25" fill="currentColor" stroke="none" />
     </svg>
   );
 }

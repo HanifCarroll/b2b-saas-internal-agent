@@ -209,7 +209,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     ) : undefined;
 
   return (
-    <div className="min-h-screen bg-slate-50 lg:pl-60">
+    <div className="min-h-screen bg-[#fcfcfb] lg:pl-60">
       <WorkspaceSidebar
         activeView={activeView}
         employee={employeeName}
@@ -223,7 +223,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
 
       {activeView === "approvals" ? (
         <main className="min-h-screen">
-          <div className="border-b bg-white px-5 py-7 sm:px-8">
+          <div className="px-5 py-7 sm:px-8">
             <div className="mx-auto max-w-6xl">
               <h1 className="text-3xl font-semibold tracking-tight">Approvals</h1>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -284,7 +284,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
         </main>
       ) : !selectedTicket ? (
         <main className="min-h-screen">
-          <div className="border-b bg-white px-5 py-7 sm:px-8">
+          <div className="px-5 py-7 sm:px-8">
             <div className="mx-auto max-w-6xl">
               <div className="flex flex-wrap items-end justify-between gap-5">
                 <div>
@@ -349,8 +349,8 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
           </div>
         </main>
       ) : (
-        <main className="min-h-screen bg-white" aria-live="polite" aria-busy={isPending}>
-          <header className="border-b px-5 py-6 sm:px-8">
+        <main className="min-h-screen" aria-live="polite" aria-busy={isPending}>
+          <header className="px-5 py-6 sm:px-8">
             <div className="mx-auto max-w-7xl">
               <Button variant="ghost" size="sm" className="-ml-3" onClick={clearSelection}>
                 <ArrowLeft className="size-4" />
