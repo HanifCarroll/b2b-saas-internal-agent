@@ -139,9 +139,6 @@ class WorkspaceStorage:
     def find_proposal_run(self, *, proposal_id: str) -> str | None:
         return self._call("run.findProposal", {"proposalId": proposal_id})
 
-    def save_policy_review(self, *, run_id: str, review: dict) -> None:
-        self._call("run.savePolicyReview", {"id": run_id, "review": review})
-
     def _call(self, operation: str, payload: dict | None = None):
         if self.transport is not None:
             return self.transport(operation, self.workspace_id, payload or {})

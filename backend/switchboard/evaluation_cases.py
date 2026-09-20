@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, TypeAdapter
 
 from switchboard.models import Record, Text
-from switchboard.policy_evaluation import PolicyIssueKind
+from switchboard.report_validation import PolicyIssueKind
 
 EVALUATIONS = Path(__file__).resolve().parent.parent / "data" / "evaluations"
 

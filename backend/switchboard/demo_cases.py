@@ -14,6 +14,7 @@ from switchboard.models import (
     EndpointChangeResult,
     InvestigationFindings,
     InvestigationResult,
+    ReportValidation,
 )
 from switchboard.proposals import validate_proposal
 from switchboard.scenarios import build_workspace_payload, load_scenarios
@@ -176,6 +177,11 @@ def _prepare_proposal(*, workspace: DemoWorkspace, scenario_id: str):
     run_id = uuid4()
     result = EndpointChangeResult(
         investigation=investigation,
+        report_validation=ReportValidation(
+            policy_ids=["endpoint-change-v1", "endpoint-change-v2"],
+            evaluation_count=1,
+            revision_count=0,
+        ),
         messages=[],
         proposal=proposal,
         was_created=True,

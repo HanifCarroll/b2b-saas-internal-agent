@@ -121,16 +121,10 @@ class MemoryStorageBridge:
         if operation == "run.save":
             if self._by_id(workspace["runs"], payload["run"]["id"]):
                 raise StorageError("Investigation already exists", status=409)
-            workspace["runs"].append(payload["run"] | {"policy_review": None})
+            workspace["runs"].append(payload["run"])
             return None
         if operation == "run.findProposal":
             return self._find_proposal_run(workspace, payload["proposalId"])
-        if operation == "run.savePolicyReview":
-            run = self._by_id(workspace["runs"], payload["id"])
-            if run is None:
-                raise StorageError("Investigation unavailable", status=404)
-            run["policy_review"] = payload["review"]
-            return None
         raise StorageError("Unknown storage operation", status=404)
 
     @staticmethod

@@ -21,6 +21,7 @@ from switchboard.models import (
     EndpointChangeResult,
     InvestigationFindings,
     InvestigationResult,
+    ReportValidation,
 )
 from switchboard.proposals import validate_proposal
 from switchboard.runs import (
@@ -322,7 +323,15 @@ def test_investigation_history_rechecks_original_employee_access(storage):
     proposal = saved_proposal(storage)
     run_id = UUID("8f2a6b6e-265f-4d54-a373-8a461285a831")
     result = EndpointChangeResult(
-        investigation=candidate(), messages=[], proposal=proposal, was_created=True
+        investigation=candidate(),
+        report_validation=ReportValidation(
+            policy_ids=["endpoint-change-v2"],
+            evaluation_count=1,
+            revision_count=0,
+        ),
+        messages=[],
+        proposal=proposal,
+        was_created=True,
     )
     save_investigation_run(
         storage=storage,

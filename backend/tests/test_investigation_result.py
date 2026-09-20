@@ -5,7 +5,11 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from switchboard.models import InvestigationFindings, InvestigationResult
+from switchboard.models import (
+    InvestigationBlocker,
+    InvestigationFindings,
+    InvestigationResult,
+)
 
 
 @pytest.fixture
@@ -87,11 +91,11 @@ def test_blocked_result_can_have_no_ticket_or_endpoint():
             recommendation="Review the evidence before proceeding.",
         ),
         blockers=[
-            {
-                "kind": "missing_evidence",
-                "summary": "Required evidence could not be retrieved.",
-                "resolution": "Restore access to the record and investigate again.",
-            }
+            InvestigationBlocker(
+                kind="missing_evidence",
+                summary="Required evidence could not be retrieved.",
+                resolution="Restore access to the record and investigate again.",
+            )
         ],
     )
 

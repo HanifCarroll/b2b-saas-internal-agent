@@ -8,7 +8,8 @@ from langsmith import testing
 
 from switchboard.agent import create_model
 from switchboard.evaluation_cases import load_policy_faithfulness_evaluation_cases
-from switchboard.policy_evaluation import evaluate_policy
+from switchboard.report_validation import PolicySource, evaluate_policy_claims
+from switchboard.scenarios import FIXTURES
 
 ROOT = Path(__file__).resolve().parent.parent
 EVALUATION_CASES = {
@@ -34,8 +35,13 @@ def test_policy_judge_matches_reference_expectation(case_id: str) -> None:
     )
 
     # 2. Run the real judge and record its validated output.
-    review = evaluate_policy(
+    policies = [
+        PolicySource(id=path.stem, content=path.read_text())
+        for path in sorted((FIXTURES / "policies").glob("*.md"))
+    ]
+    review = evaluate_policy_claims(
         investigation_output=evaluation_case.investigation_output,
+        policies=policies,
         model=create_model(),
     )
     testing.log_outputs(review.model_dump(mode="json"))

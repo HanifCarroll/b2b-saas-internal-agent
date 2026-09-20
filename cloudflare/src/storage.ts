@@ -171,8 +171,6 @@ async function dispatchStorageOperation(
       return saveRun(db, workspaceId, requiredObject(payload, "run"));
     case "run.findProposal":
       return findProposalRun(db, workspaceId, requiredString(payload, "proposalId"));
-    case "run.savePolicyReview":
-      return savePolicyReview(db, workspaceId, payload);
     default:
       throw new StorageRequestError("Unknown storage operation", 404);
   }
@@ -575,8 +573,8 @@ async function saveRun(
     .prepare(
       `INSERT INTO investigation_runs (
          workspace_id, id, ticket_id, scenario_id, requester_employee_id,
-         requester_role, customer_ids_json, result_json, policy_review_json, created_at
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9)`,
+         requester_role, customer_ids_json, result_json, created_at
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
     )
     .bind(
       workspaceId,
@@ -609,25 +607,6 @@ async function findProposalRun(
   return match?.id ?? null;
 }
 
-async function savePolicyReview(
-  db: D1Database,
-  workspaceId: string,
-  payload: JsonObject,
-): Promise<null> {
-  const result = await db
-    .prepare(
-      "UPDATE investigation_runs SET policy_review_json = ?1 WHERE workspace_id = ?2 AND id = ?3",
-    )
-    .bind(
-      JSON.stringify(requiredObject(payload, "review")),
-      workspaceId,
-      requiredString(payload, "id"),
-    )
-    .run();
-  if (result.meta.changes !== 1) throw new StorageRequestError("Investigation unavailable", 404);
-  return null;
-}
-
 function decodeRun(row: Record<string, unknown>): JsonObject {
   return {
     id: row.id,
@@ -637,7 +616,6 @@ function decodeRun(row: Record<string, unknown>): JsonObject {
     requester_role: row.requester_role,
     customer_ids: JSON.parse(String(row.customer_ids_json)),
     result: JSON.parse(String(row.result_json)),
-    policy_review: row.policy_review_json ? JSON.parse(String(row.policy_review_json)) : null,
     created_at: row.created_at,
   };
 }

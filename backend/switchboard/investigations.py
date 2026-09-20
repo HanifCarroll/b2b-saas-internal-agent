@@ -82,6 +82,7 @@ def _run_investigation(
     workflow_id = uuid4()
     context = EndpointChangeContext(
         agent=build_agent(model=model, now=now),
+        model=model,
         investigation_context=InvestigationContext(
             storage=storage,
             employee_id=employee_id,

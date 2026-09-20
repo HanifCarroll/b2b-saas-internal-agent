@@ -47,7 +47,7 @@ from switchboard.models import (
     TicketDetails,
     VerifyDeliveryResult,
 )
-from switchboard.policy_evaluation import PolicyReview, evaluate_policy
+from switchboard.report_validation import ReportValidationError
 from switchboard.runs import (
     InvestigationRun,
     InvestigationSummary,
@@ -55,7 +55,6 @@ from switchboard.runs import (
     get_investigation_run,
     list_investigation_runs,
     load_run,
-    save_policy_review,
 )
 from switchboard.scenarios import initialize_demo_workspace, load_scenarios
 from switchboard.storage import StorageError, WorkspaceStorage
@@ -459,6 +458,12 @@ def start_investigation(
             storage=request_context.storage,
             now=datetime.now(timezone.utc),
         )
+    except ReportValidationError:
+        logger.exception("Investigation report validation failed")
+        raise HTTPException(
+            status_code=502,
+            detail="The investigation report could not be validated. Try again.",
+        ) from None
     except (ValueError, PermissionError):
         raise HTTPException(
             status_code=422, detail="Investigation result was rejected"
@@ -513,35 +518,3 @@ def read_investigation(
         raise HTTPException(
             status_code=404, detail="Investigation unavailable"
         ) from None
-
-
-@app.post("/api/investigations/{run_id}/policy-review", response_model=PolicyReview)
-def review_policy(
-    run_id: UUID,
-    request_context: RequestContext = Depends(get_request_context),
-) -> PolicyReview:
-    run = read_investigation(run_id=run_id, request_context=request_context)
-    try:
-        review = evaluate_policy(
-            investigation_output=run.result.investigation.model_dump_json(),
-            model=create_model(),
-        )
-    except Exception:
-        logger.exception("Policy review failed")
-        raise HTTPException(
-            status_code=502,
-            detail="Policy review could not complete; investigation and approval are unchanged",
-        ) from None
-
-    try:
-        save_policy_review(
-            storage=request_context.storage,
-            run_id=run_id,
-            employee_id=request_context.employee_id,
-            review=review,
-        )
-    except (FileNotFoundError, PermissionError):
-        raise HTTPException(
-            status_code=404, detail="Investigation unavailable"
-        ) from None
-    return review

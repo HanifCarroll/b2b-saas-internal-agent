@@ -14,7 +14,6 @@ from switchboard.demo import read_demo_setup, reset_demo
 from switchboard.integrations.change_management import get_proposal
 from switchboard.investigations import investigate_scenario
 from switchboard.models import EndpointChangeResult
-from switchboard.policy_evaluation import evaluate_policy
 from switchboard.runs import load_run
 from switchboard.scenarios import load_scenarios
 from switchboard.storage import WorkspaceStorage
@@ -66,7 +65,7 @@ def display_investigation_result(
         )
 
 
-def run_investigation(*, scenario_id: str, evaluate_policy_output: bool) -> None:
+def run_investigation(*, scenario_id: str) -> None:
     model = create_model()
     try:
         run = investigate_scenario(
@@ -84,13 +83,6 @@ def run_investigation(*, scenario_id: str, evaluate_policy_output: bool) -> None
 
     print(f"Workflow ID: {run.workflow_id}")
     display_investigation_result(result=run.result, workflow_id=run.workflow_id)
-    if evaluate_policy_output:
-        review = evaluate_policy(
-            investigation_output=run.result.investigation.model_dump_json(),
-            model=model,
-        )
-        print("\nPolicy faithfulness review (model judgment):")
-        print(review.model_dump_json(indent=2))
 
 
 def main() -> None:
@@ -101,7 +93,6 @@ def main() -> None:
     parser.add_argument("--list-scenarios", action="store_true")
     parser.add_argument("--reset-demo", choices=scenarios, metavar="SCENARIO")
     parser.add_argument("--confirm-reset", action="store_true")
-    parser.add_argument("--evaluate-policy", action="store_true")
     parser.add_argument("--review", metavar="PROPOSAL_ID")
     parser.add_argument("--run", metavar="WORKFLOW_ID")
     parser.add_argument("--employee")
@@ -113,13 +104,7 @@ def main() -> None:
         return
 
     if args.reset_demo:
-        if (
-            args.review
-            or args.run
-            or args.employee
-            or args.scenario
-            or args.evaluate_policy
-        ):
+        if args.review or args.run or args.employee or args.scenario:
             parser.error(
                 "--reset-demo cannot be combined with investigation or review options"
             )
@@ -140,8 +125,6 @@ def main() -> None:
     if args.review:
         if not args.employee or not args.run:
             parser.error("Review requires --run and --employee (simulated identity)")
-        if args.evaluate_policy:
-            parser.error("--evaluate-policy applies only to new investigations")
         review_saved_proposal(
             proposal_id=args.review,
             workflow_id=args.run,
@@ -154,10 +137,7 @@ def main() -> None:
     setup = read_demo_setup(cli_storage())
     if setup is None:
         parser.error("Reset the demo first: --reset-demo baseline --confirm-reset")
-    run_investigation(
-        scenario_id=args.scenario or setup.scenario_id,
-        evaluate_policy_output=args.evaluate_policy,
-    )
+    run_investigation(scenario_id=args.scenario or setup.scenario_id)
 
 
 if __name__ == "__main__":

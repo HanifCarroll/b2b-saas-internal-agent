@@ -251,8 +251,17 @@ class InvestigationResult(Record):
         return self
 
 
+class ReportValidation(Record):
+    """Receipt showing that an investigation report passed policy validation."""
+
+    policy_ids: list[Text]
+    evaluation_count: Annotated[int, Field(ge=1, le=2)]
+    revision_count: Annotated[int, Field(ge=0, le=1)]
+
+
 class EndpointChangeResult(Record):
     investigation: InvestigationResult
+    report_validation: ReportValidation
     messages: list[AnyMessage]
     proposal: Proposal | None = None
     was_created: bool | None = None

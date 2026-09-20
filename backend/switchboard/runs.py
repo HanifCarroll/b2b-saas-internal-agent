@@ -8,7 +8,6 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from switchboard.models import EndpointChangeResult
-from switchboard.policy_evaluation import PolicyReview
 from switchboard.storage import WorkspaceStorage
 from switchboard.tools import InvestigationContext, employee_session
 from switchboard.workflow_status import WorkflowStatus, get_workflow_status
@@ -20,7 +19,6 @@ class InvestigationRun(BaseModel):
     scenario_id: str | None = None
     result: EndpointChangeResult
     current_status: WorkflowStatus
-    policy_review: PolicyReview | None = None
 
 
 class InvestigationSummary(BaseModel):
@@ -71,9 +69,6 @@ def get_investigation_run(
         scenario_id=run["scenario_id"],
         result=result,
         current_status=get_workflow_status(result=result, context=context),
-        policy_review=PolicyReview.model_validate_json(json.dumps(run["policy_review"]))
-        if run["policy_review"]
-        else None,
     )
 
 
@@ -124,17 +119,4 @@ def save_investigation_run(
             "result": result.model_dump(mode="json"),
             "created_at": created_at.isoformat(),
         }
-    )
-
-
-def save_policy_review(
-    *, storage: WorkspaceStorage, run_id: UUID, employee_id: str, review: PolicyReview
-) -> None:
-    run = load_run(storage=storage, run_id=run_id)
-    require_run_access(
-        context=InvestigationContext(storage=storage, employee_id=employee_id),
-        run=run,
-    )
-    storage.save_policy_review(
-        run_id=str(run_id), review=review.model_dump(mode="json")
     )
