@@ -5,13 +5,21 @@ from typing import Literal
 from pydantic import BaseModel
 
 from switchboard.integrations.change_management import get_proposal_review
-from switchboard.models import Approval, EndpointChangeResult, Execution, Proposal
+from switchboard.models import (
+    Approval,
+    DeliveryVerification,
+    EndpointChangeResult,
+    Execution,
+    Proposal,
+)
 from switchboard.tools import InvestigationContext, employee_session
 
 
 class WorkflowStatus(BaseModel):
     code: Literal[
         "configuration_updated",
+        "delivery_verified",
+        "manual_intervention_required",
         "blocked",
         "awaiting_approval",
         "approval_recorded",
@@ -23,9 +31,26 @@ class WorkflowStatus(BaseModel):
 
 
 def proposal_status(
-    *, proposal: Proposal, approval: Approval | None, execution: Execution | None = None
+    *,
+    proposal: Proposal,
+    approval: Approval | None,
+    execution: Execution | None = None,
+    verification: DeliveryVerification | None = None,
 ) -> WorkflowStatus:
     """Describe recorded approval; this does not establish readiness to execute."""
+    if verification is not None:
+        if verification.outcome == "delivered":
+            return WorkflowStatus(
+                code="delivery_verified",
+                title="Delivery verified",
+                next_action="The synthetic event was delivered and the request is closed.",
+            )
+        return WorkflowStatus(
+            code="manual_intervention_required",
+            title="Manual intervention required",
+            next_action="Review the verification evidence. Do not repeat execution or roll back automatically.",
+        )
+
     if execution is not None:
         return WorkflowStatus(
             code="configuration_updated",
@@ -84,6 +109,7 @@ def get_workflow_status(
                 proposal=proposal,
                 approval=approval,
                 execution=proposal_review.execution,
+                verification=proposal_review.verification,
             )
 
     return WorkflowStatus(

@@ -155,6 +155,14 @@ async function dispatchStorageOperation(
       return getReceipt(db, "executions", workspaceId, requiredString(payload, "proposalId"));
     case "execution.apply":
       return applyExecution(db, workspaceId, payload);
+    case "verification.get":
+      return getDeliveryVerification(
+        db,
+        workspaceId,
+        requiredString(payload, "executionId"),
+      );
+    case "verification.record":
+      return recordDeliveryVerification(db, workspaceId, payload);
     case "run.get":
       return getRun(db, workspaceId, requiredString(payload, "id"));
     case "run.list":
@@ -446,6 +454,94 @@ async function applyExecution(
     throw new StorageRequestError("Configuration changed since the proposal was prepared", 409);
   }
   return { execution, wasCreated: true };
+}
+
+async function getDeliveryVerification(
+  db: D1Database,
+  workspaceId: string,
+  executionId: string,
+): Promise<unknown> {
+  const row = await db
+    .prepare(
+      "SELECT * FROM delivery_verifications WHERE workspace_id = ?1 AND execution_id = ?2",
+    )
+    .bind(workspaceId, executionId)
+    .first();
+  return stripWorkspaceId(row);
+}
+
+async function recordDeliveryVerification(
+  db: D1Database,
+  workspaceId: string,
+  payload: JsonObject,
+): Promise<unknown> {
+  const verification = requiredObject(payload, "verification");
+  const executionId = requiredString(verification, "execution_id");
+  const existing = await getDeliveryVerification(db, workspaceId, executionId);
+  if (existing) return { verification: existing, wasCreated: false };
+
+  const proposalId = requiredString(verification, "proposal_id");
+  const outcome = requiredString(verification, "outcome");
+  if (!["delivered", "failed", "inconclusive"].includes(outcome)) {
+    throw new StorageRequestError("Invalid verification outcome", 400);
+  }
+  const ticketStatus = outcome === "delivered" ? "closed" : "needs_attention";
+  const [insert, update] = await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO delivery_verifications (
+           workspace_id, id, execution_id, proposal_id, verified_by_employee_id,
+           outcome, test_event_id, destination, evidence, verified_at
+         )
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+           FROM executions AS execution
+           JOIN proposals AS proposal
+             ON proposal.workspace_id = execution.workspace_id
+            AND proposal.id = execution.proposal_id
+           JOIN integrations AS integration
+             ON integration.workspace_id = proposal.workspace_id
+            AND integration.id = proposal.integration_id
+           JOIN tickets AS ticket
+             ON ticket.workspace_id = proposal.workspace_id
+            AND ticket.id = proposal.ticket_id
+          WHERE execution.workspace_id = ?1
+            AND execution.id = ?3
+            AND execution.proposal_id = ?4
+            AND json_extract(integration.body_json, '$.endpoint') = ?8
+            AND json_extract(integration.body_json, '$.version') = execution.resulting_configuration_version`,
+      )
+      .bind(
+        workspaceId,
+        requiredString(verification, "id"),
+        executionId,
+        proposalId,
+        requiredString(verification, "verified_by_employee_id"),
+        outcome,
+        requiredString(verification, "test_event_id"),
+        requiredString(verification, "destination"),
+        requiredString(verification, "evidence"),
+        requiredString(verification, "verified_at"),
+      ),
+    db
+      .prepare(
+        `UPDATE tickets
+            SET body_json = json_set(body_json, '$.status', ?1)
+          WHERE workspace_id = ?2
+            AND id = (
+              SELECT ticket_id FROM proposals
+               WHERE workspace_id = ?2 AND id = ?3
+            )
+            AND changes() = 1`,
+      )
+      .bind(ticketStatus, workspaceId, proposalId),
+  ]);
+
+  if (insert.meta.changes === 1 && update.meta.changes === 1) {
+    return { verification, wasCreated: true };
+  }
+  const retry = await getDeliveryVerification(db, workspaceId, executionId);
+  if (retry) return { verification: retry, wasCreated: false };
+  throw new StorageRequestError("Delivery verification requirements changed", 409);
 }
 
 async function getRun(db: D1Database, workspaceId: string, id: string): Promise<unknown> {

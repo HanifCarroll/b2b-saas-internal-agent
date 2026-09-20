@@ -7,6 +7,7 @@ from uuid import uuid4
 from switchboard.models import (
     Approval,
     ChangeWindow,
+    DeliveryVerification,
     ExecuteProposalResult,
     Execution,
     Proposal,
@@ -136,11 +137,19 @@ def get_proposal_review(
     proposal = get_proposal(session=session, proposal_id=proposal_id)
     approval_record = session.storage.get_approval(proposal_id=proposal_id)
     execution_record = session.storage.get_execution(proposal_id=proposal_id)
+    verification_record = None
+    if execution_record is not None:
+        verification_record = session.storage.get_delivery_verification(
+            execution_id=execution_record["id"]
+        )
     return ProposalReviewResult(
         proposal=proposal,
         approval=_from_storage(Approval, approval_record) if approval_record else None,
         execution=_from_storage(Execution, execution_record)
         if execution_record
+        else None,
+        verification=_from_storage(DeliveryVerification, verification_record)
+        if verification_record
         else None,
     )
 

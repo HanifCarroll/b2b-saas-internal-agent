@@ -99,6 +99,12 @@ class WorkspaceStorage:
     def get_execution(self, *, proposal_id: str) -> dict | None:
         return self._call("execution.get", {"proposalId": proposal_id})
 
+    def get_delivery_verification(self, *, execution_id: str) -> dict | None:
+        return self._call("verification.get", {"executionId": execution_id})
+
+    def record_delivery_verification(self, *, verification: dict) -> dict:
+        return self._call("verification.record", {"verification": verification})
+
     def apply_execution(
         self,
         *,

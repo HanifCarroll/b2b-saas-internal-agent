@@ -93,6 +93,19 @@ class MemoryStorageBridge:
             return self._by_proposal(workspace["executions"], payload["proposalId"])
         if operation == "execution.apply":
             return self._apply_execution(workspace, payload)
+        if operation == "verification.get":
+            return next(
+                (
+                    item
+                    for item in workspace["verifications"]
+                    if item["execution_id"] == payload["executionId"]
+                ),
+                None,
+            )
+        if operation == "verification.record":
+            return self._record_delivery_verification(
+                workspace, payload["verification"]
+            )
         if operation == "run.get":
             return self._by_id(workspace["runs"], payload["id"])
         if operation == "run.list":
@@ -132,6 +145,7 @@ class MemoryStorageBridge:
             "proposals": [],
             "approvals": [],
             "executions": [],
+            "verifications": [],
             "runs": [],
         }
 
@@ -216,6 +230,35 @@ class MemoryStorageBridge:
         integration["version"] = execution["resulting_configuration_version"]
         workspace["executions"].append(execution)
         return {"execution": execution, "wasCreated": True}
+
+    def _record_delivery_verification(
+        self, workspace: dict, verification: dict
+    ) -> dict:
+        existing = next(
+            (
+                item
+                for item in workspace["verifications"]
+                if item["execution_id"] == verification["execution_id"]
+            ),
+            None,
+        )
+        if existing:
+            return {"verification": existing, "wasCreated": False}
+
+        execution = self._by_id(workspace["executions"], verification["execution_id"])
+        proposal = self._by_id(workspace["proposals"], verification["proposal_id"])
+        if execution is None or proposal is None:
+            raise StorageError("Execution unavailable", status=409)
+
+        ticket = self._by_id(workspace["tickets"], proposal["ticket_id"])
+        if ticket is None:
+            raise StorageError("Ticket unavailable", status=409)
+
+        workspace["verifications"].append(verification)
+        ticket["status"] = (
+            "closed" if verification["outcome"] == "delivered" else "needs_attention"
+        )
+        return {"verification": verification, "wasCreated": True}
 
     @staticmethod
     def _find_proposal_run(workspace: dict, proposal_id: str) -> str | None:

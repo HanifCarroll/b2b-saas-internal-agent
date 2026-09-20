@@ -63,3 +63,23 @@ def test_failed_execution_keeps_configuration_and_receipt_together(storage):
     assert integration["endpoint"] == "https://old.acme.example/deals"
     assert integration["version"] == 7
     assert storage.get_execution(proposal_id="proposal-one") is None
+
+
+def test_failed_verification_keeps_ticket_and_receipt_together(storage):
+    verification = {
+        "id": "verification-one",
+        "execution_id": "missing-execution",
+        "proposal_id": "missing-proposal",
+        "verified_by_employee_id": "emp-alex",
+        "outcome": "delivered",
+        "test_event_id": "test-event-one",
+        "destination": "https://events.acme.example/deals",
+        "evidence": "Synthetic event accepted.",
+        "verified_at": "2026-09-22T14:16:00+00:00",
+    }
+
+    with pytest.raises(StorageError, match="Execution unavailable"):
+        storage.record_delivery_verification(verification=verification)
+
+    assert storage.get_ticket(ticket_id="CHG-1042")["status"] == "open"
+    assert storage.get_delivery_verification(execution_id="missing-execution") is None

@@ -17,6 +17,7 @@ from pydantic import (
 Text = Annotated[str, Field(min_length=1, pattern=r"\S")]
 Role = Literal["support_specialist", "implementation_engineer", "technical_lead"]
 Environment = Literal["sandbox", "production"]
+DeliveryOutcome = Literal["delivered", "failed", "inconclusive"]
 ClockTime = Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 
 
@@ -148,11 +149,37 @@ class Execution(Record):
         return self
 
 
+class DeliveryVerification(Record):
+    """Evidence from testing delivery after a recorded execution."""
+
+    id: Text
+    execution_id: Text
+    proposal_id: Text
+    verified_by_employee_id: Text
+    outcome: DeliveryOutcome
+    test_event_id: Text
+    destination: HttpUrl
+    evidence: Text
+    verified_at: AwareDatetime
+
+    @field_serializer("destination")
+    def serialize_destination(self, destination: HttpUrl) -> str:
+        return str(destination)
+
+
 @dataclass(frozen=True)
 class ExecuteProposalResult:
     """An execution receipt and whether this call created it."""
 
     execution: Execution
+    was_created: bool
+
+
+@dataclass(frozen=True)
+class VerifyDeliveryResult:
+    """A delivery-verification receipt and whether this call created it."""
+
+    verification: DeliveryVerification
     was_created: bool
 
 
@@ -222,6 +249,7 @@ class ProposalReviewResult:
     proposal: Proposal
     approval: Approval | None
     execution: Execution | None = None
+    verification: DeliveryVerification | None = None
 
 
 @dataclass(frozen=True)

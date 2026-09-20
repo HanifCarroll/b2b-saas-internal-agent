@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import HttpUrl
 
+from switchboard.delivery_verification import verify_execution_delivery
+from switchboard.integrations import delivery_service
 from switchboard.integrations.change_management import (
     approve_proposal,
     execute_proposal,
@@ -11,6 +13,7 @@ from switchboard.integrations.change_management import (
     list_proposals_awaiting_approval,
     save_proposal,
 )
+from switchboard.integrations.delivery_service import DeliveryTestResult
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import get_ticket, list_tickets
 from switchboard.models import (
@@ -120,6 +123,151 @@ def test_execution_is_atomic_and_returns_the_same_receipt_on_retry(storage):
     assert retry.execution.id == first.execution.id
     assert integration["endpoint"] == "https://events.acme.example/deals"
     assert integration["version"] == 8
+
+
+def test_successful_delivery_verification_closes_the_ticket(storage):
+    proposal = saved_proposal(storage)
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    executor = EmployeeSession(storage=storage, employee_id="emp-alex")
+    execute_proposal(
+        proposal_id=proposal.id,
+        session=executor,
+        executed_at=datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc),
+    )
+
+    result = verify_execution_delivery(
+        proposal_id=proposal.id,
+        session=executor,
+        verified_at=datetime(2026, 9, 22, 14, 16, tzinfo=timezone.utc),
+    )
+
+    assert result.was_created is True
+    assert result.verification.outcome == "delivered"
+    assert storage.get_ticket(ticket_id="CHG-1042")["status"] == "closed"
+
+
+def test_delivery_verification_retry_does_not_send_another_event(storage, monkeypatch):
+    proposal = saved_proposal(storage)
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    executor = EmployeeSession(storage=storage, employee_id="emp-alex")
+    execute_proposal(
+        proposal_id=proposal.id,
+        session=executor,
+        executed_at=datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc),
+    )
+    sent_event_ids = []
+
+    def send_event(*, destination: str, test_event_id: str):
+        sent_event_ids.append(test_event_id)
+        return DeliveryTestResult(
+            outcome="delivered",
+            test_event_id=test_event_id,
+            evidence=f"Accepted by {destination}",
+        )
+
+    monkeypatch.setattr(delivery_service, "send_synthetic_test_event", send_event)
+    first = verify_execution_delivery(
+        proposal_id=proposal.id,
+        session=executor,
+        verified_at=datetime(2026, 9, 22, 14, 16, tzinfo=timezone.utc),
+    )
+    retry = verify_execution_delivery(
+        proposal_id=proposal.id,
+        session=executor,
+        verified_at=datetime(2026, 9, 22, 14, 17, tzinfo=timezone.utc),
+    )
+
+    assert first.was_created is True
+    assert retry.was_created is False
+    assert retry.verification.id == first.verification.id
+    assert sent_event_ids == [first.verification.test_event_id]
+
+
+@pytest.mark.parametrize("outcome", ["failed", "inconclusive"])
+def test_unsuccessful_delivery_requires_manual_attention(storage, monkeypatch, outcome):
+    proposal = saved_proposal(storage)
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    executor = EmployeeSession(storage=storage, employee_id="emp-alex")
+    execute_proposal(
+        proposal_id=proposal.id,
+        session=executor,
+        executed_at=datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        delivery_service,
+        "send_synthetic_test_event",
+        lambda *, destination, test_event_id: DeliveryTestResult(
+            outcome=outcome,
+            test_event_id=test_event_id,
+            evidence=f"No confirmed delivery from {destination}",
+        ),
+    )
+
+    result = verify_execution_delivery(
+        proposal_id=proposal.id,
+        session=executor,
+        verified_at=datetime(2026, 9, 22, 14, 16, tzinfo=timezone.utc),
+    )
+
+    assert result.verification.outcome == outcome
+    assert storage.get_ticket(ticket_id="CHG-1042")["status"] == "needs_attention"
+
+
+def test_delivery_verification_requires_execution_and_current_configuration(storage):
+    proposal = saved_proposal(storage)
+    executor = EmployeeSession(storage=storage, employee_id="emp-alex")
+    verified_at = datetime(2026, 9, 22, 14, 16, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError, match="before execution"):
+        verify_execution_delivery(
+            proposal_id=proposal.id,
+            session=executor,
+            verified_at=verified_at,
+        )
+
+    approve_proposal(
+        proposal_id=proposal.id,
+        session=EmployeeSession(storage=storage, employee_id="emp-priya"),
+    )
+    execution = execute_proposal(
+        proposal_id=proposal.id,
+        session=executor,
+        executed_at=datetime(2026, 9, 22, 14, 15, tzinfo=timezone.utc),
+    ).execution
+    storage.apply_execution(
+        execution={
+            "id": "later-execution",
+            "proposal_id": "later-proposal",
+            "executed_by_employee_id": "emp-alex",
+            "approval_id": None,
+            "executed_at": "2026-09-22T14:15:30+00:00",
+            "previous_configuration_version": execution.resulting_configuration_version,
+            "resulting_configuration_version": execution.resulting_configuration_version
+            + 1,
+        },
+        integration_id="int-acme-prod",
+        customer_id="acme",
+        expected_version=execution.resulting_configuration_version,
+        current_endpoint="https://events.acme.example/deals",
+        proposed_endpoint="https://later.acme.example/deals",
+    )
+
+    with pytest.raises(ValueError, match="changed after execution"):
+        verify_execution_delivery(
+            proposal_id=proposal.id,
+            session=executor,
+            verified_at=verified_at,
+        )
+    assert storage.get_delivery_verification(execution_id=execution.id) is None
 
 
 def test_execution_rechecks_current_configuration_before_any_write(storage):

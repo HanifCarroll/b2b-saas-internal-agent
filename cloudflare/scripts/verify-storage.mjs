@@ -66,7 +66,7 @@ if (mode === "prepare") {
         endpoint: "https://old.acme.example/deals",
         version: 7,
       }],
-      tickets: [],
+      tickets: [{ id: "CHG-1042", customer_id: "acme", status: "open" }],
       policies: [],
     },
   });
@@ -113,6 +113,34 @@ if (mode === "prepare") {
   });
   assert.equal(applied.wasCreated, true);
   assert.equal((await operation("integration.get", { id: "int-acme-prod" })).version, 8);
+
+  const verification = {
+    id: "verification-one",
+    execution_id: execution.id,
+    proposal_id: proposal.id,
+    verified_by_employee_id: "emp-alex",
+    outcome: "delivered",
+    test_event_id: "test-event-one",
+    destination: proposal.proposed_endpoint,
+    evidence: "Synthetic event accepted.",
+    verified_at: "2026-09-22T14:16:00Z",
+  };
+  await operation(
+    "verification.record",
+    { verification: { ...verification, destination: "https://stale.example/deals" } },
+    409,
+  );
+  assert.equal((await operation("ticket.get", { id: proposal.ticket_id })).status, "open");
+  assert.equal(await operation("verification.get", { executionId: execution.id }), null);
+
+  const recorded = await operation("verification.record", { verification });
+  assert.equal(recorded.wasCreated, true);
+  assert.equal(recorded.verification.id, verification.id);
+  assert.equal((await operation("ticket.get", { id: proposal.ticket_id })).status, "closed");
+  assert.equal(
+    await operation("verification.get", { executionId: execution.id }, 200, "other"),
+    null,
+  );
 } else if (mode === "retry") {
   const retried = await operation("execution.apply", {
     execution: { ...execution, id: "execution-retry" },
@@ -125,6 +153,10 @@ if (mode === "prepare") {
   assert.equal(retried.wasCreated, false);
   assert.equal(retried.execution.id, execution.id);
   assert.equal((await operation("integration.get", { id: "int-acme-prod" })).version, 8);
+  const verification = await operation("verification.get", { executionId: execution.id });
+  const retriedVerification = await operation("verification.record", { verification });
+  assert.equal(retriedVerification.wasCreated, false);
+  assert.equal(retriedVerification.verification.id, verification.id);
 } else {
   throw new Error("Use prepare or retry");
 }
