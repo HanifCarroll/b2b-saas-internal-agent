@@ -124,6 +124,11 @@ export function ProposalReview({
     reviewQuery.error?.message ||
     "";
   const review = !error && !busy ? reviewQuery.data : undefined;
+  const proposerName =
+    employees.find((item) => item.id === review?.proposal.proposed_by_employee_id)?.name ??
+    (currentEmployee && currentEmployee.employee_id === review?.proposal.proposed_by_employee_id
+      ? currentEmployee.name
+      : review?.proposal.proposed_by_employee_id);
 
   return (
     <section className="py-7" aria-label="Proposal review" aria-live="polite">
@@ -247,36 +252,46 @@ export function ProposalReview({
             </Alert>
           )}
 
-          <div className="mt-4 grid items-center gap-3 rounded-lg border bg-slate-50/60 p-5 md:grid-cols-[1fr_auto_1fr]">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Before
-              </p>
-              <p className="mt-2 break-all rounded-md bg-white p-3 font-mono text-xs">
-                {review.proposal.current_endpoint}
-              </p>
-            </div>
-            <ArrowRight className="size-5 rotate-90 text-muted-foreground md:rotate-0" />
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                After
-              </p>
-              <p className="mt-2 break-all rounded-md border border-emerald-200 bg-emerald-50 p-3 font-mono text-xs text-emerald-950">
-                {review.proposal.proposed_endpoint}
-              </p>
-            </div>
-          </div>
+          <div className="mt-4 overflow-hidden rounded-xl border bg-background">
+            <div className="grid md:grid-cols-[minmax(0,1fr)_3.5rem_minmax(0,1fr)]">
+              <div className="min-w-0 p-5">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Current endpoint
+                </p>
+                <p className="mt-3 break-all font-mono text-sm leading-6">
+                  {review.proposal.current_endpoint}
+                </p>
+              </div>
 
-          <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-muted-foreground">Expected configuration version</dt>
-              <dd className="mt-1 font-medium">{review.proposal.expected_configuration_version}</dd>
+              <div className="flex items-center justify-center border-y bg-muted/30 py-3 md:border-x md:border-y-0 md:py-0">
+                <span className="flex size-8 items-center justify-center rounded-full border bg-background text-muted-foreground">
+                  <ArrowRight className="size-4 rotate-90 md:rotate-0" aria-label="Changes to" />
+                </span>
+              </div>
+
+              <div className="min-w-0 bg-emerald-50/60 p-5">
+                <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">
+                  Proposed endpoint
+                </p>
+                <p className="mt-3 break-all font-mono text-sm leading-6 text-emerald-950">
+                  {review.proposal.proposed_endpoint}
+                </p>
+              </div>
             </div>
-            <div>
-              <dt className="text-muted-foreground">Proposed by</dt>
-              <dd className="mt-1 font-medium">{review.proposal.proposed_by_employee_id}</dd>
-            </div>
-          </dl>
+
+            <dl className="grid border-t bg-muted/20 text-sm sm:grid-cols-2 sm:divide-x">
+              <div className="p-4">
+                <dt className="text-xs text-muted-foreground">Expected current version</dt>
+                <dd className="mt-1 font-medium tabular-nums">
+                  {review.proposal.expected_configuration_version}
+                </dd>
+              </div>
+              <div className="border-t p-4 sm:border-t-0">
+                <dt className="text-xs text-muted-foreground">Proposed by</dt>
+                <dd className="mt-1 font-medium">{proposerName}</dd>
+              </div>
+            </dl>
+          </div>
 
           <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
             <div className="flex gap-3">
