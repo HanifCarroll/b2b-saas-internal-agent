@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 
+import switchboard.api.investigations as investigation_api
 from switchboard import api
 from switchboard.api import RequestContext
 from switchboard.integrations.employee_directory import EmployeeSession
@@ -157,7 +158,7 @@ def test_investigation_is_validated_before_the_proposal_is_saved(storage, monkey
     policy_model = GenericFakeChatModel(
         messages=iter([AIMessage(content='{"issues": []}')])
     )
-    monkeypatch.setattr(api, "create_model", lambda: policy_model)
+    monkeypatch.setattr(investigation_api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
         "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(proposal_candidate_report()),
@@ -183,7 +184,7 @@ def test_local_fixture_investigation_uses_real_storage_without_a_model(
     monkeypatch.setenv("SWITCHBOARD_INVESTIGATION_MODE", "fixture")
     monkeypatch.setenv("SWITCHBOARD_RUNTIME", "local")
     monkeypatch.setattr(
-        api,
+        investigation_api,
         "create_model",
         lambda: pytest.fail("fixture investigations must not create a model"),
     )
@@ -226,7 +227,7 @@ def test_saved_evidence_route_returns_the_snapshot_only_to_the_run_owner(
             )
         ],
     )
-    monkeypatch.setattr(api, "create_model", lambda: policy_model)
+    monkeypatch.setattr(investigation_api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
         "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: investigator,
@@ -267,7 +268,7 @@ def test_failed_report_validation_saves_neither_run_nor_proposal(storage, monkey
             ]
         )
     )
-    monkeypatch.setattr(api, "create_model", lambda: policy_model)
+    monkeypatch.setattr(investigation_api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
         "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(report),
@@ -288,7 +289,7 @@ def test_validated_blocked_investigation_is_saved_without_a_proposal(
     policy_model = GenericFakeChatModel(
         messages=iter([AIMessage(content='{"issues": []}')])
     )
-    monkeypatch.setattr(api, "create_model", lambda: policy_model)
+    monkeypatch.setattr(investigation_api, "create_model", lambda: policy_model)
     monkeypatch.setattr(
         "switchboard.investigation.runner.build_agent",
         lambda **_kwargs: StubInvestigator(blocked_report()),
