@@ -22,6 +22,7 @@ const evidenceTitles: Record<EvidenceKind, string> = {
 };
 
 export function EvidenceSheet({
+  open,
   detail,
   error,
   ticketId,
@@ -29,6 +30,7 @@ export function EvidenceSheet({
   onClose,
   onRetry,
 }: {
+  open: boolean;
   detail?: InvestigationEvidenceDetail;
   error?: string;
   ticketId: string;
@@ -37,7 +39,7 @@ export function EvidenceSheet({
   onRetry: () => void;
 }) {
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <SheetContent className="gap-0 overflow-hidden p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl data-[side=right]:xl:max-w-4xl">
         <SheetHeader className="shrink-0 border-b p-5 pr-14 sm:p-6 sm:pr-14">
           <div className="flex flex-wrap items-center gap-2">

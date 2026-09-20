@@ -339,37 +339,40 @@ test("unchanged evidence is shown once", (t) => {
   assert.equal(screen.getAllByText("CHG-1042").length, 1);
 });
 
-test("evidence opens in a dismissible sheet", (t) => {
+test("evidence sheet animates through a controlled open state and remains dismissible", (t) => {
   t.after(cleanup);
   let closed = false;
 
-  render(
-    <EvidenceSheet
-      ticketId="CHG-1042"
-      runId="run-1"
-      detail={{
-        snapshot: {
+  const sheetProps = {
+    ticketId: "CHG-1042",
+    runId: "run-1",
+    detail: {
+      snapshot: {
+        id: "int-acme-prod",
+        kind: "integration" as const,
+        captured_at: "2026-09-22T14:00:00Z",
+        document: {
           id: "int-acme-prod",
-          kind: "integration",
-          captured_at: "2026-09-22T14:00:00Z",
-          document: {
-            id: "int-acme-prod",
-            name: "Acme production CRM sync",
-            customer_id: "acme",
-            environment: "production",
-            endpoint: "https://events.acme.example/deals",
-            version: 8,
-          },
+          name: "Acme production CRM sync",
+          customer_id: "acme",
+          environment: "production" as const,
+          endpoint: "https://events.acme.example/deals",
+          version: 8,
         },
-        current_document: null,
-        has_changed: null,
-      }}
-      onClose={() => {
-        closed = true;
-      }}
-      onRetry={() => {}}
-    />,
-  );
+      },
+      current_document: null,
+      has_changed: null,
+    },
+    onClose: () => {
+      closed = true;
+    },
+    onRetry: () => {},
+  };
+  const view = render(<EvidenceSheet {...sheetProps} open={false} />);
+
+  assert.equal(screen.queryByRole("dialog"), null);
+
+  view.rerender(<EvidenceSheet {...sheetProps} open />);
 
   const sheet = screen.getByRole("dialog");
   assert.ok(sheet.className.includes("data-[side=right]:w-full"));

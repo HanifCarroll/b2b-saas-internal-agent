@@ -510,12 +510,13 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
         </main>
       )}
 
-      {route.kind === "request" && route.runId && route.evidenceId && (
+      {route.kind === "request" && (
         <EvidenceSheet
+          open={Boolean(route.runId && route.evidenceId)}
           detail={evidenceQueryResult.data}
           error={evidenceError}
           ticketId={route.ticketId}
-          runId={route.runId}
+          runId={route.runId ?? ""}
           onClose={closeEvidence}
           onRetry={() => void evidenceQueryResult.refetch()}
         />
