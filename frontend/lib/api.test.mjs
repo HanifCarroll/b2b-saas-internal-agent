@@ -109,6 +109,13 @@ test("accessible tickets use the selected employee identity", async (t) => {
   assert.deepEqual(tickets, [{ id: "CHG-1042" }]);
 });
 
+test("stable demo metadata remains fresh for the page session", () => {
+  const identity = { mode: "demo", employeeId: "emp-alex" };
+
+  assert.equal(demoPersonasQuery(identity).staleTime, Infinity);
+  assert.equal(demoCasesQuery(identity).staleTime, Infinity);
+});
+
 test("canceling a run query aborts its network request", async (t) => {
   let requestSignal;
   t.mock.method(globalThis, "fetch", (_url, options) => {

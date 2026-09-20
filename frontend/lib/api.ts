@@ -244,6 +244,7 @@ export const demoPersonasQuery = (identity: RequestIdentity) => ({
       identity,
       options: { signal },
     }),
+  staleTime: Infinity,
 });
 
 export const demoCasesQuery = (identity: RequestIdentity) => ({
@@ -254,6 +255,7 @@ export const demoCasesQuery = (identity: RequestIdentity) => ({
       identity,
       options: { signal },
     }),
+  staleTime: Infinity,
 });
 
 export function prepareDemoCase({

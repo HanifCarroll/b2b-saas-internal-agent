@@ -1,6 +1,7 @@
 "use client";
 
 import type { DemoPersona } from "@/lib/api";
+import { preload } from "react-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
@@ -13,9 +14,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const personaAvatarPaths: Record<string, string> = {
-  "emp-alex": "/personas/alex-rivera.png",
-  "emp-priya": "/personas/priya-shah.png",
-  "emp-ben": "/personas/ben-okafor.png",
+  "emp-alex": "/personas/alex-rivera.webp",
+  "emp-priya": "/personas/priya-shah.webp",
+  "emp-ben": "/personas/ben-okafor.webp",
 };
 
 export function DemoPersonaAvatar({
@@ -62,6 +63,10 @@ export function DemoPersonaSwitcher({
   busy: boolean;
   onChange: (personaId: string) => void;
 }) {
+  for (const avatarPath of Object.values(personaAvatarPaths)) {
+    preload(avatarPath, { as: "image", type: "image/webp" });
+  }
+
   return (
     <Select
       items={personas.map((persona) => ({ value: persona.id, label: persona.name }))}
