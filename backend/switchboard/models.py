@@ -79,6 +79,7 @@ class Ticket(Record):
     customer_id: Text
     integration_id: Text
     requester_contact_id: Text
+    requester_name: Text | None = None
     assigned_employee_id: Text
     requested_endpoint: HttpUrl
     created_at: AwareDatetime

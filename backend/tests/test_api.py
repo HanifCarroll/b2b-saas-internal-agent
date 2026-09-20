@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 import switchboard.api.investigations as investigation_api
 from switchboard import api
 from switchboard.api import RequestContext
+from switchboard.demo.workspaces import open_demo_workspace
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.integrations.support_desk import get_ticket
 
@@ -133,8 +134,14 @@ def test_inaccessible_ticket_is_indistinguishable_from_missing(storage):
     assert missing.status_code == 404
     assert inaccessible.json() == missing.json() == {"detail": "Ticket unavailable"}
 
+    with client_for(storage, employee_id="emp-priya") as client:
+        unassigned = client.get("/api/tickets/CHG-1042")
+    api.app.dependency_overrides.clear()
+    assert unassigned.status_code == 404
+    assert unassigned.json() == {"detail": "Ticket unavailable"}
 
-def test_demo_case_catalog_remains_available(storage):
+
+def test_demo_case_endpoints_are_removed(storage):
     api.app.dependency_overrides[api.get_request_context] = lambda: RequestContext(
         identity_mode="demo",
         employee_id="emp-alex",
@@ -142,15 +149,54 @@ def test_demo_case_catalog_remains_available(storage):
         storage=storage,
     )
     with TestClient(api.app) as client:
-        response = client.get("/api/demo/cases")
+        catalog = client.get("/api/demo/cases")
+        prepare = client.post("/api/demo/cases/valid-request/prepare")
     api.app.dependency_overrides.clear()
 
-    assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == [
-        "valid-request",
-        "unsafe-destination",
-        "pending-approval",
-        "ready-to-execute",
+    assert catalog.status_code == 404
+    assert prepare.status_code == 404
+
+
+def test_ticket_summaries_include_actor_specific_workflow_state(storage_bridge):
+    base = storage_bridge.storage(workspace_id="unused")
+    storage = open_demo_workspace(
+        workspace_id=None, base_storage=base
+    ).workspace.storage
+
+    with client_for(storage, employee_id="emp-alex") as client:
+        alex_tickets = client.get("/api/tickets")
+    api.app.dependency_overrides.clear()
+    with client_for(storage, employee_id="emp-ben") as client:
+        ben_tickets = client.get("/api/tickets")
+    api.app.dependency_overrides.clear()
+
+    assert alex_tickets.status_code == 200
+    alex_by_id = {item["id"]: item for item in alex_tickets.json()}
+    assert set(alex_by_id) == {"CHG-1042", "CHG-1044", "CHG-1045", "CHG-1046"}
+    assert alex_by_id["CHG-1042"]["workflow_status"]["code"] == "ready_to_investigate"
+    assert alex_by_id["CHG-1045"]["workflow_status"]["code"] == "awaiting_approval"
+    assert alex_by_id["CHG-1045"]["needs_attention"] is False
+    assert alex_by_id["CHG-1046"]["workflow_status"]["code"] == "approval_recorded"
+    assert alex_by_id["CHG-1046"]["needs_attention"] is True
+    assert [item["id"] for item in ben_tickets.json()] == ["CHG-1043"]
+
+
+def test_pending_proposal_appears_only_in_the_eligible_reviewer_inbox(storage_bridge):
+    base = storage_bridge.storage(workspace_id="unused")
+    storage = open_demo_workspace(
+        workspace_id=None, base_storage=base
+    ).workspace.storage
+
+    with client_for(storage, employee_id="emp-alex") as client:
+        alex_inbox = client.get("/api/approvals")
+    api.app.dependency_overrides.clear()
+    with client_for(storage, employee_id="emp-priya") as client:
+        priya_inbox = client.get("/api/approvals")
+    api.app.dependency_overrides.clear()
+
+    assert alex_inbox.json() == []
+    assert [item["proposal"]["ticket_id"] for item in priya_inbox.json()] == [
+        "CHG-1045"
     ]
 
 
@@ -317,20 +363,20 @@ def test_manual_policy_review_endpoint_is_removed(storage):
 
 
 def test_executed_proposal_can_be_verified_and_reviewed(storage_bridge):
-    storage = storage_bridge.storage(
-        workspace_id="00000000-0000-0000-0000-000000000001"
-    )
+    base = storage_bridge.storage(workspace_id="unused")
+    storage = open_demo_workspace(
+        workspace_id=None, base_storage=base
+    ).workspace.storage
+    run = storage.list_runs(ticket_id="CHG-1046")[0]
+    proposal_id = run["result"]["proposal"]["id"]
+    run_id = run["id"]
     with client_for(storage) as client:
-        prepared = client.post("/api/demo/cases/ready-to-execute/prepare").json()
-        proposal_path, query = prepared["path"].split("?")
-        proposal_id = proposal_path.rsplit("/", 1)[-1]
-        run_id = query.removeprefix("run=")
         base = f"/api/runs/{run_id}/proposals/{proposal_id}"
 
         execution = client.post(f"{base}/execution")
         verification = client.post(f"{base}/verification")
         review = client.get(base)
-        ticket = client.get("/api/tickets/CHG-1042")
+        ticket = client.get("/api/tickets/CHG-1046")
     api.app.dependency_overrides.clear()
 
     assert execution.status_code == 200

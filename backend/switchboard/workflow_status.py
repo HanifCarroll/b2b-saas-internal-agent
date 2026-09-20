@@ -17,6 +17,7 @@ from switchboard.models import (
 
 class WorkflowStatus(BaseModel):
     code: Literal[
+        "ready_to_investigate",
         "configuration_updated",
         "delivery_verified",
         "manual_intervention_required",
@@ -28,6 +29,14 @@ class WorkflowStatus(BaseModel):
     ]
     title: str
     next_action: str
+
+
+def ready_to_investigate_status() -> WorkflowStatus:
+    return WorkflowStatus(
+        code="ready_to_investigate",
+        title="Ready to investigate",
+        next_action="Run an investigation to gather evidence and determine the next action.",
+    )
 
 
 def proposal_status(

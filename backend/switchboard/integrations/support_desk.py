@@ -22,6 +22,8 @@ TICKET_FIELDS = (
 
 def _validate_ticket(record: dict) -> Ticket:
     exposed_record = {key: record[key] for key in TICKET_FIELDS}
+    if "requester_name" in record:
+        exposed_record["requester_name"] = record["requester_name"]
     return Ticket.model_validate_json(json.dumps(exposed_record))
 
 
@@ -37,9 +39,13 @@ def get_ticket(*, session: EmployeeSession, ticket_id: str) -> Ticket:
 
 
 def list_tickets(*, session: EmployeeSession) -> list[Ticket]:
-    """Return tickets assigned to customers the employee may access."""
+    """Return tickets assigned to this employee for customers they may access."""
     records = session.read_authorized_records(table="tickets", allowed_roles=ROLES)
-    return [_validate_ticket(record) for record in records]
+    return [
+        _validate_ticket(record)
+        for record in records
+        if record["assigned_employee_id"] == session.employee_id
+    ]
 
 
 def get_ticket_details(*, session: EmployeeSession, ticket: Ticket) -> TicketDetails:
@@ -55,14 +61,15 @@ def get_ticket_details(*, session: EmployeeSession, ticket: Ticket) -> TicketDet
         ),
         None,
     )
-    if requester is None:
+    requester_name = requester["name"] if requester else ticket.requester_name
+    if requester_name is None:
         raise ValueError("Ticket requester is unavailable")
 
     return TicketDetails(
         **ticket.model_dump(),
         requester=PersonReference(
             id=ticket.requester_contact_id,
-            name=requester["name"],
+            name=requester_name,
         ),
         assigned_employee=PersonReference(
             id=ticket.assigned_employee_id,

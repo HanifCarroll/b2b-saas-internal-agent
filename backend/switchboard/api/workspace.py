@@ -1,7 +1,5 @@
 """Employee identity and demo workspace routes."""
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -10,13 +8,6 @@ from switchboard.api.context import (
     get_request_context,
     require_demo_context,
 )
-from switchboard.demo.cases import (
-    DemoCaseSummary,
-    PreparedDemoCase,
-    list_demo_cases,
-    prepare_demo_case,
-)
-from switchboard.demo.workspaces import DemoWorkspace
 from switchboard.integrations.employee_directory import EmployeeSession
 from switchboard.models import Role
 
@@ -60,27 +51,3 @@ def read_demo_personas(
         DemoPersona.model_validate(item)
         for item in context.storage.list_active_employees()
     ]
-
-
-@router.get("/demo/cases", response_model=list[DemoCaseSummary])
-def read_demo_cases(
-    _context: RequestContext = Depends(require_demo_context),
-) -> list[DemoCaseSummary]:
-    return list_demo_cases()
-
-
-@router.post("/demo/cases/{case_id}/prepare", response_model=PreparedDemoCase)
-def prepare_case(
-    case_id: str,
-    context: RequestContext = Depends(require_demo_context),
-) -> PreparedDemoCase:
-    try:
-        return prepare_demo_case(
-            case_id=case_id,
-            workspace=DemoWorkspace(
-                id=UUID(context.workspace_id),
-                storage=context.storage,
-            ),
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from None

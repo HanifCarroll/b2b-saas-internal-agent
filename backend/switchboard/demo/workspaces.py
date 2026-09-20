@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from switchboard.demo.scenarios import initialize_demo_workspace, load_scenarios
+from switchboard.demo.portfolio import initialize_demo_portfolio
 from switchboard.storage import WorkspaceStorage
 
 WORKSPACE_LIFETIME_SECONDS = 24 * 60 * 60
@@ -42,11 +42,7 @@ def open_demo_workspace(
 
     new_id = uuid4()
     storage = base_storage.for_workspace(workspace_id=str(new_id))
-    initialize_demo_workspace(
-        storage=storage,
-        scenario_id="baseline",
-        selected_scenario=load_scenarios()["baseline"],
-    )
+    initialize_demo_portfolio(storage=storage)
     return OpenedDemoWorkspace(
         workspace=DemoWorkspace(id=new_id, storage=storage), was_created=True
     )

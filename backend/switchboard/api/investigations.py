@@ -1,5 +1,6 @@
 """Ticket, investigation, and evidence routes."""
 
+import json
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -26,8 +27,17 @@ from switchboard.investigation.runs import (
     list_investigation_runs,
 )
 from switchboard.investigation.tools import InvestigationContext, employee_session
-from switchboard.models import InvestigationEvidenceDetail, Ticket, TicketDetails
-from switchboard.workflow_status import get_workflow_status
+from switchboard.models import (
+    EndpointChangeResult,
+    InvestigationEvidenceDetail,
+    Ticket,
+    TicketDetails,
+)
+from switchboard.workflow_status import (
+    WorkflowStatus,
+    get_workflow_status,
+    ready_to_investigate_status,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -35,6 +45,11 @@ router = APIRouter(prefix="/api")
 
 class InvestigationRequest(BaseModel):
     ticket_id: str
+
+
+class AssignedRequestSummary(TicketDetails):
+    workflow_status: WorkflowStatus
+    needs_attention: bool
 
 
 def _ticket_context(*, request_context: RequestContext) -> InvestigationContext:
@@ -51,23 +66,46 @@ def _get_accessible_ticket(
         with employee_session(
             _ticket_context(request_context=request_context)
         ) as session:
-            return get_ticket(session=session, ticket_id=ticket_id)
+            ticket = get_ticket(session=session, ticket_id=ticket_id)
+            if ticket.assigned_employee_id != request_context.employee_id:
+                raise PermissionError("Ticket unavailable")
+            return ticket
     except PermissionError:
         raise HTTPException(status_code=404, detail="Ticket unavailable") from None
 
 
-@router.get("/tickets", response_model=list[TicketDetails])
+def _request_summary(
+    *, ticket: Ticket, request_context: RequestContext
+) -> AssignedRequestSummary:
+    context = _ticket_context(request_context=request_context)
+    runs = request_context.storage.list_runs(ticket_id=ticket.id)
+    if runs:
+        result = EndpointChangeResult.model_validate_json(json.dumps(runs[0]["result"]))
+        status = get_workflow_status(result=result, context=context)
+    else:
+        status = ready_to_investigate_status()
+    with employee_session(context) as session:
+        details = get_ticket_details(session=session, ticket=ticket)
+    return AssignedRequestSummary(
+        **details.model_dump(),
+        workflow_status=status,
+        needs_attention=status.code not in {"awaiting_approval", "delivery_verified"},
+    )
+
+
+@router.get("/tickets", response_model=list[AssignedRequestSummary])
 def read_tickets(
     request_context: RequestContext = Depends(get_request_context),
-) -> list[TicketDetails]:
+) -> list[AssignedRequestSummary]:
     try:
         with employee_session(
             _ticket_context(request_context=request_context)
         ) as session:
-            return [
-                get_ticket_details(session=session, ticket=ticket)
-                for ticket in list_tickets(session=session)
-            ]
+            tickets = list_tickets(session=session)
+        return [
+            _request_summary(ticket=ticket, request_context=request_context)
+            for ticket in tickets
+        ]
     except PermissionError:
         raise HTTPException(status_code=403, detail="Employee unavailable") from None
 
@@ -78,10 +116,13 @@ def read_ticket(
     request_context: RequestContext = Depends(get_request_context),
 ) -> TicketDetails:
     try:
+        ticket = _get_accessible_ticket(
+            ticket_id=ticket_id,
+            request_context=request_context,
+        )
         with employee_session(
             _ticket_context(request_context=request_context)
         ) as session:
-            ticket = get_ticket(session=session, ticket_id=ticket_id)
             return get_ticket_details(session=session, ticket=ticket)
     except PermissionError:
         raise HTTPException(status_code=404, detail="Ticket unavailable") from None

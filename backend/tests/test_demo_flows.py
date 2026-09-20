@@ -1,11 +1,10 @@
 from datetime import datetime, timezone
-from uuid import UUID
 
 import pytest
 
-from switchboard.demo.cases import list_demo_cases, prepare_demo_case
-from switchboard.demo.workspaces import DemoWorkspace, open_demo_workspace
+from switchboard.demo.workspaces import open_demo_workspace
 from switchboard.investigation.fixtures import investigate_ticket_fixture
+from switchboard.storage import WorkspaceStorage
 
 
 def test_new_visitors_receive_isolated_baseline_workspaces(storage_bridge):
@@ -23,6 +22,29 @@ def test_new_visitors_receive_isolated_baseline_workspaces(storage_bridge):
     assert second_workspace["updatedAt"] != "2026-09-20T00:00:00+00:00"
 
 
+def test_new_demo_workspace_contains_five_independent_requests(storage_bridge):
+    base = storage_bridge.storage(workspace_id="unused")
+    opened = open_demo_workspace(workspace_id=None, base_storage=base)
+
+    tickets = opened.workspace.storage.list_tickets()
+
+    assert {ticket["id"] for ticket in tickets} == {
+        "CHG-1042",
+        "CHG-1043",
+        "CHG-1044",
+        "CHG-1045",
+        "CHG-1046",
+    }
+    assert len({ticket["integration_id"] for ticket in tickets}) == 5
+    assert all(
+        opened.workspace.storage.get_integration(
+            integration_id=ticket["integration_id"]
+        )
+        is not None
+        for ticket in tickets
+    )
+
+
 def test_known_workspace_reopens_without_resetting_records(storage_bridge):
     base = storage_bridge.storage(workspace_id="unused")
     created = open_demo_workspace(workspace_id=None, base_storage=base)
@@ -37,53 +59,66 @@ def test_known_workspace_reopens_without_resetting_records(storage_bridge):
     assert reopened.workspace.storage.get_ticket(ticket_id="CHG-1042") is not None
 
 
-def test_prepared_cases_cover_request_approval_and_execution(storage_bridge):
-    storage = storage_bridge.storage(workspace_id="case-workspace")
-    workspace = DemoWorkspace(
-        id=UUID("93f02ff8-20b5-41b3-b176-4da804b3ca6e"), storage=storage
+def test_failed_portfolio_seed_removes_the_partial_workspace(storage_bridge):
+    operations: list[tuple[str, str]] = []
+
+    def fail_during_seed(operation: str, workspace_id: str, payload: dict):
+        operations.append((operation, workspace_id))
+        if operation == "proposal.save":
+            raise RuntimeError("seed failed")
+        return storage_bridge.handle(operation, workspace_id, payload)
+
+    base = WorkspaceStorage(
+        workspace_id="unused",
+        bridge_url="memory://storage",
+        transport=fail_during_seed,
     )
 
-    cases = {item.id: item for item in list_demo_cases()}
-    assert set(cases) == {
-        "valid-request",
-        "unsafe-destination",
-        "pending-approval",
-        "ready-to-execute",
-    }
-    for case_id in cases:
-        prepared = prepare_demo_case(case_id=case_id, workspace=workspace)
-        assert prepared.case_id == case_id
-        assert prepared.path.startswith(("/requests/", "/approvals/"))
+    with pytest.raises(RuntimeError, match="seed failed"):
+        open_demo_workspace(workspace_id=None, base_storage=base)
 
-
-def test_unknown_case_does_not_replace_workspace(storage):
-    before = storage.get_workspace()
-
-    with pytest.raises(ValueError, match="Unknown demo case"):
-        prepare_demo_case(
-            case_id="missing",
-            workspace=DemoWorkspace(
-                id=UUID("93f02ff8-20b5-41b3-b176-4da804b3ca6e"), storage=storage
-            ),
-        )
-
-    assert storage.get_workspace() == before
-
-
-def test_unsafe_case_has_an_immediate_blocked_fixture_result(storage_bridge):
-    storage = storage_bridge.storage(workspace_id="fixture-workspace")
-    workspace = DemoWorkspace(
-        id=UUID("93f02ff8-20b5-41b3-b176-4da804b3ca6e"), storage=storage
+    created_workspace_id = next(
+        workspace_id
+        for operation, workspace_id in operations
+        if operation == "workspace.reset"
     )
-    prepare_demo_case(case_id="unsafe-destination", workspace=workspace)
+    assert operations[-1] == ("workspace.delete", created_workspace_id)
+    assert (
+        storage_bridge.storage(workspace_id=created_workspace_id).get_workspace()
+        is None
+    )
+
+
+def test_unsafe_request_has_an_immediate_blocked_fixture_result(storage_bridge):
+    base = storage_bridge.storage(workspace_id="unused")
+    storage = open_demo_workspace(
+        workspace_id=None, base_storage=base
+    ).workspace.storage
 
     result = investigate_ticket_fixture(
-        ticket_id="CHG-1042",
+        ticket_id="CHG-1043",
         employee_id="emp-ben",
         storage=storage,
         now=datetime.now(timezone.utc),
     )
 
     assert result.result.source == "fixture"
+    assert result.result.investigation.outcome == "blocked"
+    assert result.result.proposal is None
+
+
+def test_unauthorized_requester_is_blocked_without_a_proposal(storage_bridge):
+    base = storage_bridge.storage(workspace_id="unused")
+    storage = open_demo_workspace(
+        workspace_id=None, base_storage=base
+    ).workspace.storage
+
+    result = investigate_ticket_fixture(
+        ticket_id="CHG-1044",
+        employee_id="emp-alex",
+        storage=storage,
+        now=datetime.now(timezone.utc),
+    )
+
     assert result.result.investigation.outcome == "blocked"
     assert result.result.proposal is None

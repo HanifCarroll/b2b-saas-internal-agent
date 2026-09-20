@@ -51,11 +51,11 @@ uv run python -m switchboard --reset-demo baseline --confirm-reset
 uv run python -m switchboard
 ```
 
-Live investigations make paid DeepSeek calls. Fixture investigations, listing cases, resetting data, retrieval, approval, execution, and delivery verification do not call a model. The graph finishes after saving a proposal; review, approval, execution, and verification are separate application operations.
+Live investigations make paid DeepSeek calls. Fixture investigations, resetting data, retrieval, approval, execution, and delivery verification do not call a model. The graph finishes after saving a proposal; review, approval, execution, and verification are separate application operations.
 
 ## Demo behavior
 
-The public hosted build uses anonymous demo mode with live model investigations. Each visitor receives an isolated workspace and can prepare one of four deterministic cases: a valid request, an unsafe destination, a proposal awaiting approval, or an approved proposal ready to execute. Preparing a case resets only that workspace and selects the recommended fictional persona.
+The public hosted build uses anonymous demo mode with live model investigations. Each visitor receives an isolated workspace with five independent requests: a valid request, an unsafe destination, an unauthorized requester, a proposal awaiting approval, and an approved proposal ready to execute. Requests persist as the visitor switches personas, and each persona sees only assigned work and approvals they are allowed to review.
 
 The agent has read-only, access-controlled tools for tickets, customers, integrations, and policies. It returns a structured investigation result that Pydantic validates. Application code then validates the current business records before saving a proposal. The model cannot approve or execute a change.
 
