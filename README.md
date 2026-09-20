@@ -13,7 +13,7 @@ Switchboard is a synthetic B2B SaaS change-management demo. An AI agent investig
 
 The hosted application runs Next.js and FastAPI in one Cloudflare Container. The Worker routes browser traffic to the appropriate container port and binds a private outbound service at `switchboard.storage`. The container calls that service with named domain operations; it cannot submit generic SQL. D1 is the sole durable application database.
 
-Every durable row belongs to a workspace. The public demo assigns each visitor an isolated workspace through an HttpOnly cookie and lets them select fictional personas. Authorization is rechecked at proposal review, approval, and execution. Approval and execution use D1 batches so related writes either persist together or do not persist. Unique constraints and stored receipts make proposal creation, approval, and execution safe to retry.
+Every durable row belongs to a workspace. The public demo assigns each visitor an isolated workspace through an HttpOnly cookie and lets them select fictional personas. Authorization is rechecked at proposal review, approval, execution, and delivery verification. Execution and verification use D1 batches so each receipt and its related business update either persist together or do not persist. Unique constraints and stored receipts make proposal creation, approval, execution, and verification safe to retry.
 
 The Worker keeps one `basic` Container instance and allows it to sleep after two minutes of inactivity. D1 records remain available across container sleeps and restarts.
 
@@ -45,7 +45,7 @@ uv run python -m switchboard --reset-demo baseline --confirm-reset
 uv run python -m switchboard
 ```
 
-Investigations make paid DeepSeek calls. Listing cases, resetting data, retrieval, approval, and execution do not call a model. The graph finishes after saving a proposal; review, approval, and execution are separate application operations.
+Investigations make paid DeepSeek calls. Listing cases, resetting data, retrieval, approval, execution, and delivery verification do not call a model. The graph finishes after saving a proposal; review, approval, execution, and verification are separate application operations.
 
 ## Demo behavior
 
@@ -53,7 +53,7 @@ The public hosted build uses anonymous demo mode. Each visitor receives an isola
 
 The agent has read-only, access-controlled tools for tickets, customers, integrations, and policies. It returns a structured investigation result that Pydantic validates. Application code then validates the current business records before saving a proposal. The model cannot approve or execute a change.
 
-An independent assigned technical lead must approve a production proposal. Execution rechecks the actor, proposal snapshot, approval, change window, and current configuration. The configuration update and execution receipt are one atomic D1 batch. A repeated request returns the existing receipt without applying the change twice. Delivery verification remains a separate unimplemented step.
+An independent assigned technical lead must approve a production proposal. Execution rechecks the actor, proposal snapshot, approval, change window, and current configuration. The configuration update and execution receipt are one atomic D1 batch. Delivery verification then confirms that the executed endpoint and version remain active before sending a deterministic synthetic event. Saving its evidence and updating the ticket are another atomic D1 batch: confirmed delivery closes the ticket, while failure or uncertainty requires manual intervention. Stored receipts make both actions safe to retry without repeating the configuration change or test event.
 
 Synthetic scenarios live under `backend/data/scenarios/`. Their withheld evaluation expectations live under `backend/data/evaluations/` and are never passed to the agent.
 
@@ -77,7 +77,7 @@ Run all deterministic checks from the repository root:
 git diff --check
 ```
 
-`test:storage` runs the real Worker-to-D1 bridge against a temporary local D1 database. It checks workspace isolation, rejection of unknown operations, atomic execution, and an idempotent retry after restarting the Worker. Ordinary tests make no model calls.
+`test:storage` runs the real Worker-to-D1 bridge against a temporary local D1 database. It checks workspace isolation, rejection of unknown operations, atomic execution and verification, and idempotent retries after restarting the Worker. Ordinary tests make no model calls.
 
 Live-model evaluations are separate:
 
@@ -112,7 +112,7 @@ npm run deploy
 
 The production configuration compiles the browser and runs the API in `demo` mode. Entra settings are only needed if a hosted authenticated mode is deliberately enabled later. The container image targets Linux AMD64 and exposes Next.js on port 3000 and FastAPI on port 8000.
 
-After deployment, verify the Worker URL, prepare two browser sessions and confirm they receive different workspace data, run a real investigation, and exercise an approved execution twice. The second execution must return the existing receipt rather than update configuration again.
+After deployment, verify the Worker URL, prepare two browser sessions and confirm they receive different workspace data, run a real investigation, then execute and verify an approved proposal. Retry execution and verification; each retry must return its existing receipt without repeating the business action.
 
 ### Automatic production deployment
 

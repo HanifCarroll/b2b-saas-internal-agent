@@ -27,10 +27,14 @@ export function WorkflowProgress({
       label: "Execute",
       state: executionState(status),
     },
+    {
+      label: "Verify",
+      state: verificationState(status),
+    },
   ];
 
   return (
-    <ol className="grid grid-cols-5 border-b bg-white" aria-label="Change lifecycle">
+    <ol className="grid grid-cols-6 border-b bg-white" aria-label="Change lifecycle">
       {stages.map((stage, index) => (
         <li
           key={stage.label}
@@ -80,16 +84,32 @@ function reviewState({
   status: WorkflowStatus | null;
 }): StageState {
   if (
-    ["approval_recorded", "approval_not_required", "configuration_updated"].includes(
-      status?.code ?? "",
-    )
+    [
+      "approval_recorded",
+      "approval_not_required",
+      "configuration_updated",
+      "delivery_verified",
+      "manual_intervention_required",
+    ].includes(status?.code ?? "")
   )
     return "complete";
   return hasProposal ? "current" : "locked";
 }
 
 function executionState(status: WorkflowStatus | null): StageState {
-  if (status?.code === "configuration_updated") return "complete";
+  if (
+    ["configuration_updated", "delivery_verified", "manual_intervention_required"].includes(
+      status?.code ?? "",
+    )
+  )
+    return "complete";
   if (["approval_recorded", "approval_not_required"].includes(status?.code ?? "")) return "current";
+  return "locked";
+}
+
+function verificationState(status: WorkflowStatus | null): StageState {
+  if (status?.code === "delivery_verified") return "complete";
+  if (["configuration_updated", "manual_intervention_required"].includes(status?.code ?? ""))
+    return "current";
   return "locked";
 }

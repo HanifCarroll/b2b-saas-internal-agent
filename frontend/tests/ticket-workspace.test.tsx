@@ -90,6 +90,25 @@ test("workflow keeps human review separate from execution", (t) => {
   assert.match(lifecycle.textContent!, /ExecuteLocked/);
 });
 
+test("workflow shows delivery verification after execution", (t) => {
+  t.after(cleanup);
+  render(
+    <WorkflowProgress
+      hasInvestigation
+      hasProposal
+      status={{
+        code: "delivery_verified",
+        title: "Delivery verified",
+        next_action: "Request closed",
+      }}
+    />,
+  );
+
+  const lifecycle = screen.getByRole("list", { name: "Change lifecycle" });
+  assert.match(lifecycle.textContent!, /ExecuteComplete/);
+  assert.match(lifecycle.textContent!, /VerifyComplete/);
+});
+
 test("approval inbox opens a proposal awaiting independent review", (t) => {
   t.after(cleanup);
   let selected = "";

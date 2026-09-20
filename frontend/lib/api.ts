@@ -13,8 +13,24 @@ export type Execution = {
   resulting_configuration_version: number;
 };
 export type ExecuteProposalResult = { execution: Execution; was_created: boolean };
+export type DeliveryVerification = {
+  id: string;
+  execution_id: string;
+  proposal_id: string;
+  verified_by_employee_id: string;
+  outcome: "delivered" | "failed" | "inconclusive";
+  test_event_id: string;
+  destination: string;
+  evidence: string;
+  verified_at: string;
+};
+export type VerifyDeliveryResult = {
+  verification: DeliveryVerification;
+  was_created: boolean;
+};
 export type ProposalReviewResult = {
   execution: Execution | null;
+  verification: DeliveryVerification | null;
   current_status: WorkflowStatus;
   proposal: {
     id: string;
@@ -35,6 +51,8 @@ export type ProposalReviewResult = {
 export type WorkflowStatus = {
   code:
     | "configuration_updated"
+    | "delivery_verified"
+    | "manual_intervention_required"
     | "blocked"
     | "awaiting_approval"
     | "approval_recorded"

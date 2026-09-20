@@ -11,6 +11,7 @@ import {
   type RequestIdentity,
   type CurrentEmployee,
   type ExecuteProposalResult,
+  type VerifyDeliveryResult,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field";
@@ -87,9 +88,30 @@ export function ProposalReview({
         onStatusRefresh(),
       ]),
   });
-  const busy = approval.isPending || execution.isPending || reviewQuery.isFetching;
+  const verification = useMutation({
+    mutationFn: () =>
+      requestApi<VerifyDeliveryResult>({
+        path: `${url}/verification`,
+        identity: reviewerIdentity,
+        options: { method: "POST" },
+      }),
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["proposal-review"] }),
+        queryClient.invalidateQueries({ queryKey: ["investigation"] }),
+        queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+        onStatusRefresh(),
+      ]),
+  });
+  const busy =
+    approval.isPending || execution.isPending || verification.isPending || reviewQuery.isFetching;
   const error =
-    approval.error?.message || execution.error?.message || reviewQuery.error?.message || "";
+    approval.error?.message ||
+    execution.error?.message ||
+    verification.error?.message ||
+    reviewQuery.error?.message ||
+    "";
   const review = !error && !busy ? reviewQuery.data : undefined;
 
   return (
@@ -110,6 +132,7 @@ export function ProposalReview({
                 setEmployee(value);
                 approval.reset();
                 execution.reset();
+                verification.reset();
               }}
             >
               <SelectTrigger id="reviewer" className="w-full">
@@ -137,6 +160,7 @@ export function ProposalReview({
           onClick={() => {
             approval.reset();
             execution.reset();
+            verification.reset();
             void reviewQuery.refetch();
             void onStatusRefresh();
           }}
@@ -162,7 +186,7 @@ export function ProposalReview({
             </Badge>
           </div>
 
-          {review.execution && (
+          {review.execution && !review.verification && (
             <Alert className="mt-5 border-emerald-200 bg-emerald-50/70">
               <CheckCircle2 />
               <AlertTitle>Configuration updated — delivery not yet verified</AlertTitle>
@@ -183,6 +207,31 @@ export function ProposalReview({
                       : "Already executed; no change repeated."}
                   </p>
                 )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {review.verification && (
+            <Alert
+              className={
+                review.verification.outcome === "delivered"
+                  ? "mt-5 border-emerald-200 bg-emerald-50/70"
+                  : "mt-5 border-amber-200 bg-amber-50/70"
+              }
+            >
+              <CheckCircle2 />
+              <AlertTitle>
+                {review.verification.outcome === "delivered"
+                  ? "Delivery verified"
+                  : "Manual intervention required"}
+              </AlertTitle>
+              <AlertDescription>
+                <p>{review.verification.evidence}</p>
+                <p>
+                  {review.verification.verified_by_employee_id} ·{" "}
+                  {new Date(review.verification.verified_at).toLocaleString()}
+                </p>
+                <p className="break-all">Test event: {review.verification.test_event_id}</p>
               </AlertDescription>
             </Alert>
           )}
@@ -287,9 +336,21 @@ export function ProposalReview({
                 Execute change
               </Button>
             )}
+            {review.execution && !review.verification && (
+              <Button
+                variant="outline"
+                disabled={
+                  busy || !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                }
+                onClick={() => verification.mutate()}
+              >
+                Verify delivery
+              </Button>
+            )}
             <p className="max-w-xl text-xs leading-5 text-muted-foreground">
-              Execution uses the server’s UTC time and requires a valid change window. Delivery
-              verification remains a separate step.
+              Execution and delivery verification are separate recorded actions. Failed or uncertain
+              delivery requires manual intervention; neither execution nor rollback is repeated
+              automatically.
             </p>
           </div>
         </div>

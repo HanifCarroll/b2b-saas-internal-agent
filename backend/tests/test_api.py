@@ -65,3 +65,29 @@ def test_demo_case_catalog_remains_available(storage):
         "pending-approval",
         "ready-to-execute",
     ]
+
+
+def test_executed_proposal_can_be_verified_and_reviewed(storage_bridge):
+    storage = storage_bridge.storage(
+        workspace_id="00000000-0000-0000-0000-000000000001"
+    )
+    with client_for(storage) as client:
+        prepared = client.post("/api/demo/cases/ready-to-execute/prepare").json()
+        proposal_path, query = prepared["path"].split("?")
+        proposal_id = proposal_path.rsplit("/", 1)[-1]
+        run_id = query.removeprefix("run=")
+        base = f"/api/runs/{run_id}/proposals/{proposal_id}"
+
+        execution = client.post(f"{base}/execution")
+        verification = client.post(f"{base}/verification")
+        review = client.get(base)
+        ticket = client.get("/api/tickets/CHG-1042")
+    api.app.dependency_overrides.clear()
+
+    assert execution.status_code == 200
+    assert verification.status_code == 200
+    assert verification.json()["was_created"] is True
+    assert verification.json()["verification"]["outcome"] == "delivered"
+    assert review.json()["current_status"]["code"] == "delivery_verified"
+    assert review.json()["verification"] == verification.json()["verification"]
+    assert ticket.json()["status"] == "closed"

@@ -251,6 +251,86 @@ test("Entra review uses the signed-in employee and disables self-approval", asyn
   assert.equal(screen.queryByText("Review or execute as"), null);
 });
 
+test("executed proposal can be verified without repeating execution", async (t) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let verified = false;
+  let verificationRequests = 0;
+  const verification = {
+    id: "verification",
+    execution_id: "execution",
+    proposal_id: "proposal",
+    verified_by_employee_id: "emp-alex",
+    outcome: "delivered",
+    test_event_id: "test-event",
+    destination: "https://new.example/",
+    evidence: "Synthetic event accepted.",
+    verified_at: "2026-09-22T14:16:00Z",
+  };
+  t.after(() => {
+    cleanup();
+    client.clear();
+  });
+  t.mock.method(globalThis, "fetch", async (path: string, options: RequestInit) => {
+    if (options.method === "POST" && path.endsWith("/verification")) {
+      verificationRequests++;
+      verified = true;
+      return Response.json({ verification, was_created: true });
+    }
+    return Response.json({
+      proposal: {
+        id: "proposal",
+        ticket_id: "CHG-1042",
+        customer_id: "acme",
+        integration_id: "production",
+        environment: "production",
+        current_endpoint: "https://old.example",
+        proposed_endpoint: "https://new.example",
+        expected_configuration_version: 1,
+        recovery_plan: "manual_intervention",
+        proposed_by_employee_id: "emp-alex",
+        created_at: "2026-09-22T13:30:00Z",
+      },
+      approval: null,
+      execution: {
+        id: "execution",
+        proposal_id: "proposal",
+        executed_by_employee_id: "emp-alex",
+        executed_at: "2026-09-22T14:15:00Z",
+        approval_id: null,
+        previous_configuration_version: 1,
+        resulting_configuration_version: 2,
+      },
+      verification: verified ? verification : null,
+      current_status: verified
+        ? { code: "delivery_verified", title: "Delivery verified" }
+        : { code: "configuration_updated", title: "Configuration updated" },
+    });
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <ProposalReview
+        runId="run"
+        proposalId="proposal"
+        identity={{ mode: "entra", accountId: "alex", getAccessToken: async () => "token" }}
+        currentEmployee={{
+          employee_id: "emp-alex",
+          name: "Alex Rivera",
+          role: "implementation_engineer",
+        }}
+        employees={[]}
+        onStatusRefresh={async () => {}}
+      />
+    </QueryClientProvider>,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "Verify delivery" }));
+
+  assert.equal((await screen.findAllByText("Delivery verified")).length, 2);
+  assert.equal(verificationRequests, 1);
+  assert.ok(screen.getByText("Synthetic event accepted."));
+  assert.equal(screen.queryByRole("button", { name: "Execute change" }), null);
+});
+
 const { WorkspaceProvider } = await import("../components/workspace-provider");
 const { WorkspaceRoute } = await import("../components/workspace-route");
 test("signed-in workspace puts account controls in the application sidebar", async (t) => {

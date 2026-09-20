@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from switchboard.agent import create_model
 from switchboard.auth import get_auth_mode, get_entra_employee_id, get_entra_settings
+from switchboard.delivery_verification import verify_execution_delivery
 from switchboard.demo_cases import (
     DemoCaseSummary,
     PreparedDemoCase,
@@ -37,12 +38,14 @@ from switchboard.integrations.support_desk import (
 from switchboard.investigations import investigate_ticket
 from switchboard.models import (
     Approval,
+    DeliveryVerification,
     ExecuteProposalResult,
     Execution,
     Proposal,
     Role,
     Ticket,
     TicketDetails,
+    VerifyDeliveryResult,
 )
 from switchboard.policy_evaluation import PolicyReview, evaluate_policy
 from switchboard.runs import (
@@ -232,6 +235,7 @@ class ProposalReview(BaseModel):
     proposal: Proposal
     approval: Approval | None
     execution: Execution | None
+    verification: DeliveryVerification | None
     current_status: WorkflowStatus
 
 
@@ -302,10 +306,12 @@ def read_proposal(
         proposal=review.proposal,
         approval=review.approval,
         execution=review.execution,
+        verification=review.verification,
         current_status=proposal_status(
             proposal=review.proposal,
             approval=review.approval,
             execution=review.execution,
+            verification=review.verification,
         ),
     )
 
@@ -357,6 +363,35 @@ def record_execution(
         raise HTTPException(
             status_code=409,
             detail="Proposal does not meet current execution requirements",
+        ) from None
+
+
+@app.post(
+    "/api/runs/{run_id}/proposals/{proposal_id}/verification",
+    response_model=VerifyDeliveryResult,
+)
+def record_delivery_verification(
+    run_id: UUID,
+    proposal_id: str,
+    request_context: RequestContext = Depends(get_request_context),
+) -> VerifyDeliveryResult:
+    context = review_context(run_id=run_id, request_context=request_context)
+    try:
+        with employee_session(context) as session:
+            return verify_execution_delivery(
+                proposal_id=proposal_id,
+                session=session,
+                verified_at=datetime.now(timezone.utc),
+            )
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="Verification not permitted or proposal unavailable",
+        ) from None
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="Execution does not meet current delivery-verification requirements",
         ) from None
 
 
