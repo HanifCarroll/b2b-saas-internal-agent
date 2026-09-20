@@ -7,7 +7,13 @@ import {
   type AccountActions,
   type AuthenticatedSession,
 } from "@/components/authentication-gate";
-import { identityKey, type CurrentEmployee, type RequestIdentity } from "@/lib/api";
+import {
+  identityKey,
+  readRetryDelay,
+  shouldRetryReadRequest,
+  type CurrentEmployee,
+  type RequestIdentity,
+} from "@/lib/api";
 
 type WorkspaceSession = {
   identity: RequestIdentity;
@@ -21,7 +27,11 @@ const WorkspaceSessionContext = createContext<WorkspaceSession | null>(null);
 function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
-      queries: { retry: false, refetchOnWindowFocus: false },
+      queries: {
+        retry: shouldRetryReadRequest,
+        retryDelay: readRetryDelay,
+        refetchOnWindowFocus: false,
+      },
       mutations: { retry: false },
     },
   });

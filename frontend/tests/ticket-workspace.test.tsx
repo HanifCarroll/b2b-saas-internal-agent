@@ -17,6 +17,7 @@ const { TicketList } = await import("../components/ticket-list");
 const { TicketDetail } = await import("../components/ticket-detail");
 const { WorkflowProgress } = await import("../components/workflow-progress");
 const { ApprovalInbox } = await import("../components/approval-inbox");
+const { WorkspaceError } = await import("../components/workspace-route");
 
 const ticket = {
   id: "CHG-1042",
@@ -32,6 +33,23 @@ const ticket = {
   subject: "Update production CRM event delivery endpoint",
   body: "Please move the production CRM sync.",
 };
+
+test("failed workspace reads offer a manual retry", (t) => {
+  t.after(cleanup);
+  let retries = 0;
+  render(
+    <WorkspaceError
+      message="The service is temporarily unavailable. Try again."
+      onRetry={() => {
+        retries += 1;
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+  assert.equal(retries, 1);
+});
 
 test("ticket list selects an accessible work item", (t) => {
   t.after(cleanup);

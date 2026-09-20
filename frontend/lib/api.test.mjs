@@ -13,7 +13,49 @@ import {
   proposalReviewQuery,
   proposalReviewKeys,
   prepareDemoCase,
+  shouldRetryReadRequest,
 } from "./api.ts";
+
+test("read queries retry while the hosted service starts", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    if (calls < 3) return Response.json({}, { status: 503 });
+    return Response.json([{ id: "CHG-1042" }]);
+  });
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: shouldRetryReadRequest, retryDelay: 0 },
+    },
+  });
+  t.after(() => client.clear());
+
+  const tickets = await client.fetchQuery(ticketsQuery({ mode: "demo", employeeId: "emp-alex" }));
+
+  assert.deepEqual(tickets, [{ id: "CHG-1042" }]);
+  assert.equal(calls, 3);
+});
+
+test("read queries do not retry authorization failures", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls += 1;
+    return Response.json({ detail: "Record unavailable" }, { status: 403 });
+  });
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: shouldRetryReadRequest, retryDelay: 0 },
+    },
+  });
+  t.after(() => client.clear());
+
+  await assert.rejects(
+    client.fetchQuery(ticketsQuery({ mode: "demo", employeeId: "emp-alex" })),
+    /Record unavailable/,
+  );
+
+  assert.equal(calls, 1);
+});
 
 test("ticket history is fetched and cached by employee and ticket", async (t) => {
   const calls = [];

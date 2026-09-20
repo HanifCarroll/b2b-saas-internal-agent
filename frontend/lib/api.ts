@@ -135,6 +135,31 @@ export type RequestIdentity =
   | { mode: "demo"; employeeId: string }
   | { mode: "entra"; accountId: string; getAccessToken: () => Promise<string> };
 
+class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const RETRYABLE_READ_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/** Retry temporary failures for idempotent queries while a hosted service starts. */
+export function shouldRetryReadRequest(failureCount: number, error: Error) {
+  if (failureCount >= 3) return false;
+
+  return (
+    error instanceof TypeError ||
+    (error instanceof ApiRequestError && RETRYABLE_READ_STATUSES.has(error.status))
+  );
+}
+
+export function readRetryDelay(attemptIndex: number) {
+  return Math.min(500 * 2 ** attemptIndex, 2_000);
+}
+
 /** Send an explicitly selected identity to the Python API. */
 export async function requestApi<T>({
   path,
@@ -168,10 +193,11 @@ export async function requestApi<T>({
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(
+    throw new ApiRequestError(
       typeof body?.detail === "string"
         ? body.detail
-        : "Request failed. Check that the API is running and refresh before retrying.",
+        : "The service is temporarily unavailable. Try again.",
+      response.status,
     );
   }
   return response.json();
@@ -305,7 +331,6 @@ export function proposalReviewQuery({
           signal,
         },
       }),
-    retry: false,
     staleTime: 0,
     gcTime: 0,
   };

@@ -43,7 +43,6 @@ export function AuthenticationGate({
   const session = useQuery({
     queryKey: ["signed-in-session", sessionMode],
     enabled: typeof window !== "undefined" && sessionMode !== "unselected",
-    retry: false,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
     queryFn: async (): Promise<AuthenticatedSession | null> => {

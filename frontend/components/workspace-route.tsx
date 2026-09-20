@@ -205,10 +205,9 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
           ? "Loading saved investigation…"
           : "";
   const isPending = pendingMessage !== "";
-  const error = (
-    casePreparation.error ??
-    investigation.error ??
-    policyEvaluation.error ??
+  const operationError = (casePreparation.error ?? investigation.error ?? policyEvaluation.error)
+    ?.message;
+  const readError = (
     selectedRun.error ??
     ticketsQueryResult.error ??
     approvalsQueryResult.error ??
@@ -216,6 +215,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     casesQuery.error ??
     historyQueryResult.error
   )?.message;
+  const error = operationError ?? readError;
+
+  function retryWorkspaceReads() {
+    void queryClient.refetchQueries({ type: "active" });
+  }
   const sidebarDemoControls =
     identity.mode === "demo" ? (
       <DemoCaseLauncher
@@ -259,7 +263,12 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             </div>
           </div>
           <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-            {error && <WorkspaceError message={error} />}
+            {error && (
+              <WorkspaceError
+                message={error}
+                onRetry={operationError ? undefined : retryWorkspaceReads}
+              />
+            )}
             <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <div>
@@ -341,7 +350,12 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
             </div>
           </div>
           <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-            {error && <WorkspaceError message={error} />}
+            {error && (
+              <WorkspaceError
+                message={error}
+                onRetry={operationError ? undefined : retryWorkspaceReads}
+              />
+            )}
             {isPending && <PendingOperation message={pendingMessage} />}
             <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 px-5 py-4">
@@ -402,7 +416,12 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
               status={run?.current_status ?? null}
             />
 
-            {error && <WorkspaceError message={error} />}
+            {error && (
+              <WorkspaceError
+                message={error}
+                onRetry={operationError ? undefined : retryWorkspaceReads}
+              />
+            )}
             {isPending && <PendingOperation message={pendingMessage} />}
 
             <div className="grid items-start gap-10 py-8 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -491,11 +510,18 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   );
 }
 
-function WorkspaceError({ message }: { message: string }) {
+export function WorkspaceError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <Alert variant="destructive" role="alert" className="my-5">
       <AlertTitle>Request needs attention</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <AlertDescription>{message}</AlertDescription>
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </div>
     </Alert>
   );
 }
