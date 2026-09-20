@@ -16,6 +16,6 @@ npm run format:check
 npm run build
 ```
 
-Demo mode requires no Microsoft account. Each visitor receives isolated synthetic storage and can switch among clearly labeled fictional personas. Hybrid mode adds a local choice between that demo and the configured Microsoft account. Investigation and optional policy evaluation make model calls. Approval, execution, and delivery verification remain separate explicit actions. Use demo mode by itself for the hosted portfolio.
+Demo mode requires no Microsoft account. Each visitor receives isolated synthetic storage and can switch among clearly labeled fictional personas. Hybrid mode adds a local choice between that demo and the configured Microsoft account. Investigations automatically validate policy claims before presenting their results. Approval, execution, and delivery verification remain separate explicit actions. Use demo mode by itself for the hosted portfolio.
 
 Use `npm run format` to apply Oxfmt formatting. Oxlint checks TypeScript, React, Next.js, and accessibility rules. Generated shadcn label/field primitives have two narrow lint exceptions because their accessibility attributes are supplied through props and composition. Python continues to use Ruff.
