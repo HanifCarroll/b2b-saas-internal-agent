@@ -323,6 +323,7 @@ def test_investigation_history_rechecks_original_employee_access(storage):
     proposal = saved_proposal(storage)
     run_id = UUID("8f2a6b6e-265f-4d54-a373-8a461285a831")
     result = EndpointChangeResult(
+        source="fixture",
         investigation=candidate(),
         report_validation=ReportValidation(
             policy_ids=["endpoint-change-v2"],

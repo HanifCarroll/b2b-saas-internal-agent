@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
 
 from switchboard.demo.cases import list_demo_cases, prepare_demo_case
 from switchboard.demo.workspaces import DemoWorkspace, open_demo_workspace
+from switchboard.investigation.fixtures import investigate_ticket_fixture
 
 
 def test_new_visitors_receive_isolated_baseline_workspaces(storage_bridge):
@@ -66,3 +68,22 @@ def test_unknown_case_does_not_replace_workspace(storage):
         )
 
     assert storage.get_workspace() == before
+
+
+def test_unsafe_case_has_an_immediate_blocked_fixture_result(storage_bridge):
+    storage = storage_bridge.storage(workspace_id="fixture-workspace")
+    workspace = DemoWorkspace(
+        id=UUID("93f02ff8-20b5-41b3-b176-4da804b3ca6e"), storage=storage
+    )
+    prepare_demo_case(case_id="unsafe-destination", workspace=workspace)
+
+    result = investigate_ticket_fixture(
+        ticket_id="CHG-1042",
+        employee_id="emp-ben",
+        storage=storage,
+        now=datetime.now(timezone.utc),
+    )
+
+    assert result.result.source == "fixture"
+    assert result.result.investigation.outcome == "blocked"
+    assert result.result.proposal is None

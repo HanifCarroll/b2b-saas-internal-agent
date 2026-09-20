@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repository="$(cd "$(dirname "$0")/.." && pwd)"
+investigation_mode="${SWITCHBOARD_INVESTIGATION_MODE:-fixture}"
 storage_pid=""
 api_pid=""
 web_pid=""
@@ -27,6 +28,8 @@ storage_pid=$!
 (
   cd "$repository/backend"
   exec env SWITCHBOARD_AUTH_MODE=hybrid \
+    SWITCHBOARD_RUNTIME=local \
+    SWITCHBOARD_INVESTIGATION_MODE="$investigation_mode" \
     STORAGE_BRIDGE_URL=http://127.0.0.1:8787 \
     LOCAL_STORAGE_BRIDGE_TOKEN="$bridge_token" \
     uv run uvicorn switchboard.api:app \

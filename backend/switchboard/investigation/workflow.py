@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import InputAgentState, OutputAgentState
@@ -45,6 +45,7 @@ class EndpointChangeContext:
 class EndpointChangeWorkflowState(TypedDict):
     request: str
     ticket_id: str
+    source: NotRequired[Literal["model"]]
     investigation: NotRequired[InvestigationResult]
     report_validation: NotRequired[ReportValidation]
     evidence: NotRequired[list[EvidenceSnapshot]]
@@ -76,6 +77,7 @@ def investigate_request(
         captured_at=runtime.context.captured_at,
     )
     return {
+        "source": "model",
         "investigation": investigation,
         "evidence": evidence,
         "messages": result["messages"],

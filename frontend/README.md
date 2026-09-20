@@ -8,6 +8,8 @@ See the root README for the hybrid local launcher. From the repository root:
 ./scripts/dev
 ```
 
+The default local launcher uses immediate fixture investigations. Run `SWITCHBOARD_INVESTIGATION_MODE=live ./scripts/dev` when testing the real model-backed workflow.
+
 ```sh
 npm run lint
 npm run format:check

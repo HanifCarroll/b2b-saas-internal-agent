@@ -84,6 +84,7 @@ def test_saved_evidence_preserves_the_snapshot_when_the_current_record_changes(
     )[0]
     run_id = UUID("6a0fb861-b137-47b4-8360-c03e31b881f2")
     result = EndpointChangeResult(
+        source="fixture",
         investigation=InvestigationResult(
             outcome="blocked",
             ticket_id="CHG-1042",

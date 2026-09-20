@@ -7,7 +7,7 @@
     "test:storage": "../scripts/test-storage",
     "dev:storage": "wrangler dev --local --config wrangler.storage.jsonc --port 8787",
     "deploy": "wrangler deploy",
-    "migrate:local": "wrangler d1 migrations apply switchboard --local"
+    "migrate:local": "wrangler d1 migrations apply switchboard --local --config wrangler.storage.jsonc"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"

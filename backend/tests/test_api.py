@@ -177,6 +177,35 @@ def test_investigation_is_validated_before_the_proposal_is_saved(storage, monkey
     assert len(storage.list_pending_proposals()) == 1
 
 
+def test_local_fixture_investigation_uses_real_storage_without_a_model(
+    storage, monkeypatch
+):
+    monkeypatch.setenv("SWITCHBOARD_INVESTIGATION_MODE", "fixture")
+    monkeypatch.setenv("SWITCHBOARD_RUNTIME", "local")
+    monkeypatch.setattr(
+        api,
+        "create_model",
+        lambda: pytest.fail("fixture investigations must not create a model"),
+    )
+
+    with client_for(storage) as client:
+        response = client.post("/api/investigations", json={"ticket_id": "CHG-1042"})
+    api.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["result"]["source"] == "fixture"
+    assert response.json()["result"]["proposal"] is not None
+    assert {item["id"] for item in response.json()["result"]["evidence"]} == {
+        "CHG-1042",
+        "acme",
+        "int-acme-prod",
+        "endpoint-change-v1",
+        "endpoint-change-v2",
+    }
+    assert len(storage.list_runs(ticket_id="CHG-1042")) == 1
+    assert len(storage.list_pending_proposals()) == 1
+
+
 def test_saved_evidence_route_returns_the_snapshot_only_to_the_run_owner(
     storage, monkeypatch
 ):

@@ -176,6 +176,7 @@ def _prepare_proposal(*, workspace: DemoWorkspace, scenario_id: str):
 
     run_id = uuid4()
     result = EndpointChangeResult(
+        source="fixture",
         investigation=investigation,
         report_validation=ReportValidation(
             policy_ids=["endpoint-change-v1", "endpoint-change-v2"],

@@ -277,11 +277,12 @@ class ReportValidation(Record):
     """Receipt showing that an investigation report passed policy validation."""
 
     policy_ids: list[Text]
-    evaluation_count: Annotated[int, Field(ge=1, le=2)]
+    evaluation_count: Annotated[int, Field(ge=0, le=2)]
     revision_count: Annotated[int, Field(ge=0, le=1)]
 
 
 class EndpointChangeResult(Record):
+    source: Literal["model", "fixture"]
     investigation: InvestigationResult
     report_validation: ReportValidation
     evidence: list[EvidenceSnapshot]

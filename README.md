@@ -37,6 +37,12 @@ Start the local D1 bridge, API, and web application from the repository root:
 
 Open <http://localhost:3000>. Local development uses hybrid authentication: the same build supports the isolated demo and Microsoft sign-in. Wrangler stores the local D1 database under the ignored `cloudflare/.wrangler/` directory.
 
+`./scripts/dev` uses deterministic fixture investigations by default. They return immediately but still use the real authorization, proposal validation, evidence snapshots, and D1 persistence. The report labels them as fixture results. Run the real model when testing agent behavior:
+
+```sh
+SWITCHBOARD_INVESTIGATION_MODE=live ./scripts/dev
+```
+
 The CLI uses the same storage bridge. Run it while `./scripts/dev` is active:
 
 ```sh
@@ -45,11 +51,11 @@ uv run python -m switchboard --reset-demo baseline --confirm-reset
 uv run python -m switchboard
 ```
 
-Investigations make paid DeepSeek calls. Listing cases, resetting data, retrieval, approval, execution, and delivery verification do not call a model. The graph finishes after saving a proposal; review, approval, execution, and verification are separate application operations.
+Live investigations make paid DeepSeek calls. Fixture investigations, listing cases, resetting data, retrieval, approval, execution, and delivery verification do not call a model. The graph finishes after saving a proposal; review, approval, execution, and verification are separate application operations.
 
 ## Demo behavior
 
-The public hosted build uses anonymous demo mode. Each visitor receives an isolated workspace and can prepare one of four deterministic cases: a valid request, an unsafe destination, a proposal awaiting approval, or an approved proposal ready to execute. Preparing a case resets only that workspace and selects the recommended fictional persona.
+The public hosted build uses anonymous demo mode with live model investigations. Each visitor receives an isolated workspace and can prepare one of four deterministic cases: a valid request, an unsafe destination, a proposal awaiting approval, or an approved proposal ready to execute. Preparing a case resets only that workspace and selects the recommended fictional persona.
 
 The agent has read-only, access-controlled tools for tickets, customers, integrations, and policies. It returns a structured investigation result that Pydantic validates. Application code then validates the current business records before saving a proposal. The model cannot approve or execute a change.
 

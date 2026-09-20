@@ -37,6 +37,8 @@ from switchboard.integrations.support_desk import (
 )
 from switchboard.investigation.agent import create_model
 from switchboard.investigation.evidence import read_investigation_evidence
+from switchboard.investigation.fixtures import investigate_ticket_fixture
+from switchboard.investigation.mode import get_investigation_mode
 from switchboard.investigation.report_validation import ReportValidationError
 from switchboard.investigation.runner import investigate_ticket
 from switchboard.investigation.runs import (
@@ -74,6 +76,7 @@ DEMO_WORKSPACE_COOKIE = "switchboard-demo-workspace"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+    get_investigation_mode()
     if get_auth_mode() in {"entra", "hybrid"}:
         get_entra_settings()
     yield
@@ -453,13 +456,21 @@ def start_investigation(
 ) -> InvestigationRun:
     _get_accessible_ticket(ticket_id=request.ticket_id, request_context=request_context)
     try:
-        run = investigate_ticket(
-            ticket_id=request.ticket_id,
-            employee_id=request_context.employee_id,
-            model=create_model(),
-            storage=request_context.storage,
-            now=datetime.now(timezone.utc),
-        )
+        if get_investigation_mode() == "fixture":
+            run = investigate_ticket_fixture(
+                ticket_id=request.ticket_id,
+                employee_id=request_context.employee_id,
+                storage=request_context.storage,
+                now=datetime.now(timezone.utc),
+            )
+        else:
+            run = investigate_ticket(
+                ticket_id=request.ticket_id,
+                employee_id=request_context.employee_id,
+                model=create_model(),
+                storage=request_context.storage,
+                now=datetime.now(timezone.utc),
+            )
     except ReportValidationError:
         logger.exception("Investigation report validation failed")
         raise HTTPException(

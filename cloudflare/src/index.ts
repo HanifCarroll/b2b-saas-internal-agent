@@ -8,6 +8,8 @@ interface Env extends StorageEnvironment {
   SWITCHBOARD_CONTAINER: DurableObjectNamespace<SwitchboardContainer>;
   DEEPSEEK_API_KEY: string;
   SWITCHBOARD_AUTH_MODE: string;
+  SWITCHBOARD_RUNTIME: string;
+  SWITCHBOARD_INVESTIGATION_MODE: string;
   NEXT_PUBLIC_AUTH_MODE: string;
   STORAGE_BRIDGE_URL: string;
   ENTRA_TENANT_ID?: string;
@@ -48,6 +50,8 @@ function containerEnvironment(env: Env): Record<string, string> {
   const values: Record<string, string | undefined> = {
     DEEPSEEK_API_KEY: env.DEEPSEEK_API_KEY,
     SWITCHBOARD_AUTH_MODE: env.SWITCHBOARD_AUTH_MODE,
+    SWITCHBOARD_RUNTIME: env.SWITCHBOARD_RUNTIME,
+    SWITCHBOARD_INVESTIGATION_MODE: env.SWITCHBOARD_INVESTIGATION_MODE,
     NEXT_PUBLIC_AUTH_MODE: env.NEXT_PUBLIC_AUTH_MODE,
     STORAGE_BRIDGE_URL: env.STORAGE_BRIDGE_URL,
     ENTRA_TENANT_ID: env.ENTRA_TENANT_ID,

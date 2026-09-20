@@ -39,6 +39,8 @@
   ],
   "vars": {
     "SWITCHBOARD_AUTH_MODE": "demo",
+    "SWITCHBOARD_RUNTIME": "cloudflare",
+    "SWITCHBOARD_INVESTIGATION_MODE": "live",
     "NEXT_PUBLIC_AUTH_MODE": "demo",
     "STORAGE_BRIDGE_URL": "http://switchboard.storage"
   }
