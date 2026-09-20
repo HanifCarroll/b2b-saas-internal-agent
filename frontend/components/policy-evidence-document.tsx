@@ -34,49 +34,47 @@ export function PolicyEvidenceDocument({
         </dl>
       )}
 
-      <Markdown
-        skipHtml
-        disallowedElements={["img"]}
-        components={{
-          h1: ({ children }) => (
-            <h1 className="mt-8 text-2xl font-semibold tracking-tight first:mt-0">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="mt-8 text-lg font-semibold tracking-tight">{children}</h2>
-          ),
-          h3: ({ children }) => <h3 className="mt-6 font-semibold">{children}</h3>,
-          p: ({ children }) => (
-            <p className="mt-4 max-w-3xl text-[15px] leading-7 text-foreground/90">{children}</p>
-          ),
-          ul: ({ children }) => (
-            <ul className="mt-4 max-w-3xl list-disc space-y-2 pl-5 text-[15px] leading-7">
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="mt-4 max-w-3xl list-decimal space-y-2 pl-5 text-[15px] leading-7">
-              {children}
-            </ol>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="mt-5 max-w-3xl border-l-2 pl-4 text-muted-foreground">
-              {children}
-            </blockquote>
-          ),
-          a: ({ children, href }) => (
-            <a className="font-medium text-blue-700 underline underline-offset-4" href={href}>
-              {children}
-            </a>
-          ),
-          code: ({ children }) => (
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em]">
-              {children}
-            </code>
-          ),
-        }}
-      >
-        {policy.body}
-      </Markdown>
+      <div className="max-w-[65ch]">
+        <Markdown
+          skipHtml
+          disallowedElements={["img"]}
+          components={{
+            h1: ({ children }) => (
+              <h1 className="mt-8 text-2xl font-semibold tracking-tight first:mt-0">{children}</h1>
+            ),
+            h2: ({ children }) => (
+              <h2 className="mt-8 text-lg font-semibold tracking-tight">{children}</h2>
+            ),
+            h3: ({ children }) => <h3 className="mt-6 font-semibold">{children}</h3>,
+            p: ({ children }) => (
+              <p className="mt-4 text-[15px] leading-7 text-foreground/90">{children}</p>
+            ),
+            ul: ({ children }) => (
+              <ul className="mt-4 list-disc space-y-2 pl-5 text-[15px] leading-7">{children}</ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="mt-4 list-decimal space-y-2 pl-5 text-[15px] leading-7">{children}</ol>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote className="mt-5 border-l-2 pl-4 text-muted-foreground">
+                {children}
+              </blockquote>
+            ),
+            a: ({ children, href }) => (
+              <a className="font-medium text-blue-700 underline underline-offset-4" href={href}>
+                {children}
+              </a>
+            ),
+            code: ({ children }) => (
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em]">
+                {children}
+              </code>
+            ),
+          }}
+        >
+          {policy.body}
+        </Markdown>
+      </div>
     </div>
   );
 }
