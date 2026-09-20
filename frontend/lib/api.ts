@@ -112,6 +112,7 @@ export type InvestigationRun = {
   ticket_id: string;
   scenario_id: string | null;
   result: {
+    source: "model" | "fixture";
     investigation: {
       outcome: string;
       findings: {
@@ -170,7 +171,7 @@ const RETRYABLE_READ_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 /** Retry temporary failures for idempotent queries while a hosted service starts. */
 export function shouldRetryReadRequest(failureCount: number, error: Error) {
-  if (failureCount >= 3) return false;
+  if (failureCount >= 6) return false;
 
   return (
     error instanceof TypeError ||
@@ -179,7 +180,7 @@ export function shouldRetryReadRequest(failureCount: number, error: Error) {
 }
 
 export function readRetryDelay(attemptIndex: number) {
-  return Math.min(500 * 2 ** attemptIndex, 2_000);
+  return Math.min(500 * 2 ** attemptIndex, 5_000);
 }
 
 /** Send an explicitly selected identity to the Python API. */

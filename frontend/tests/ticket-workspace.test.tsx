@@ -150,6 +150,7 @@ test("investigation report shows structured criteria and actionable blockers", (
           next_action: "Resolve the blockers.",
         },
         result: {
+          source: "fixture",
           investigation: {
             outcome: "blocked",
             findings: {
@@ -211,6 +212,7 @@ test("investigation report shows structured criteria and actionable blockers", (
   );
 
   assert.ok(screen.getByRole("heading", { name: "Decision criteria" }));
+  assert.ok(screen.getByText("Fixture result"));
   assert.ok(screen.getByText("Unavailable"));
   assert.ok(screen.getByText("Required before execution"));
   assert.ok(screen.getByRole("heading", { name: "What needs attention" }));
@@ -218,6 +220,8 @@ test("investigation report shows structured criteria and actionable blockers", (
   assert.equal(screen.queryByRole("button", { name: /Evaluate policy claims/ }), null);
   const technicalDetails = screen.getByText("Technical details").closest("details");
   assert.equal(technicalDetails?.open, false);
+  fireEvent.click(screen.getByText("Technical details"));
+  assert.ok(screen.getByText("Prevalidated local fixture; no model evaluation was run."));
   assert.equal(
     screen.getAllByRole("link", { name: "endpoint-change-v2" })[0].getAttribute("href"),
     "/requests/CHG-1042/investigations/run-1/evidence/endpoint-change-v2",

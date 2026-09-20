@@ -37,6 +37,15 @@ test("read queries retry while the hosted service starts", async (t) => {
   assert.equal(calls, 3);
 });
 
+test("read recovery remains bounded", () => {
+  const temporaryFailure = new TypeError("Network unavailable");
+
+  for (let failureCount = 0; failureCount < 6; failureCount += 1) {
+    assert.equal(shouldRetryReadRequest(failureCount, temporaryFailure), true);
+  }
+  assert.equal(shouldRetryReadRequest(6, temporaryFailure), false);
+});
+
 test("read queries do not retry authorization failures", async (t) => {
   let calls = 0;
   t.mock.method(globalThis, "fetch", async () => {

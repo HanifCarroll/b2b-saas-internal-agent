@@ -29,9 +29,12 @@ export function InvestigationFindings({ run }: { run: InvestigationRun }) {
           <Sparkles className="size-5 text-blue-700" aria-hidden="true" />
           Agent conclusion
         </h2>
-        <Badge variant="secondary">
-          {investigation.outcome === "blocked" ? "Blocked" : "Investigation complete"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {run.result.source === "fixture" && <Badge variant="outline">Fixture result</Badge>}
+          <Badge variant="secondary">
+            {investigation.outcome === "blocked" ? "Blocked" : "Investigation complete"}
+          </Badge>
+        </div>
       </div>
 
       <div className="mt-4 rounded-lg border bg-slate-50/70 p-5">
@@ -71,11 +74,15 @@ export function InvestigationFindings({ run }: { run: InvestigationRun }) {
             )}
           </div>
           <p>Governing policies: {validation.policy_ids.join(", ")}</p>
-          <p>
-            Policy claims validated automatically with {validation.evaluation_count} evaluation
-            {validation.evaluation_count === 1 ? "" : "s"} and {validation.revision_count} revision
-            {validation.revision_count === 1 ? "" : "s"}.
-          </p>
+          {run.result.source === "fixture" ? (
+            <p>Prevalidated local fixture; no model evaluation was run.</p>
+          ) : (
+            <p>
+              Policy claims validated automatically with {validation.evaluation_count} evaluation
+              {validation.evaluation_count === 1 ? "" : "s"} and {validation.revision_count}{" "}
+              revision{validation.revision_count === 1 ? "" : "s"}.
+            </p>
+          )}
           <div>
             <p className="font-medium text-foreground">Tool calls ({toolCalls.length})</p>
             {toolCalls.length === 0 ? (

@@ -111,6 +111,15 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
   const employeeRecord = personas.find((item) => item.id === employee);
   const employeeName = employeeRecord?.name ?? currentEmployee?.name ?? employee;
   const employeeRole = employeeRecord?.role ?? currentEmployee?.role ?? null;
+  const reconnecting = [
+    personasQuery,
+    casesQuery,
+    ticketsQueryResult,
+    approvalsQueryResult,
+    historyQueryResult,
+    selectedRun,
+    evidenceQueryResult,
+  ].some((query) => query.failureCount > 0 && query.fetchStatus === "fetching");
 
   // 2. Mutations run only on explicit user actions and never retry paid calls.
   const investigation = useMutation({
@@ -188,9 +197,11 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     ? "Preparing the demo case…"
     : investigation.isPending
       ? "Investigating records and validating the result…"
-      : selectedRun.isLoading
-        ? "Loading saved investigation…"
-        : "";
+      : reconnecting
+        ? "Reconnecting to the service…"
+        : selectedRun.isLoading
+          ? "Loading saved investigation…"
+          : "";
   const isPending = pendingMessage !== "";
   const operationError = (casePreparation.error ?? investigation.error)?.message;
   const readError = (
