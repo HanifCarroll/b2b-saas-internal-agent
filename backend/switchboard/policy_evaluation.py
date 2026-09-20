@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import Field
@@ -9,11 +10,19 @@ from pydantic import Field
 from switchboard.models import Record, Text
 from switchboard.scenarios import FIXTURES
 
+PolicyIssueKind = Literal[
+    "missing_required_condition",
+    "invented_absolute_prohibition",
+    "invented_requirement",
+    "contradicts_policy",
+]
+
 
 class PolicyIssue(Record):
     claim: Text
     policy_id: Text
     policy_excerpt: Text
+    issue_kind: PolicyIssueKind
     explanation: Text
 
 

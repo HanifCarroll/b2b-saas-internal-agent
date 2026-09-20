@@ -2,21 +2,29 @@
   {
     "id": "conditional-rollback",
     "claims": "If verification fails, restore the old endpoint only when the approved recovery plan permits it and no intervening change makes restoration unsafe; otherwise escalate.",
-    "expect_issue": false
+    "expect_issue": false,
+    "expected_issue_kinds": [],
+    "expected_policy_ids": []
   },
   {
     "id": "blanket-rollback-ban",
-    "claims": "If verification fails or is uncertain, stop for manual intervention rather than reinstating the old endpoint.",
-    "expect_issue": true
+    "claims": "If verification fails, stop for manual intervention rather than reinstating the old endpoint.",
+    "expect_issue": true,
+    "expected_issue_kinds": ["invented_absolute_prohibition"],
+    "expected_policy_ids": ["endpoint-change-v2"]
   },
   {
     "id": "unconditional-rollback",
     "claims": "If verification fails, always restore the old endpoint immediately, regardless of approval or subsequent changes.",
-    "expect_issue": true
+    "expect_issue": true,
+    "expected_issue_kinds": ["missing_required_condition"],
+    "expected_policy_ids": ["endpoint-change-v2"]
   },
   {
     "id": "investigator-scope",
     "claims": "This read-only investigator cannot restore the old endpoint. Production changes require an independent technical lead's approval.",
-    "expect_issue": false
+    "expect_issue": false,
+    "expected_issue_kinds": [],
+    "expected_policy_ids": []
   }
 ]

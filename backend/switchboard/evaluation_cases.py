@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, TypeAdapter
 
 from switchboard.models import Record, Text
+from switchboard.policy_evaluation import PolicyIssueKind
 
 EVALUATIONS = Path(__file__).resolve().parent.parent / "data" / "evaluations"
 
@@ -20,6 +21,8 @@ class PolicyFaithfulnessEvaluationCase(Record):
     id: Text
     claims: Text
     expect_issue: bool
+    expected_issue_kinds: list[PolicyIssueKind] = Field(default_factory=list)
+    expected_policy_ids: list[Text] = Field(default_factory=list)
 
 
 def load_investigation_evaluation_cases() -> dict[str, InvestigationEvaluationCase]:

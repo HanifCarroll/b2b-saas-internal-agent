@@ -29,6 +29,7 @@ def test_policy_review_rejects_invented_excerpt():
                 "claim": "Never roll back.",
                 "policy_id": "endpoint-change-v2",
                 "policy_excerpt": "Invented policy text.",
+                "issue_kind": "invented_absolute_prohibition",
                 "explanation": "Unsupported.",
             }
         ]
@@ -36,6 +37,24 @@ def test_policy_review_rejects_invented_excerpt():
     model = GenericFakeChatModel(messages=iter([AIMessage(content=json.dumps(review))]))
 
     with pytest.raises(ValueError, match="unverified source excerpt"):
+        evaluate_policy(claims="Never roll back.", model=model)
+
+
+def test_policy_review_rejects_unknown_issue_kind():
+    review = {
+        "issues": [
+            {
+                "claim": "Never roll back.",
+                "policy_id": "endpoint-change-v2",
+                "policy_excerpt": "Otherwise, stop for manual intervention.",
+                "issue_kind": "unclear_policy_problem",
+                "explanation": "The claim turns a conditional rule into a blanket ban.",
+            }
+        ]
+    }
+    model = GenericFakeChatModel(messages=iter([AIMessage(content=json.dumps(review))]))
+
+    with pytest.raises(ValidationError):
         evaluate_policy(claims="Never roll back.", model=model)
 
 
