@@ -1,6 +1,7 @@
 "use client";
 
 import type { DemoPersona } from "@/lib/api";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -9,19 +10,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+const personaAvatarPaths: Record<string, string> = {
+  "emp-alex": "/personas/alex-rivera.png",
+  "emp-priya": "/personas/priya-shah.png",
+  "emp-ben": "/personas/ben-okafor.png",
+};
+
+export function DemoPersonaAvatar({
+  persona,
+  size = "default",
+}: {
+  persona: DemoPersona | null;
+  size?: "sm" | "default" | "lg";
+}) {
+  const name = persona?.name ?? "Demo persona";
+  const avatarPath = persona ? personaAvatarPaths[persona.id] : undefined;
+
+  return (
+    <Avatar size={size}>
+      {avatarPath && <AvatarImage src={avatarPath} alt={name} />}
+      <AvatarFallback>{initials(name)}</AvatarFallback>
+    </Avatar>
+  );
+}
 
 export function DemoPersonaIndicator({ persona }: { persona: DemoPersona | null }) {
+  const name = persona?.name ?? "Loading persona…";
+  const role = persona?.role.replaceAll("_", " ") ?? "";
+
   return (
-    <div>
+    <div className="min-w-0">
       <span className="block text-[11px] font-medium tracking-wide text-slate-500 uppercase">
         Demo persona
       </span>
-      <span className="block truncate text-sm font-medium text-white">
-        {persona?.name ?? "Loading persona…"}
-      </span>
-      <span className="block truncate text-xs capitalize text-slate-400">
-        {persona?.role.replaceAll("_", " ") ?? ""}
-      </span>
+      <TruncatedPersonaValue value={name} className="text-sm font-medium text-white" />
+      {role && <TruncatedPersonaValue value={role} className="text-xs text-slate-400 capitalize" />}
     </div>
   );
 }
@@ -53,6 +78,7 @@ export function DemoPersonaSwitcher({
         <SelectGroup>
           {personas.map((persona) => (
             <SelectItem key={persona.id} value={persona.id}>
+              <DemoPersonaAvatar persona={persona} size="sm" />
               {persona.name}
             </SelectItem>
           ))}
@@ -60,4 +86,32 @@ export function DemoPersonaSwitcher({
       </SelectContent>
     </Select>
   );
+}
+
+function TruncatedPersonaValue({ value, className }: { value: string; className: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${value}; show full value`}
+            className={`block w-full cursor-help truncate text-left ${className}`}
+          />
+        }
+      >
+        {value}
+      </TooltipTrigger>
+      <TooltipContent>{value}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(/[-\s]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }

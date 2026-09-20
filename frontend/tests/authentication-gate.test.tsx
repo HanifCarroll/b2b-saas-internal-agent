@@ -501,6 +501,8 @@ test("public demo shows fictional personas and prepares a selected case", async 
   const sidebar = await screen.findByRole("complementary");
   await waitFor(() => assert.match(sidebar.textContent!, /Demo persona/));
   assert.match(sidebar.textContent!, /Alex Rivera/);
+  assert.equal(sidebar.querySelector(".lucide-chevron-right"), null);
+  assert.equal(within(sidebar).getByText("implementation engineer").tabIndex, 0);
   fireEvent.click(screen.getByText("Try a demo case"));
   fireEvent.click(await screen.findByRole("button", { name: /Review a pending proposal/ }));
   const dialog = await screen.findByRole("alertdialog");

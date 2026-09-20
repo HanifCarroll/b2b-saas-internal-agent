@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { CheckSquare2, ChevronRight, Inbox, Layers3, LogIn, LogOut, UserRound } from "lucide-react";
+import { CheckSquare2, Inbox, Layers3, LogIn, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DemoPersonaIndicator } from "@/components/demo-persona";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { DemoPersonaAvatar, DemoPersonaIndicator } from "@/components/demo-persona";
 import type { AccountActions } from "@/components/authentication-gate";
 import type { DemoPersona } from "@/lib/api";
 
@@ -68,9 +69,13 @@ export function WorkspaceSidebar({
         {demoControls}
         <div className="border-t border-white/10 pt-3">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-200 text-xs font-semibold text-slate-800">
-              {initials(employee)}
-            </span>
+            {demoPersona !== undefined ? (
+              <DemoPersonaAvatar persona={demoPersona} size="lg" />
+            ) : (
+              <Avatar size="lg">
+                <AvatarFallback>{initials(employee)}</AvatarFallback>
+              </Avatar>
+            )}
             <span className="min-w-0 flex-1">
               {demoPersona !== undefined ? (
                 <DemoPersonaIndicator persona={demoPersona} />
@@ -83,7 +88,6 @@ export function WorkspaceSidebar({
                 </>
               )}
             </span>
-            <ChevronRight className="size-4 text-slate-500" aria-hidden="true" />
           </div>
           {demoPersonaSwitcher}
           {(accountControls.onUseDemo ||
