@@ -329,6 +329,7 @@ def test_investigation_history_rechecks_original_employee_access(storage):
             evaluation_count=1,
             revision_count=0,
         ),
+        evidence=[],
         messages=[],
         proposal=proposal,
         was_created=True,

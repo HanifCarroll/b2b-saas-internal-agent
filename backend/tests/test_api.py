@@ -3,10 +3,12 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from switchboard import api
 from switchboard.api import RequestContext
+from switchboard.integrations.employee_directory import EmployeeSession
+from switchboard.integrations.support_desk import get_ticket
 
 
 @pytest.fixture(autouse=True)
@@ -25,11 +27,14 @@ def client_for(storage, *, employee_id: str = "emp-alex") -> TestClient:
 
 
 class StubInvestigator:
-    def __init__(self, report: dict):
+    def __init__(self, report: dict, messages=None):
         self.report = report
+        self.messages = messages or []
 
     def invoke(self, *_args, **_kwargs):
-        return {"messages": [AIMessage(content=json.dumps(self.report))]}
+        return {
+            "messages": [*self.messages, AIMessage(content=json.dumps(self.report))]
+        }
 
 
 def proposal_candidate_report() -> dict:
@@ -170,6 +175,55 @@ def test_investigation_is_validated_before_the_proposal_is_saved(storage, monkey
     }
     assert len(storage.list_runs(ticket_id="CHG-1042")) == 1
     assert len(storage.list_pending_proposals()) == 1
+
+
+def test_saved_evidence_route_returns_the_snapshot_only_to_the_run_owner(
+    storage, monkeypatch
+):
+    policy_model = GenericFakeChatModel(
+        messages=iter([AIMessage(content='{"issues": []}')])
+    )
+    ticket = get_ticket(
+        session=EmployeeSession(storage=storage, employee_id="emp-alex"),
+        ticket_id="CHG-1042",
+    )
+    investigator = StubInvestigator(
+        proposal_candidate_report(),
+        messages=[
+            ToolMessage(
+                name="get_ticket",
+                tool_call_id="ticket-call",
+                content=ticket.model_dump_json(),
+            )
+        ],
+    )
+    monkeypatch.setattr(api, "create_model", lambda: policy_model)
+    monkeypatch.setattr(
+        "switchboard.investigation.runner.build_agent",
+        lambda **_kwargs: investigator,
+    )
+
+    with client_for(storage) as client:
+        run = client.post("/api/investigations", json={"ticket_id": "CHG-1042"})
+        evidence = client.get(
+            f"/api/investigations/{run.json()['run_id']}/evidence/CHG-1042"
+        )
+    api.app.dependency_overrides.clear()
+
+    with client_for(storage, employee_id="emp-ben") as client:
+        inaccessible = client.get(
+            f"/api/investigations/{run.json()['run_id']}/evidence/CHG-1042"
+        )
+        missing = client.get(
+            f"/api/investigations/{run.json()['run_id']}/evidence/missing"
+        )
+    api.app.dependency_overrides.clear()
+
+    assert evidence.status_code == 200
+    assert evidence.json()["snapshot"]["document"]["id"] == "CHG-1042"
+    assert evidence.json()["has_changed"] is False
+    assert inaccessible.status_code == missing.status_code == 404
+    assert inaccessible.json() == missing.json() == {"detail": "Evidence unavailable"}
 
 
 def test_failed_report_validation_saves_neither_run_nor_proposal(storage, monkeypatch):

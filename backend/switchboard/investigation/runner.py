@@ -86,6 +86,7 @@ def _run_investigation(
     context = EndpointChangeContext(
         agent=build_agent(model=model, now=now),
         model=model,
+        captured_at=datetime.fromisoformat(now),
         investigation_context=InvestigationContext(
             storage=storage,
             employee_id=employee_id,

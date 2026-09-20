@@ -21,6 +21,7 @@ DeliveryOutcome = Literal["delivered", "failed", "inconclusive"]
 CriterionStatus = Literal["verified", "unverified", "unavailable", "failed", "deferred"]
 WorkflowStage = Literal["proposal", "review", "execution", "verification"]
 BlockerKind = Literal["missing_evidence", "confirmed_violation"]
+EvidenceKind = Literal["ticket", "customer", "integration", "policy"]
 ClockTime = Annotated[str, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 
 
@@ -94,6 +95,27 @@ class PersonReference(Record):
 class TicketDetails(Ticket):
     requester: PersonReference
     assigned_employee: PersonReference
+
+
+class PolicyDocument(Record):
+    id: Text
+    content: Text
+
+
+EvidenceDocument = Ticket | Customer | Integration | PolicyDocument
+
+
+class EvidenceSnapshot(Record):
+    id: Text
+    kind: EvidenceKind
+    captured_at: AwareDatetime
+    document: EvidenceDocument
+
+
+class InvestigationEvidenceDetail(Record):
+    snapshot: EvidenceSnapshot
+    current_document: EvidenceDocument | None
+    has_changed: bool | None
 
 
 class Proposal(Record):
@@ -262,6 +284,7 @@ class ReportValidation(Record):
 class EndpointChangeResult(Record):
     investigation: InvestigationResult
     report_validation: ReportValidation
+    evidence: list[EvidenceSnapshot]
     messages: list[AnyMessage]
     proposal: Proposal | None = None
     was_created: bool | None = None

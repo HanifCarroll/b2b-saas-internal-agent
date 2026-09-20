@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, NotRequired, TypedDict
 
 from langchain.agents import AgentState
@@ -11,6 +12,7 @@ from langgraph.runtime import Runtime
 
 from switchboard.change_management import save_proposal
 from switchboard.integrations.policy_library import list_policies
+from switchboard.investigation.evidence import capture_investigation_evidence
 from switchboard.investigation.report_validation import (
     PolicySource,
     validate_investigation_report,
@@ -18,6 +20,7 @@ from switchboard.investigation.report_validation import (
 from switchboard.investigation.tools import InvestigationContext, employee_session
 from switchboard.models import (
     EndpointChangeResult,
+    EvidenceSnapshot,
     InvestigationResult,
     Proposal,
     ReportValidation,
@@ -36,6 +39,7 @@ class EndpointChangeContext:
     ]
     model: BaseChatModel
     investigation_context: InvestigationContext
+    captured_at: datetime
 
 
 class EndpointChangeWorkflowState(TypedDict):
@@ -43,6 +47,7 @@ class EndpointChangeWorkflowState(TypedDict):
     ticket_id: str
     investigation: NotRequired[InvestigationResult]
     report_validation: NotRequired[ReportValidation]
+    evidence: NotRequired[list[EvidenceSnapshot]]
     proposal: NotRequired[Proposal]
     was_created: NotRequired[bool]
     messages: NotRequired[list[BaseMessage]]
@@ -66,7 +71,15 @@ def investigate_request(
     ):
         raise ValueError("Investigation returned a different ticket")
 
-    return {"investigation": investigation, "messages": result["messages"]}
+    evidence = capture_investigation_evidence(
+        messages=result["messages"],
+        captured_at=runtime.context.captured_at,
+    )
+    return {
+        "investigation": investigation,
+        "evidence": evidence,
+        "messages": result["messages"],
+    }
 
 
 def validate_report(
@@ -90,9 +103,22 @@ def validate_report(
         policies=policies,
         model=runtime.context.model,
     )
+    evidence = list(state.get("evidence", []))
+    captured_ids = {item.id for item in evidence}
+    evidence.extend(
+        EvidenceSnapshot(
+            id=policy.id,
+            kind="policy",
+            captured_at=runtime.context.captured_at,
+            document=policy,
+        )
+        for policy in policies
+        if policy.id not in captured_ids
+    )
     return {
         "investigation": validated.investigation,
         "report_validation": validated.validation,
+        "evidence": evidence,
     }
 
 

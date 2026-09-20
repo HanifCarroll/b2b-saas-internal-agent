@@ -182,6 +182,7 @@ def _prepare_proposal(*, workspace: DemoWorkspace, scenario_id: str):
             evaluation_count=1,
             revision_count=0,
         ),
+        evidence=[],
         messages=[],
         proposal=proposal,
         was_created=True,

@@ -36,6 +36,7 @@ from switchboard.integrations.support_desk import (
     list_tickets,
 )
 from switchboard.investigation.agent import create_model
+from switchboard.investigation.evidence import read_investigation_evidence
 from switchboard.investigation.report_validation import ReportValidationError
 from switchboard.investigation.runner import investigate_ticket
 from switchboard.investigation.runs import (
@@ -52,6 +53,7 @@ from switchboard.models import (
     DeliveryVerification,
     ExecuteProposalResult,
     Execution,
+    InvestigationEvidenceDetail,
     Proposal,
     Role,
     Ticket,
@@ -518,3 +520,23 @@ def read_investigation(
         raise HTTPException(
             status_code=404, detail="Investigation unavailable"
         ) from None
+
+
+@app.get(
+    "/api/investigations/{run_id}/evidence/{evidence_id}",
+    response_model=InvestigationEvidenceDetail,
+)
+def read_evidence(
+    run_id: UUID,
+    evidence_id: str,
+    request_context: RequestContext = Depends(get_request_context),
+) -> InvestigationEvidenceDetail:
+    try:
+        return read_investigation_evidence(
+            storage=request_context.storage,
+            run_id=run_id,
+            evidence_id=evidence_id,
+            employee_id=request_context.employee_id,
+        )
+    except (FileNotFoundError, PermissionError):
+        raise HTTPException(status_code=404, detail="Evidence unavailable") from None

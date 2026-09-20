@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from switchboard.models import (
     InvestigationFindings,
     InvestigationResult,
+    PolicyDocument,
     Record,
     ReportValidation,
     Text,
@@ -24,9 +25,7 @@ PolicyIssueKind = Literal[
 ]
 
 
-class PolicySource(Record):
-    id: Text
-    content: Text
+PolicySource = PolicyDocument
 
 
 class PolicyIssue(Record):
