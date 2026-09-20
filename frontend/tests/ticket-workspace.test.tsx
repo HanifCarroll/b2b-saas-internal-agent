@@ -450,11 +450,10 @@ test("proposal change summary compares endpoints without a directional arrow", (
   );
 
   const summary = screen.getByRole("region", { name: "Proposed change" });
-  assert.ok(summary.className.includes("md:grid-cols-2"));
   assert.ok(screen.getByText("Current endpoint"));
   assert.ok(screen.getByText("Proposed endpoint"));
-  assert.ok(screen.getByText("Expected current version"));
-  assert.ok(screen.getByText("Alex Rivera"));
+  assert.ok(screen.getByText("Version 7 · Proposed by Alex Rivera"));
+  assert.equal(summary.querySelectorAll("dl").length, 0);
   assert.equal(screen.queryByLabelText("Changes to"), null);
 });
 

@@ -130,6 +130,12 @@ export function ProposalReview({
     (currentEmployee && currentEmployee.employee_id === review?.proposal.proposed_by_employee_id
       ? currentEmployee.name
       : review?.proposal.proposed_by_employee_id);
+  function employeeName(employeeId: string) {
+    return (
+      employees.find((item) => item.id === employeeId)?.name ??
+      (currentEmployee?.employee_id === employeeId ? currentEmployee.name : employeeId)
+    );
+  }
 
   return (
     <section className="py-7" aria-label="Proposal review" aria-live="polite">
@@ -198,9 +204,20 @@ export function ProposalReview({
         <div className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Proposed change</h2>
-            <Badge variant={review.approval ? "default" : "secondary"}>
-              {review.current_status.title}
-            </Badge>
+            {!review.verification && (
+              <Badge variant={review.approval ? "default" : "secondary"}>
+                {review.current_status.title}
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <ProposalChangeSummary
+              currentEndpoint={review.proposal.current_endpoint}
+              proposedEndpoint={review.proposal.proposed_endpoint}
+              expectedVersion={review.proposal.expected_configuration_version}
+              proposerName={proposerName ?? review.proposal.proposed_by_employee_id}
+            />
           </div>
 
           {review.execution && !review.verification && (
@@ -209,7 +226,7 @@ export function ProposalReview({
               <AlertTitle>Configuration updated — delivery not yet verified</AlertTitle>
               <AlertDescription>
                 <p>
-                  {review.execution.executed_by_employee_id} ·{" "}
+                  {employeeName(review.execution.executed_by_employee_id)} ·{" "}
                   {new Date(review.execution.executed_at).toLocaleString()}
                 </p>
                 <p>
@@ -245,122 +262,132 @@ export function ProposalReview({
               <AlertDescription>
                 <p>{review.verification.evidence}</p>
                 <p>
-                  {review.verification.verified_by_employee_id} ·{" "}
+                  Verified by {employeeName(review.verification.verified_by_employee_id)} ·{" "}
                   {new Date(review.verification.verified_at).toLocaleString()}
                 </p>
-                <p className="break-all">Test event: {review.verification.test_event_id}</p>
               </AlertDescription>
             </Alert>
           )}
 
-          <div className="mt-4">
-            <ProposalChangeSummary
-              currentEndpoint={review.proposal.current_endpoint}
-              proposedEndpoint={review.proposal.proposed_endpoint}
-              expectedVersion={review.proposal.expected_configuration_version}
-              proposerName={proposerName ?? review.proposal.proposed_by_employee_id}
-            />
-          </div>
-
-          <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
-            <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 size-5 text-amber-700" aria-hidden="true" />
-              <div>
-                <p className="font-semibold text-amber-950">Independent approval required</p>
-                <p className="mt-1 text-sm leading-6 text-amber-900">
-                  Production changes require an authorized reviewer who is different from the
-                  proposer. Approval records the decision; it does not execute the change.
-                </p>
+          {!review.approval && (
+            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
+              <div className="flex gap-3">
+                <ShieldCheck className="mt-0.5 size-5 text-amber-700" aria-hidden="true" />
+                <div>
+                  <p className="font-semibold text-amber-950">Independent approval required</p>
+                  <p className="mt-1 text-sm leading-6 text-amber-900">
+                    Production changes require an authorized reviewer who is different from the
+                    proposer. Approval records the decision; it does not execute the change.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <Alert className="mt-5">
-            <AlertTitle>Recovery plan: manual intervention</AlertTitle>
-            <AlertDescription>
-              If delivery verification fails, stop and request manual intervention. No automatic
-              rollback is authorized.
-            </AlertDescription>
-          </Alert>
-
-          {review.approval && (
-            <Alert className="mt-5 border-emerald-200 bg-emerald-50/70">
-              <CheckCircle2 />
-              <AlertTitle>Stored approval</AlertTitle>
+          {review.approval ? (
+            <details className="mt-5 rounded-lg border bg-muted/10 px-4 py-3 text-sm">
+              <summary className="cursor-pointer font-medium">
+                Approval and recovery details
+              </summary>
+              <div className="mt-4 space-y-4 border-t pt-4 text-muted-foreground">
+                <div>
+                  <p className="font-medium text-foreground">
+                    Approved by {employeeName(review.approval.approved_by_employee_id)}
+                  </p>
+                  <p>{new Date(review.approval.created_at).toLocaleString()}</p>
+                  <p className="mt-1 break-all">Approval receipt: {review.approval.id}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Recovery plan</p>
+                  <p>
+                    If delivery verification fails, stop and request manual intervention. No
+                    automatic rollback is authorized.
+                  </p>
+                </div>
+                {review.execution && (
+                  <p className="break-all">Execution receipt: {review.execution.id}</p>
+                )}
+                {review.verification && (
+                  <p className="break-all">Test event: {review.verification.test_event_id}</p>
+                )}
+              </div>
+            </details>
+          ) : (
+            <Alert className="mt-5">
+              <AlertTitle>Recovery plan: manual intervention</AlertTitle>
               <AlertDescription>
-                <p>
-                  {review.approval.approved_by_employee_id} ·{" "}
-                  {new Date(review.approval.created_at).toLocaleString()}
-                </p>
-                <p className="break-all">Receipt: {review.approval.id}</p>
+                If delivery verification fails, stop and request manual intervention. No automatic
+                rollback is authorized.
               </AlertDescription>
             </Alert>
           )}
 
-          <div className="mt-6 flex flex-wrap items-center gap-3 border-t pt-5">
-            <Button
-              onClick={() => approval.mutate()}
-              disabled={
-                busy ||
-                review.current_status.code !== "awaiting_approval" ||
-                employee === review.proposal.proposed_by_employee_id
-              }
-            >
-              Approve this proposal
-            </Button>
-            {!review.execution && (
-              <AlertDialog>
-                <AlertDialogTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      disabled={
-                        busy ||
-                        !["approval_recorded", "approval_not_required"].includes(
-                          review.current_status.code,
-                        ) ||
-                        !["implementation_engineer", "technical_lead"].includes(role ?? "")
-                      }
-                    />
-                  }
-                >
-                  Execute change
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Execute {review.proposal.ticket_id}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Change {review.proposal.integration_id} ({review.proposal.environment}) from{" "}
-                      {review.proposal.current_endpoint} to {review.proposal.proposed_endpoint}.
-                      Recovery requires manual intervention. This does not verify delivery.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => execution.mutate()}>
-                      Execute change
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-            {review.execution && !review.verification && (
+          {!review.verification && (
+            <div className="mt-6 flex flex-wrap items-center gap-3 border-t pt-5">
               <Button
-                variant="outline"
+                onClick={() => approval.mutate()}
                 disabled={
-                  busy || !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                  busy ||
+                  review.current_status.code !== "awaiting_approval" ||
+                  employee === review.proposal.proposed_by_employee_id
                 }
-                onClick={() => verification.mutate()}
               >
-                Verify delivery
+                Approve this proposal
               </Button>
-            )}
-            <p className="max-w-xl text-xs leading-5 text-muted-foreground">
-              Execution and delivery verification are separate recorded actions. Failed or uncertain
-              delivery requires manual intervention; neither execution nor rollback is repeated
-              automatically.
-            </p>
-          </div>
+              {!review.execution && (
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        disabled={
+                          busy ||
+                          !["approval_recorded", "approval_not_required"].includes(
+                            review.current_status.code,
+                          ) ||
+                          !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                        }
+                      />
+                    }
+                  >
+                    Execute change
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Execute {review.proposal.ticket_id}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Change {review.proposal.integration_id} ({review.proposal.environment}) from{" "}
+                        {review.proposal.current_endpoint} to {review.proposal.proposed_endpoint}.
+                        Recovery requires manual intervention. This does not verify delivery.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => execution.mutate()}>
+                        Execute change
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              {review.execution && !review.verification && (
+                <Button
+                  variant="outline"
+                  disabled={
+                    busy || !["implementation_engineer", "technical_lead"].includes(role ?? "")
+                  }
+                  onClick={() => verification.mutate()}
+                >
+                  Verify delivery
+                </Button>
+              )}
+              <p className="max-w-xl text-xs leading-5 text-muted-foreground">
+                Execution and delivery verification are separate recorded actions. Failed or
+                uncertain delivery requires manual intervention; neither execution nor rollback is
+                repeated automatically.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </section>

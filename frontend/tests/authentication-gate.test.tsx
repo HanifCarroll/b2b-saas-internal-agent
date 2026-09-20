@@ -344,6 +344,12 @@ test("executed proposal can be verified without repeating execution", async (t) 
     evidence: "Synthetic event accepted.",
     verified_at: "2026-09-22T14:16:00Z",
   };
+  const approval = {
+    id: "approval",
+    proposal_id: "proposal",
+    approved_by_employee_id: "emp-priya",
+    created_at: "2026-09-22T14:14:00Z",
+  };
   t.after(() => {
     cleanup();
     client.clear();
@@ -368,13 +374,13 @@ test("executed proposal can be verified without repeating execution", async (t) 
         proposed_by_employee_id: "emp-alex",
         created_at: "2026-09-22T13:30:00Z",
       },
-      approval: null,
+      approval,
       execution: {
         id: "execution",
         proposal_id: "proposal",
         executed_by_employee_id: "emp-alex",
         executed_at: "2026-09-22T14:15:00Z",
-        approval_id: null,
+        approval_id: approval.id,
         previous_configuration_version: 1,
         resulting_configuration_version: 2,
       },
@@ -395,7 +401,7 @@ test("executed proposal can be verified without repeating execution", async (t) 
           name: "Alex Rivera",
           role: "implementation_engineer",
         }}
-        employees={[]}
+        employees={[{ id: "emp-priya", name: "Priya Shah", role: "technical_lead" }]}
         onStatusRefresh={async () => {}}
       />
     </QueryClientProvider>,
@@ -403,9 +409,14 @@ test("executed proposal can be verified without repeating execution", async (t) 
 
   fireEvent.click(await screen.findByRole("button", { name: "Verify delivery" }));
 
-  assert.equal((await screen.findAllByText("Delivery verified")).length, 2);
+  assert.equal((await screen.findAllByText("Delivery verified")).length, 1);
   assert.equal(verificationRequests, 1);
   assert.ok(screen.getByText("Synthetic event accepted."));
+  assert.equal(screen.queryByText("Independent approval required"), null);
+  const auditDetails = screen.getByText("Approval and recovery details").closest("details");
+  assert.equal(auditDetails?.open, false);
+  assert.match(auditDetails?.textContent ?? "", /Approved by Priya Shah/);
+  assert.match(auditDetails?.textContent ?? "", /Test event: test-event/);
   assert.equal(screen.queryByRole("button", { name: "Execute change" }), null);
 });
 
