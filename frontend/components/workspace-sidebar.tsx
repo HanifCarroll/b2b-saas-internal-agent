@@ -36,10 +36,10 @@ export function WorkspaceSidebar({
   ];
 
   return (
-    <aside className="flex min-h-0 w-full flex-col bg-[#121a28] text-slate-300 lg:fixed lg:inset-y-0 lg:left-0 lg:min-h-screen lg:w-60">
-      <div className="flex h-20 items-center gap-3 px-6 text-lg font-semibold text-white">
-        <span className="grid size-8 place-items-center rounded-lg bg-blue-600">
-          <Layers3 className="size-4" aria-hidden="true" />
+    <aside className="flex min-h-0 w-full flex-col border-b border-sidebar-border bg-sidebar text-sidebar-foreground lg:fixed lg:inset-y-0 lg:left-0 lg:min-h-screen lg:w-60 lg:border-r lg:border-b-0">
+      <div className="flex h-20 items-center gap-3 px-6 text-lg font-semibold tracking-tight">
+        <span className="grid size-9 place-items-center rounded-xl bg-sidebar-accent">
+          <SwitchboardMark />
         </span>
         Switchboard
       </div>
@@ -51,8 +51,8 @@ export function WorkspaceSidebar({
             type="button"
             className={`flex h-11 items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${
               active
-                ? "bg-blue-600/25 font-medium text-white"
-                : "text-slate-300 hover:bg-white/5 hover:text-white"
+                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
             }`}
             aria-current={active ? "page" : undefined}
             onClick={onClick}
@@ -64,7 +64,7 @@ export function WorkspaceSidebar({
       </nav>
 
       <div className="mt-auto flex flex-col gap-3 p-3">
-        <div className="border-t border-white/10 pt-3">
+        <div className="border-t border-sidebar-border pt-3">
           <div className="flex items-center gap-3 rounded-lg px-2 py-2">
             {demoPersona !== undefined ? (
               <DemoPersonaAvatar persona={demoPersona} size="lg" />
@@ -78,8 +78,10 @@ export function WorkspaceSidebar({
                 <DemoPersonaIndicator persona={demoPersona} />
               ) : (
                 <>
-                  <span className="block truncate text-sm font-medium text-white">{employee}</span>
-                  <span className="block truncate text-xs capitalize text-slate-400">
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {employee}
+                  </span>
+                  <span className="block truncate text-xs capitalize text-muted-foreground">
                     {role?.replaceAll("_", " ") ?? "Employee"}
                   </span>
                 </>
@@ -96,7 +98,7 @@ export function WorkspaceSidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="justify-start text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
                   onClick={accountControls.onUseDemo}
                 >
                   <Layers3 className="size-4" />
@@ -107,7 +109,7 @@ export function WorkspaceSidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="justify-start text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
                   onClick={accountControls.onUseMicrosoft}
                 >
                   <LogIn className="size-4" />
@@ -118,7 +120,7 @@ export function WorkspaceSidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="justify-start text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
                   onClick={accountControls.onSwitchAccount}
                 >
                   <UserRound className="size-4" />
@@ -129,7 +131,7 @@ export function WorkspaceSidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-start text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="justify-start text-muted-foreground hover:bg-black/[0.04] hover:text-foreground"
                   onClick={accountControls.onSignOut}
                 >
                   <LogOut className="size-4" />
@@ -141,6 +143,26 @@ export function WorkspaceSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function SwitchboardMark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-5 text-sidebar-accent-foreground"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="5" cy="12" r="2" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="6" r="2" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="18" r="2" fill="currentColor" stroke="none" />
+      <path d="M7 11.2 16 6.8M7 12.8l9 4.4" />
+    </svg>
   );
 }
 

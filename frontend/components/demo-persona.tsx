@@ -46,8 +46,10 @@ export function DemoPersonaIndicator({ persona }: { persona: DemoPersona | null 
       <span className="block text-[11px] font-medium tracking-wide text-slate-500 uppercase">
         Demo persona
       </span>
-      <TruncatedPersonaValue value={name} className="text-sm font-medium text-white" />
-      {role && <TruncatedPersonaValue value={role} className="text-xs text-slate-400 capitalize" />}
+      <TruncatedPersonaValue value={name} className="text-sm font-medium text-foreground" />
+      {role && (
+        <TruncatedPersonaValue value={role} className="text-xs text-muted-foreground capitalize" />
+      )}
     </div>
   );
 }
@@ -76,7 +78,7 @@ export function DemoPersonaSwitcher({
         if (value) onChange(value);
       }}
     >
-      <SelectTrigger aria-label="Act as demo persona" className="mt-2 w-full border-white/10">
+      <SelectTrigger aria-label="Act as demo persona" className="mt-2 w-full bg-white">
         <SelectValue placeholder="Choose a persona" />
       </SelectTrigger>
       <SelectContent>

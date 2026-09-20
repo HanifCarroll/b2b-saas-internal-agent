@@ -209,7 +209,7 @@ export function WorkspaceRoute({ route }: { route: WorkspaceRouteDescriptor }) {
     ) : undefined;
 
   return (
-    <div className="min-h-screen bg-[#f7f8fa] lg:pl-60">
+    <div className="min-h-screen bg-slate-50 lg:pl-60">
       <WorkspaceSidebar
         activeView={activeView}
         employee={employeeName}
