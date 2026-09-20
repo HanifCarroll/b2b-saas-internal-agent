@@ -339,6 +339,54 @@ test("unchanged evidence is shown once", (t) => {
   assert.equal(screen.getAllByText("CHG-1042").length, 1);
 });
 
+test("policy evidence separates metadata and renders its markdown body", (t) => {
+  t.after(cleanup);
+
+  render(
+    <EvidenceDocument
+      detail={{
+        snapshot: {
+          id: "endpoint-change-v2",
+          kind: "policy",
+          captured_at: "2026-09-22T14:00:00Z",
+          document: {
+            id: "endpoint-change-v2",
+            content: `---
+id: endpoint-change-v2
+title: Endpoint change policy
+version: 2
+owner: Implementation Operations
+status: approved
+effective_on: 2026-09-01
+supersedes: endpoint-change-v1
+---
+
+# Endpoint change policy — version 2
+
+Production changes require **independent approval**.
+
+## Verification
+
+- Confirm the approved endpoint is active.
+- Send a synthetic test event.`,
+          },
+        },
+        current_document: null,
+        has_changed: null,
+      }}
+    />,
+  );
+
+  assert.ok(screen.getByText("Version"));
+  assert.ok(screen.getByText("Implementation Operations"));
+  assert.ok(screen.getByText("Approved"));
+  assert.ok(screen.getByRole("heading", { name: "Endpoint change policy — version 2" }));
+  assert.ok(screen.getByRole("heading", { name: "Verification" }));
+  assert.ok(screen.getByText("independent approval"));
+  assert.equal(screen.queryByText("---"), null);
+  assert.equal(screen.queryByText("Policy ID"), null);
+});
+
 test("evidence sheet animates through a controlled open state and remains dismissible", (t) => {
   t.after(cleanup);
   let closed = false;

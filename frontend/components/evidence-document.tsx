@@ -1,4 +1,5 @@
 import { FileCheck2 } from "lucide-react";
+import { PolicyEvidenceDocument } from "@/components/policy-evidence-document";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { EvidenceKind, InvestigationEvidenceDetail } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,13 @@ export function EvidenceDocument({ detail }: { detail: InvestigationEvidenceDeta
         </Alert>
       )}
 
-      <div className={hasChanged ? "grid gap-6 xl:grid-cols-2" : "grid gap-6"}>
+      <div
+        className={cn(
+          "grid",
+          hasChanged &&
+            "divide-y rounded-xl border xl:grid-cols-2 xl:divide-x xl:divide-y-0 [&>section]:p-5 sm:[&>section]:p-6",
+        )}
+      >
         <EvidencePanel
           title="Captured during investigation"
           description={`Captured ${formatDateTime(snapshot.captured_at)}`}
@@ -65,12 +72,12 @@ function EvidencePanel({
   comparisonDocument: Record<string, unknown> | null;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
-      <div className="border-b bg-slate-50/70 px-5 py-4">
+    <section className="min-w-0">
+      <div className="border-b pb-4">
         <h2 className="font-semibold">{title}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
-      <div className="p-5">
+      <div className="pt-5">
         <EvidenceFields kind={kind} document={document} comparisonDocument={comparisonDocument} />
       </div>
     </section>
@@ -88,27 +95,10 @@ function EvidenceFields({
 }) {
   if (kind === "policy") {
     return (
-      <div>
-        <EvidenceRow
-          label="Policy ID"
-          value={document.id}
-          changed={fieldChanged("id", document, comparisonDocument)}
-        />
-        <div className="mt-5 border-t pt-5">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Policy text
-          </p>
-          <p
-            data-changed={fieldChanged("content", document, comparisonDocument)}
-            className={cn(
-              "mt-2 whitespace-pre-wrap rounded-md text-sm leading-7",
-              fieldChanged("content", document, comparisonDocument) && "bg-amber-50 p-3",
-            )}
-          >
-            {String(document.content)}
-          </p>
-        </div>
-      </div>
+      <PolicyEvidenceDocument
+        content={String(document.content)}
+        changed={fieldChanged("content", document, comparisonDocument)}
+      />
     );
   }
 
