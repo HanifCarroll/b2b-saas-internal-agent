@@ -11,7 +11,7 @@
 - All generated code should focus on readability as its highest value. Do not be clever or terse.
 - Prioritize code that is easy to follow for someone learning Python, LangChain, and LangGraph.
 - In nontrivial functions with multiple logical stages, use short, numbered comments describing each stage, such as: `# 1. Validate the request against current records.`
-- There should always be an empty line before the section comment unless it is the first one.
+- There should always be an empty line before the section comment.
 - Label meaningful stages, not individual statements. Small, obvious functions do not need numbered sections.
 - Keep section labels and numbering accurate when changing code.
 - Prefer descriptive names and explicit control flow over terse or clever implementations. Comments should clarify intent, not compensate for confusing code.
