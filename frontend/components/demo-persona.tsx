@@ -1,6 +1,7 @@
 "use client";
 
 import type { DemoPersona } from "@/lib/api";
+import { useCallback, useState } from "react";
 import { preload } from "react-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -96,11 +97,34 @@ export function DemoPersonaSwitcher({
 }
 
 function TruncatedPersonaValue({ value, className }: { value: string; className: string }) {
+  const [isTruncated, setIsTruncated] = useState(false);
+  const measureOverflow = useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+
+    const update = () => setIsTruncated(element.scrollWidth > element.clientWidth);
+    update();
+
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  if (!isTruncated) {
+    return (
+      <span ref={measureOverflow} className={`block w-full truncate text-left ${className}`}>
+        {value}
+      </span>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
+            ref={measureOverflow}
             type="button"
             aria-label={`${value}; show full value`}
             className={`block w-full cursor-help truncate text-left ${className}`}

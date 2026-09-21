@@ -545,7 +545,7 @@ test("public demo shows persistent requests with workflow filters", async (t) =>
   await waitFor(() => assert.match(sidebar.textContent!, /Demo persona/));
   assert.match(sidebar.textContent!, /Alex Rivera/);
   assert.equal(sidebar.querySelector(".lucide-chevron-right"), null);
-  assert.equal(within(sidebar).getByText("implementation engineer").tabIndex, 0);
+  assert.equal(within(sidebar).getByText("implementation engineer").tabIndex, -1);
   assert.equal(screen.queryByText("Try a demo case"), null);
   assert.equal(
     screen.queryByText("Open a request to inspect it and start an investigation."),
